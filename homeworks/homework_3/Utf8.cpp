@@ -33,7 +33,7 @@ size_t SizeOfUtf8(Unicode c){
 // SizeOfUtf16 tells the number of bytes it will take to encode the specified value as Utf16.
 size_t SizeOfUtf16(Unicode c){
     if(c <= 0xFFFF) return 2;
-    if(c <= 0x10FFFF) return 4;  // Surrogate pair
+    if(c <= 0x10FFFF) return 4; // Surrogate pair
     // Values > 0x10FFFF will be replaced (2 bytes)
     return 2;
 }
@@ -89,7 +89,7 @@ Unicode ReadUtf8(const Utf8 **pp, const Utf8 *bound){
     // Verify continuation bytes
     for(size_t i = 1; i < len; i++){
         if((p[i] & 0xC0) != 0x80){
-            // Invalid continuation byte - consume only up to this point
+            // Invalid continuation byte, consume only up to this point
             *pp = p + i;
             return ReplacementCharacter;
         }
@@ -155,7 +155,8 @@ const Utf8 *PreviousUtf8(const Utf8 *p, const Utf8 *bound){
     p--;
 
     // Check bound
-    if(bound && p < bound) return bound;
+    if(bound && p < bound)
+        return bound;
 
     // Scan backward for a non-continuation byte (not 10xxxxxx) but limit to 6 bytes (max UTF-8 sequence length)
     int count = 0;
@@ -181,12 +182,12 @@ Utf8 *WriteUtf8(Utf8 *p, Unicode c, Utf8 *bound){
     size_t len = SizeOfUtf8(c);
 
     // Check if we have enough space
-    if(bound && p + len > bound) return p;
+    if (bound && p + len > bound) return p;
 
     if(len == 1){
         *p++ = (Utf8)c;
     }
-    else if(len == 2){
+    else if (len == 2){
         *p++ = (Utf8)(0xC0 | (c >> 6));
         *p++ = (Utf8)(0x80 | (c & 0x3F));
     }
@@ -217,5 +218,94 @@ Utf8 *WriteUtf8(Utf8 *p, Unicode c, Utf8 *bound){
         *p++ = (Utf8)(0x80 | (c & 0x3F));
     }
 
+    return p;
+}
+
+// Read a Utf16 little-endian character beginning at **pp and bump *pp past the end of the character.
+Unicode ReadUtf16(const Utf16 **pp, const Utf16 *bound){
+    const Utf16 *p = *pp;
+
+    // Check if at or past bound
+    if(bound && p >= bound) return 0;
+
+    Utf16 first = *p;
+
+    // Check for high surrogate (0xD800 - 0xDBFF)
+    if(first >= 0xD800 && first <= 0xDBFF){
+        // Need a low surrogate to follow
+        if(bound && p + 1 >= bound){
+            // No room for low surrogate - return literal value
+            *pp = p + 1;
+            return first;
+        }
+
+        Utf16 second = p[1];
+
+        // Check for valid low surrogate (0xDC00 - 0xDFFF)
+        if(second >= 0xDC00 && second <= 0xDFFF){
+            // Valid surrogate pair
+            Unicode c = 0x10000 + (((Unicode)(first - 0xD800) << 10) | (second - 0xDC00));
+            *pp = p + 2;
+            return c;
+        }
+
+        // Unpaired high surrogate - return literal value
+        *pp = p + 1;
+        return first;
+    }
+
+    // Check for unpaired low surrogate (0xDC00 - 0xDFFF)
+    if (first >= 0xDC00 && first <= 0xDFFF) {
+        // Unpaired low surrogate - return literal value
+        *pp = p + 1;
+        return first;
+    }
+
+    // Regular BMP character
+    *pp = p + 1;
+    return first;
+}
+
+// Write a Unicode character in UTF-16, returning one past the last byte that was written.
+Utf16 *WriteUtf16(Utf16 *p, Unicode c, Utf16 *bound){
+    // Check if at or past bound
+    if(bound && p >= bound) return p;
+
+    // Handle values > 21 bits
+    if(c > 0x10FFFF) c = ReplacementCharacter;
+
+    if(c <= 0xFFFF){
+        // BMP character, single 16-bit value
+        *p++ = (Utf16)c;
+    }
+    else{
+        // Need surrogate pair
+        if(bound && p + 1 >= bound) return p; // Not enough space
+
+        c -= 0x10000;
+        *p++ = (Utf16)(0xD800 + (c >> 10)); // High surrogate
+        *p++ = (Utf16)(0xDC00 + (c & 0x3FF)); // Low surrogate
+    }
+
+    return p;
+}
+
+// Wrappers that read the character but don't advance the pointer.
+Unicode GetUtf8(const Utf8 *p, const Utf8 *bound){
+    return ReadUtf8(&p, bound);
+}
+
+Unicode GetUtf16(const Utf16 *p, const Utf16 *bound){
+    return ReadUtf16(&p, bound);
+}
+
+// Wrappers that advance the pointer but throw away the value.
+const Utf8 *NextUtf8(const Utf8 *p, const Utf8 *bound){
+    ReadUtf8(&p, bound);
+    return p;
+}
+
+const Utf16 *NextUtf16(const Utf16 *p, const Utf16 *bound){
+    ReadUtf16(&p, bound);
     return p;
 }
