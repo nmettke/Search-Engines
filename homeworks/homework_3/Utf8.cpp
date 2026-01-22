@@ -1,6 +1,8 @@
 // Utf8.cpp
 #include "Utf8.h"
 
+using namespace std;
+
 // Helper function to check if a Unicode value is a forbidden character (surrogates, noncharacters, etc.)
 static bool IsForbiddenCharacter(Unicode c){
     // UTF-16 surrogates: 0xD800 to 0xDFFF
@@ -234,7 +236,7 @@ Unicode ReadUtf16(const Utf16 **pp, const Utf16 *bound){
     if(first >= 0xD800 && first <= 0xDBFF){
         // Need a low surrogate to follow
         if(bound && p + 1 >= bound){
-            // No room for low surrogate - return literal value
+            // No room for low surrogate, return literal value
             *pp = p + 1;
             return first;
         }
@@ -249,14 +251,14 @@ Unicode ReadUtf16(const Utf16 **pp, const Utf16 *bound){
             return c;
         }
 
-        // Unpaired high surrogate - return literal value
+        // Unpaired high surrogate, return literal value
         *pp = p + 1;
         return first;
     }
 
     // Check for unpaired low surrogate (0xDC00 - 0xDFFF)
     if (first >= 0xDC00 && first <= 0xDFFF) {
-        // Unpaired low surrogate - return literal value
+        // Unpaired low surrogate, return literal value
         *pp = p + 1;
         return first;
     }
