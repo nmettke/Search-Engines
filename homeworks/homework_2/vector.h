@@ -97,6 +97,13 @@ public:
    // EFFECTS: Takes the data from other into a newly constructed vector
    vector(vector<T> &&other)
    {
+      data_ = other.data_;
+      capacity_ = other.capacity_;
+      size_ = other.size_;
+
+      other.data_ = nullptr;
+      other.capacity_ = 0;
+      other.size_ = 0;
    }
 
    // Move Assignment Operator
@@ -105,6 +112,15 @@ public:
    // EFFECTS: Takes the data from other in constant time
    vector operator=(vector<T> &&other)
    {
+      delete[] data_;
+
+      data_ = other.data_;
+      capacity_ = other.capacity_;
+      size_ = other.size_;
+
+      other.data_ = nullptr;
+      other.capacity_ = 0;
+      other.size_ = 0;
    }
 
    // REQUIRES: new_capacity > capacity( )
@@ -113,6 +129,19 @@ public:
    //    elements before having to reallocate
    void reserve(size_t newCapacity)
    {
+      T *tmp = new T[newCapacity];
+      T *start = tmp;
+      T *end = tmp + size_;
+      T *it_ptr = data_;
+
+      for (; start != end; ++start)
+      {
+         *start = *it_ptr++;
+      }
+
+      delete[] data_;
+      data_ = tmp;
+      capacity_ = newCapacity;
    }
 
    // REQUIRES: Nothing
