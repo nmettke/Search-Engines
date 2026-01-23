@@ -1,2 +1,12 @@
 #include "vector.h"
-#include <gtest/gtest.h>
+#include <iostream>
+
+void testVectorClass()
+{
+    std::cout << "tmp\n";
+}
+
+int main()
+{
+    testVectorClass();
+}

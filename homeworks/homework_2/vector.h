@@ -1,8 +1,9 @@
-#pragma once
 // vector.h
 //
 // Starter file for a vector template
 
+#pragma once
+#include <cstddef>
 template <typename T>
 class vector
 {
