@@ -10,9 +10,7 @@ public:
    // REQUIRES: Nothing
    // MODIFIES: *this
    // EFFECTS: Constructs an empty vector with capacity 0
-   vector()
-   {
-   }
+   vector() : data_(nullptr), size_(0), capacity_(0) {};
 
    // Destructor
    // REQUIRES: Nothing
@@ -20,6 +18,7 @@ public:
    // EFFECTS: Performs any neccessary clean up operations
    ~vector()
    {
+      delete[] data_;
    }
 
    // Resize Constructor
@@ -29,6 +28,9 @@ public:
    //    all default constructed
    vector(size_t num_elements)
    {
+      size_ = num_elements;
+      capacity_ = num_elements;
+      data_ = new T[num_elements];
    }
 
    // Fill Constructor
@@ -37,14 +39,32 @@ public:
    // EFFECTS: Creates a vector with size num_elements, all assigned to val
    vector(size_t num_elements, const T &val)
    {
+      size_ = num_elements;
+      capacity_ = num_elements;
+      data_ = new T[num_elements];
+      T *p = data_;
+      T *e = data_ + num_elements;
+      for (; p != e; ++p)
+      {
+         *p = val;
+      }
    }
 
    // Copy Constructor
    // REQUIRES: Nothing
    // MODIFIES: *this
    // EFFECTS: Creates a clone of the vector other
-   vector(const vector<T> &other)
+   vector(const vector<T> &other) : data_(nullptr), size_(other.size_), capacity(other.capacity_)
    {
+      data_ = new T[capacity_];
+      T *p = data_;
+      const T *q = other.data_;
+      const T *q_end = other.data_ + other.size_;
+
+      for (; q != q_end; ++q)
+      {
+         *p++ = *q;
+      }
    }
 
    // Assignment operator
@@ -84,6 +104,7 @@ public:
    // EFFECTS: Returns the number of elements in the vector
    size_t size() const
    {
+      return size_;
    }
 
    // REQUIRES: Nothing
@@ -91,6 +112,7 @@ public:
    // EFFECTS: Returns the maximum size the vector can attain before resizing
    size_t capacity() const
    {
+      return capacity_;
    }
 
    // REQUIRES: 0 <= i < size( )
@@ -98,6 +120,7 @@ public:
    // EFFECTS: Returns a mutable reference to the i'th element
    T &operator[](size_t i)
    {
+      return data_[i];
    }
 
    // REQUIRES: 0 <= i < size( )
@@ -144,6 +167,7 @@ public:
    // EFFECTS: Returns a random access iterator to the first element of the vector
    const T *begin() const
    {
+      return data_;
    }
 
    // REQUIRES: Nothing
@@ -152,8 +176,12 @@ public:
    //    one past the last valid element of the vector
    const T *end() const
    {
+      return data_ + size_;
    }
 
 private:
+   T *data_;
+   size_t size_;
+   size_t capacity_;
    // TODO
 };
