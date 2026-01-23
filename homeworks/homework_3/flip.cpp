@@ -108,12 +108,20 @@ int main(int argc, char* argv[]){
 
     int f = open( argv[ 1 ], O_RDONLY );
     if ( f == -1 ) {
-        cerr << "Unable to open file. Errno: " << errno;
+        cerr << argv[ 1 ] << " not found." << endl;
         close(f);
         return 1;
     }
     
     size_t fileSize = FileSize( f );
+    if (fileSize == 0) { //handle empty files, which by definition HAVE to be utf8 (no bom..)
+        Utf16 bom = (Utf16) ByteOrderMark;
+        cout.write(reinterpret_cast<const char*>(&bom), sizeof(bom));
+
+        close(f);
+        return 0;
+    }
+
 
     const Utf8 *map = (Utf8 *)mmap( nullptr, fileSize, PROT_READ, MAP_PRIVATE, f, 0 );
     if ( map == MAP_FAILED ) {
