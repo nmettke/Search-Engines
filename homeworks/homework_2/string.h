@@ -25,14 +25,22 @@ public:
    // REQUIRES: cstr is a null terminated C style string
    // MODIFIES: *this
    // EFFECTS: Creates a string with equivalent contents to cstr
-   string(const char *cstr): _buffer(nullptr), _size(getLength(cstr)), _capacity(_size) {
+   string(const char *cstr)
+      : _buffer(nullptr),
+        _size(getLength(cstr)),
+        _capacity(_size)
+   {
       _buffer = new char[_capacity + 1];
       copyData(_buffer, cstr, _size);
       _buffer[_size] = '\0';
    }
 
    // deep copy constructor
-   string(const string &other): _buffer(nullptr), _size(other._size), _capacity(other._capacity) {
+   string(const string &other) 
+      : _buffer(nullptr),
+        _size(other._size),
+        _capacity(other._capacity)
+   {
       _buffer = new char[_capacity + 1];
       copyData(_buffer, other._buffer, _size);
       _buffer[_size] = '\0';
@@ -49,6 +57,17 @@ public:
          _buffer[_size] = '\0';
       }
       return *this;
+   }
+
+   // move constructor
+   string(string&& other) noexcept 
+      : _buffer(other._buffer),
+        _size(other._size),
+        _capacity(other._capacity)
+   {
+      other._buffer = nullptr;
+      other._size = 0;
+      other._capacity = 0;
    }
 
    // destructor
