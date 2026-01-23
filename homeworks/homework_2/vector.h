@@ -58,7 +58,7 @@ public:
    {
       data_ = new T[capacity_];
       T *p = data_;
-      const T *q = other.data_;
+      T *q = other.data_;
       const T *q_end = other.data_ + other.size_;
 
       for (; q != q_end; ++q)
@@ -73,6 +73,22 @@ public:
    // EFFECTS: Duplicates the state of other to *this
    vector operator=(const vector<T> &other)
    {
+      delete[] data_;
+
+      size_ = other.size_;
+      capacity_ = other.capacity_;
+      data_ = new T[capacity_];
+
+      T *p = data_;
+      const T *q = other.data_;
+      const T *e = other.data_ + other.size_;
+
+      for (; q != e; ++q)
+      {
+         *p++ = *q;
+      }
+
+      return this;
    }
 
    // Move Constructor
@@ -128,6 +144,7 @@ public:
    // EFFECTS: Get a const reference to the ith element
    const T &operator[](size_t i) const
    {
+      return _data[i];
    }
 
    // REQUIRES: Nothing
@@ -136,6 +153,26 @@ public:
    //    additional space if neccesary
    void pushBack(const T &x)
    {
+      if (size_ == capacity_)
+      {
+         size_t new_capacity = capacity_ == 0 ? 1 : capacity_ * 2;
+         T *tmp = new T[new_capacity];
+         T *start = tmp;
+         T *end = tmp + size_;
+         T *data_ptr = data_;
+
+         for (; start != end; ++start)
+         {
+            *start = *data_ptr++;
+         }
+
+         delete[] data_;
+         data_ = tmp;
+         capacity_ = new_capacity;
+      }
+
+      *(data_ + size_) = x;
+      size_++;
    }
 
    // REQUIRES: Nothing
@@ -144,6 +181,7 @@ public:
    //    leaving capacity unchanged
    void popBack()
    {
+      _size--;
    }
 
    // REQUIRES: Nothing
@@ -152,6 +190,7 @@ public:
    //    first element of the vector
    T *begin()
    {
+      return _data;
    }
 
    // REQUIRES: Nothing
@@ -160,6 +199,7 @@ public:
    //    one past the last valid element of the vector
    T *end()
    {
+      return _data + _size;
    }
 
    // REQUIRES: Nothing
