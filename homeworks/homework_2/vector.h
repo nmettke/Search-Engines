@@ -1,3 +1,4 @@
+#pragma once
 // vector.h
 //
 // Starter file for a vector template
@@ -54,7 +55,7 @@ public:
    // REQUIRES: Nothing
    // MODIFIES: *this
    // EFFECTS: Creates a clone of the vector other
-   vector(const vector<T> &other) : data_(nullptr), size_(other.size_), capacity(other.capacity_)
+   vector(const vector<T> &other) : data_(nullptr), size_(other.size_), capacity_(other.capacity_)
    {
       data_ = new T[capacity_];
       T *p = data_;
@@ -88,7 +89,7 @@ public:
          *p++ = *q;
       }
 
-      return this;
+      return *this;
    }
 
    // Move Constructor
@@ -173,7 +174,7 @@ public:
    // EFFECTS: Get a const reference to the ith element
    const T &operator[](size_t i) const
    {
-      return _data[i];
+      return data_[i];
    }
 
    // REQUIRES: Nothing
@@ -210,7 +211,7 @@ public:
    //    leaving capacity unchanged
    void popBack()
    {
-      _size--;
+      size_--;
    }
 
    // REQUIRES: Nothing
@@ -219,7 +220,7 @@ public:
    //    first element of the vector
    T *begin()
    {
-      return _data;
+      return data_;
    }
 
    // REQUIRES: Nothing
@@ -228,7 +229,7 @@ public:
    //    one past the last valid element of the vector
    T *end()
    {
-      return _data + _size;
+      return data_ + size_;
    }
 
    // REQUIRES: Nothing
