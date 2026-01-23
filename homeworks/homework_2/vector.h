@@ -186,20 +186,7 @@ public:
    {
       if (size_ == capacity_)
       {
-         size_t new_capacity = capacity_ == 0 ? 1 : capacity_ * 2;
-         T *tmp = new T[new_capacity];
-         T *start = tmp;
-         T *end = tmp + size_;
-         T *data_ptr = data_;
-
-         for (; start != end; ++start)
-         {
-            *start = *data_ptr++;
-         }
-
-         delete[] data_;
-         data_ = tmp;
-         capacity_ = new_capacity;
+         reserve(capacity_ == 0 ? 8 : capacity_ * 3);
       }
 
       *(data_ + size_) = x;
