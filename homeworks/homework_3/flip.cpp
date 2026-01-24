@@ -41,12 +41,12 @@ size_t FileSize( int f )
 
 void OutputBytesUtf16(Utf16 *buffer, Utf16 *end) {
     streamsize byteCount = (end - buffer) * sizeof(Utf16);
-    cout.write(reinterpret_cast<const char*>(buffer), byteCount);
+    write(1, (char*) buffer, byteCount);
 }
 
 void OutputBytesUtf8(Utf8 *buffer, Utf8 *end) {
     streamsize byteCount = (end - buffer) * sizeof(Utf8);
-    cout.write(reinterpret_cast<const char*>(buffer), byteCount);
+    write(1, (char*) buffer, byteCount);
 }
 
 
@@ -116,7 +116,7 @@ int main(int argc, char* argv[]){
     size_t fileSize = FileSize( f );
     if (fileSize == 0) { //handle empty files, which by definition HAVE to be utf8 (no bom..)
         Utf16 bom = (Utf16) ByteOrderMark;
-        cout.write(reinterpret_cast<const char*>(&bom), sizeof(bom));
+        write(1, (char*) (&bom), sizeof(bom));
 
         close(f);
         return 0;
@@ -157,9 +157,14 @@ int main(int argc, char* argv[]){
     } 
     else { //UTF8 to 16 case
         Utf16 bom = (Utf16) ByteOrderMark;
-        cout.write(reinterpret_cast<const char*>(&bom), sizeof(bom));
-
+        write(1, (char*) &bom, sizeof(bom));
+        
         const Utf8 *end = map + fileSize;
+
+        //if file uses UTF8BOM encoding, forget it
+        if (fileSize > 3 && (*map == 0xEF && *(map+1) == 0xBB && *(map+2) == 0xBF)){
+            map = map+3;
+        }
 
         Utf8To16(map, end);
     }
