@@ -52,9 +52,9 @@ void OutputBytesUtf8(Utf8 *buffer, Utf8 *end) {
 
 void Utf16To8(const Utf16 *map, const Utf16 *end){
     //buffers used to store output from writeutf8, then flush out to stdout periodically
-    Utf8 buffer[4096];
+    Utf8 buffer[32768];
     Utf8 *newChars = buffer;
-    Utf8 *bound = buffer + 4096;
+    Utf8 *bound = buffer + 32768;
 
     //While there's bytes left, read a byte via UTF16 and write as UTF8 (to stdout)
     while (map < end){
@@ -76,9 +76,9 @@ void Utf16To8(const Utf16 *map, const Utf16 *end){
 
 void Utf8To16(const Utf8 *map, const Utf8 *end){
     //buffers used to store output from writeutf8, then flush out to stdout periodically
-    Utf16 buffer[4096];
+    Utf16 buffer[32768];
     Utf16 *newChars = buffer;
-    Utf16 *bound = buffer + 4096;
+    Utf16 *bound = buffer + 32768;
 
     //While there's bytes left, read a byte via UTF8 and write as UTF16 (to stdout)
     while (map < end){
