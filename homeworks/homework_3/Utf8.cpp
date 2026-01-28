@@ -1,22 +1,14 @@
 // Utf8.cpp
 #include "Utf8.h"
 
-using namespace std;
-
 // Helper function to check if a Unicode value is a forbidden character (surrogates, noncharacters, etc.)
-static bool IsForbiddenCharacter(Unicode c){
+static inline bool IsForbiddenCharacter(Unicode c){
     // UTF-16 surrogates: 0xD800 to 0xDFFF
-    if(c >= 0xD800 && c <= 0xDFFF){
-        return true;
-    }
+    if(c >= 0xD800 && c <= 0xDFFF) return true;
     // Noncharacters: 0xFDD0 to 0xFDEF
-    if(c >= 0xFDD0 && c <= 0xFDEF){
-        return true;
-    }
-    // 0xFFFE and 0xFFFF only (per assignment spec)
-    if(c == 0xFFFE || c == 0xFFFF){
-        return true;
-    }
+    if(c >= 0xFDD0 && c <= 0xFDEF) return true;
+    // 0xFFFE and 0xFFFF only in the BMP
+    if(c == 0xFFFE || c == 0xFFFF) return true;
     return false;
 }
 
@@ -58,231 +50,251 @@ size_t IndicatedLength(const Utf8 *p){
 Unicode ReadUtf8(const Utf8 **pp, const Utf8 *bound){
     const Utf8 *p = *pp;
 
-    // Check if already at or past bound
     if(bound && p >= bound) return 0;
 
-    Utf8 first = *p;
-    size_t len = IndicatedLength(p);
+    Utf8 b0 = p[0];
 
-    // Check if we have enough bytes
-    if(bound && p + len > bound){
-        // Not enough bytes so consume what we can and return replacement
-        *pp = bound;
-        return ReplacementCharacter;
+    if(b0 < 0x80){
+        *pp = p + 1;
+        return b0;
     }
 
-    Unicode c;
-
-    // Decode based on length
-    if(len == 1){
-        if((first & 0x80) == 0){
-            // Valid ASCII
-            c = first;
-            *pp = p + 1;
-            return c;
-        }
-        else{
-            // Invalid first byte (continuation byte)
-            *pp = p + 1;
-            return ReplacementCharacter;
-        }
-    }
-
-    // Verify continuation bytes
-    for(size_t i = 1; i < len; i++){
-        if((p[i] & 0xC0) != 0x80){
-            // Invalid continuation byte, consume only up to this point
-            *pp = p + i;
-            return ReplacementCharacter;
-        }
-    }
-
-    // Decode the character
-    if(len == 2){
-        c = ((first & 0x1F) << 6) | (p[1] & 0x3F);
-        // Check for overlong encoding
-        if(c < 0x80){
-            *pp = p + 2;
-            return ReplacementCharacter;
-        }
-    }
-    else if(len == 3){
-        c = ((first & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
-        // Check for overlong encoding
-        if(c < 0x800){
-            *pp = p + 3;
-            return ReplacementCharacter;
-        }
-    }
-    else if (len == 4){
-        c = ((first & 0x07) << 18) | ((p[1] & 0x3F) << 12) | ((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
-        // Check for overlong encoding
-        if(c < 0x10000){
-            *pp = p + 4;
-            return ReplacementCharacter;
-        }
-    }
-    else if(len == 5){
-        c = ((Unicode)(first & 0x03) << 24) | ((Unicode)(p[1] & 0x3F) << 18) | ((Unicode)(p[2] & 0x3F) << 12) | ((p[3] & 0x3F) << 6) | (p[4] & 0x3F);
-        // Check for overlong encoding
-        if (c < 0x200000) {
-            *pp = p + 5;
-            return ReplacementCharacter;
-        }
-    }
-    else if (len == 6){
-        c = ((Unicode)(first & 0x01) << 30) | ((Unicode)(p[1] & 0x3F) << 24) | ((Unicode)(p[2] & 0x3F) << 18) | ((Unicode)(p[3] & 0x3F) << 12) | ((p[4] & 0x3F) << 6) | (p[5] & 0x3F);
-        // Check for overlong encoding
-        if (c < 0x4000000) {
-            *pp = p + 6;
-            return ReplacementCharacter;
-        }
-    }
-    else{
+    if(b0 < 0xC0){
         *pp = p + 1;
         return ReplacementCharacter;
     }
 
-    *pp = p + len;
+    if(b0 < 0xE0){
+        if(bound && p + 2 > bound){
+            *pp = bound;
+            return ReplacementCharacter;
+        }
+        if((p[1] & 0xC0) != 0x80){
+            *pp = p + 1;
+            return ReplacementCharacter;
+        }
+        Unicode c = ((b0 & 0x1F) << 6) | (p[1] & 0x3F);
+        *pp = p + 2;
+        if(c < 0x80) return ReplacementCharacter;
+        return c;
+    }
 
-    // Check for forbidden characters
-    if(IsForbiddenCharacter(c)) return ReplacementCharacter;
+    if(b0 < 0xF0){
+        if(bound && p + 3 > bound){
+            *pp = bound;
+            return ReplacementCharacter;
+        }
+        if((p[1] & 0xC0) != 0x80){
+            *pp = p + 1;
+            return ReplacementCharacter;
+        }
+        if((p[2] & 0xC0) != 0x80){
+            *pp = p + 2;
+            return ReplacementCharacter;
+        }
+        Unicode c = ((b0 & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+        *pp = p + 3;
+        if(c < 0x800) return ReplacementCharacter; // Overlong
 
-    return c;
+        if(c >= 0xD800 && c <= 0xDFFF) return ReplacementCharacter;
+        if(c >= 0xFDD0 && c <= 0xFDEF) return ReplacementCharacter;
+        if(c == 0xFFFE || c == 0xFFFF) return ReplacementCharacter;
+        return c;
+    }
+
+    if(b0 < 0xF8){
+        if(bound && p + 4 > bound){
+            *pp = bound;
+            return ReplacementCharacter;
+        }
+        if((p[1] & 0xC0) != 0x80){
+            *pp = p + 1;
+            return ReplacementCharacter;
+        }
+        if((p[2] & 0xC0) != 0x80){
+            *pp = p + 2;
+            return ReplacementCharacter;
+        }
+        if((p[3] & 0xC0) != 0x80){
+            *pp = p + 3;
+            return ReplacementCharacter;
+        }
+        Unicode c = ((b0 & 0x07) << 18) | ((p[1] & 0x3F) << 12) | ((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
+        *pp = p + 4;
+        if(c < 0x10000) return ReplacementCharacter;
+        return c;
+    }
+
+    if(b0 < 0xFC){
+        if(bound && p + 5 > bound){
+            *pp = bound; return ReplacementCharacter;
+        }
+        for(int i = 1; i < 5; i++){
+            if((p[i] & 0xC0) != 0x80){
+                *pp = p + i; return ReplacementCharacter;
+            }
+        }
+        Unicode c = ((Unicode)(b0 & 0x03) << 24) | ((Unicode)(p[1] & 0x3F) << 18) |
+                    ((Unicode)(p[2] & 0x3F) << 12) | ((p[3] & 0x3F) << 6) | (p[4] & 0x3F);
+        *pp = p + 5;
+        if(c < 0x200000) return ReplacementCharacter;
+        return c;
+    }
+
+    if(b0 < 0xFE){
+        if(bound && p + 6 > bound){
+            *pp = bound;
+            return ReplacementCharacter;
+        }
+        for(int i = 1; i < 6; i++){
+            if((p[i] & 0xC0) != 0x80){
+                *pp = p + i;
+                return ReplacementCharacter;
+            }
+        }
+        Unicode c = ((Unicode)(b0 & 0x01) << 30) | ((Unicode)(p[1] & 0x3F) << 24) |
+                    ((Unicode)(p[2] & 0x3F) << 18) | ((Unicode)(p[3] & 0x3F) << 12) |
+                    ((p[4] & 0x3F) << 6) | (p[5] & 0x3F);
+        *pp = p + 6;
+        if(c < 0x4000000) return ReplacementCharacter;
+        return c;
+    }
+
+    // 0xFE or 0xFF - invalid first byte
+    *pp = p + 1;
+    return ReplacementCharacter;
 }
 
 // Scan backward for the first PREVIOUS byte which could be the start of a UTF-8 character.
 const Utf8 *PreviousUtf8(const Utf8 *p, const Utf8 *bound){
-    // Move back at least one byte
     p--;
 
-    // Check bound
-    if(bound && p < bound)
-        return bound;
-
-    // Scan backward for a non-continuation byte (not 10xxxxxx) but limit to 6 bytes (max UTF-8 sequence length)
-    int count = 0;
-    while(count < 6 && (!bound || p >= bound) && (*p & 0xC0) == 0x80){
-        p--;
-        count++;
-    }
-
-    // Check bound again
     if(bound && p < bound) return bound;
 
-    return p;
+    if((*p & 0xC0) != 0x80) return p;
+
+    while(true){
+        if(bound && p - 1 < bound){
+            return bound;
+        }
+
+        p--;
+
+        if((*p & 0xC0) != 0x80){
+            return p;
+        }
+    }
 }
 
 // Write a Unicode character in UTF-8, returning one past the last byte that was written.
 Utf8 *WriteUtf8(Utf8 *p, Unicode c, Utf8 *bound){
-    // Check if at or past bound
     if(bound && p >= bound) return p;
 
-    // Handle values > 31 bits
-    if(c > 0x7FFFFFFF) c = ReplacementCharacter;
-
-    size_t len = SizeOfUtf8(c);
-
-    // Check if we have enough space
-    if (bound && p + len > bound) return p;
-
-    if(len == 1){
-        *p++ = (Utf8)c;
-    }
-    else if (len == 2){
-        *p++ = (Utf8)(0xC0 | (c >> 6));
-        *p++ = (Utf8)(0x80 | (c & 0x3F));
-    }
-    else if (len == 3){
-        *p++ = (Utf8)(0xE0 | (c >> 12));
-        *p++ = (Utf8)(0x80 | ((c >> 6) & 0x3F));
-        *p++ = (Utf8)(0x80 | (c & 0x3F));
-    }
-    else if (len == 4){
-        *p++ = (Utf8)(0xF0 | (c >> 18));
-        *p++ = (Utf8)(0x80 | ((c >> 12) & 0x3F));
-        *p++ = (Utf8)(0x80 | ((c >> 6) & 0x3F));
-        *p++ = (Utf8)(0x80 | (c & 0x3F));
-    }
-    else if (len == 5){
-        *p++ = (Utf8)(0xF8 | (c >> 24));
-        *p++ = (Utf8)(0x80 | ((c >> 18) & 0x3F));
-        *p++ = (Utf8)(0x80 | ((c >> 12) & 0x3F));
-        *p++ = (Utf8)(0x80 | ((c >> 6) & 0x3F));
-        *p++ = (Utf8)(0x80 | (c & 0x3F));
-    }
-    else if (len == 6){
-        *p++ = (Utf8)(0xFC | (c >> 30));
-        *p++ = (Utf8)(0x80 | ((c >> 24) & 0x3F));
-        *p++ = (Utf8)(0x80 | ((c >> 18) & 0x3F));
-        *p++ = (Utf8)(0x80 | ((c >> 12) & 0x3F));
-        *p++ = (Utf8)(0x80 | ((c >> 6) & 0x3F));
-        *p++ = (Utf8)(0x80 | (c & 0x3F));
+    if(c <= 0x7F){
+        p[0] = (Utf8)c;
+        return p + 1;
     }
 
-    return p;
+    if(c <= 0x7FF){
+        if(bound && p + 2 > bound) return p;
+        p[0] = (Utf8)(0xC0 | (c >> 6));
+        p[1] = (Utf8)(0x80 | (c & 0x3F));
+        return p + 2;
+    }
+
+    if(c <= 0xFFFF){
+        if(bound && p + 3 > bound) return p;
+        p[0] = (Utf8)(0xE0 | (c >> 12));
+        p[1] = (Utf8)(0x80 | ((c >> 6) & 0x3F));
+        p[2] = (Utf8)(0x80 | (c & 0x3F));
+        return p + 3;
+    }
+
+    if(c <= 0x1FFFFF){
+        if(bound && p + 4 > bound) return p;
+        p[0] = (Utf8)(0xF0 | (c >> 18));
+        p[1] = (Utf8)(0x80 | ((c >> 12) & 0x3F));
+        p[2] = (Utf8)(0x80 | ((c >> 6) & 0x3F));
+        p[3] = (Utf8)(0x80 | (c & 0x3F));
+        return p + 4;
+    }
+
+    if(c <= 0x3FFFFFF){
+        if(bound && p + 5 > bound) return p;
+        p[0] = (Utf8)(0xF8 | (c >> 24));
+        p[1] = (Utf8)(0x80 | ((c >> 18) & 0x3F));
+        p[2] = (Utf8)(0x80 | ((c >> 12) & 0x3F));
+        p[3] = (Utf8)(0x80 | ((c >> 6) & 0x3F));
+        p[4] = (Utf8)(0x80 | (c & 0x3F));
+        return p + 5;
+    }
+
+    if(c <= 0x7FFFFFFF){
+        if(bound && p + 6 > bound) return p;
+        p[0] = (Utf8)(0xFC | (c >> 30));
+        p[1] = (Utf8)(0x80 | ((c >> 24) & 0x3F));
+        p[2] = (Utf8)(0x80 | ((c >> 18) & 0x3F));
+        p[3] = (Utf8)(0x80 | ((c >> 12) & 0x3F));
+        p[4] = (Utf8)(0x80 | ((c >> 6) & 0x3F));
+        p[5] = (Utf8)(0x80 | (c & 0x3F));
+        return p + 6;
+    }
+
+    if(bound && p + 3 > bound) return p;
+    p[0] = 0xEF;
+    p[1] = 0xBF;
+    p[2] = 0xBD;
+    return p + 3;
 }
 
 // Read a Utf16 little-endian character beginning at **pp and bump *pp past the end of the character.
 Unicode ReadUtf16(const Utf16 **pp, const Utf16 *bound){
     const Utf16 *p = *pp;
 
-    // Check if at or past bound
     if(bound && p >= bound) return 0;
 
-    Utf16 first = *p;
+    Utf16 first = p[0];
 
-    // Check for high surrogate (0xD800 - 0xDBFF)
-    if(first >= 0xD800 && first <= 0xDBFF){
-        // Need a low surrogate to follow
+    if(first < 0xD800 || first > 0xDFFF){
+        *pp = p + 1;
+        return first;
+    }
+
+    if(first <= 0xDBFF){
         if(bound && p + 1 >= bound){
-            // No room for low surrogate, return literal value
             *pp = p + 1;
             return first;
         }
-
         Utf16 second = p[1];
-
-        // Check for valid low surrogate (0xDC00 - 0xDFFF)
         if(second >= 0xDC00 && second <= 0xDFFF){
-            // Valid surrogate pair
-            Unicode c = 0x10000 + (((Unicode)(first - 0xD800) << 10) | (second - 0xDC00));
             *pp = p + 2;
-            return c;
+            return 0x10000 + (((Unicode)(first - 0xD800) << 10) | (second - 0xDC00));
         }
-
-        // Unpaired high surrogate, return literal value
         *pp = p + 1;
         return first;
     }
 
     // Check for unpaired low surrogate (0xDC00 - 0xDFFF)
     if (first >= 0xDC00 && first <= 0xDFFF) {
-        // Unpaired low surrogate, return literal value
         *pp = p + 1;
         return first;
     }
 
-    // Regular BMP character
     *pp = p + 1;
     return first;
 }
 
 // Write a Unicode character in UTF-16, returning one past the last byte that was written.
 Utf16 *WriteUtf16(Utf16 *p, Unicode c, Utf16 *bound){
-    // Check if at or past bound
     if(bound && p >= bound) return p;
 
-    // Handle values > 21 bits
     if(c > 0x10FFFF) c = ReplacementCharacter;
 
     if(c <= 0xFFFF){
-        // BMP character, single 16-bit value
         *p++ = (Utf16)c;
     }
     else{
-        // Need surrogate pair
-        if(bound && p + 1 >= bound) return p; // Not enough space
+        if(bound && p + 1 >= bound) return p;
 
         c -= 0x10000;
         *p++ = (Utf16)(0xD800 + (c >> 10)); // High surrogate
