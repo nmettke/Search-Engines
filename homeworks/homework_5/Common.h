@@ -5,15 +5,19 @@
 
 #include <vector>
 #include <string>
+#include <cstring>
 #include <cstdint>
 #include "HashTable.h"
+
+using namespace std;
 
 
 // You may define additional helper routines here and in
 // Common.cpp.
 
+uint64_t hashString(const char *key);
 
-// YOUR CODE HERE
+bool CompareEqual(const char *a, const char *b);
 
 
 // Build a HashTable of strings and numbers of occurrences, given a vector
@@ -25,7 +29,7 @@
 // Caller is responsible for deleting the Hash.
 
 HashTable< const char *, size_t > *BuildHashTable( const vector< string > &words,
-      uint64_t ( *hash )( const char *key ) );
+      uint64_t ( *hash )( const char *key ) = hashString );
 
 
 // Collect words read from a file specified on the command line

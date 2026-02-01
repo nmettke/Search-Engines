@@ -1,7 +1,5 @@
 // Common code used by the various hashing sample applications.
 
-// Nicole Hamilton nham@umich.edu
-
 #include <fstream>
 #include <vector>
 #include <string>
@@ -11,18 +9,26 @@
 
 using namespace std;
 
-
 // -v (verbose) command line option instantiation and
 // initial value.
 
 bool optVerbose = false;
 
-
 // You may define additional helper routines here and in
 // Common.h.
 
+uint64_t hashString(const char *key) {
+   uint64_t h = 0;
+   while (*key) {
+      h = h * 37 + *key;
+      key++;
+   }
+   return h;
+}
 
-// YOUR CODE HERE
+bool CompareEqual(const char *a, const char *b) {
+   return strcmp(a, b) == 0;
+}
 
 
 using Hash = HashTable< const char *, size_t >;
@@ -38,13 +44,17 @@ using Pair = Tuple< const char *, size_t >;
 
 // Caller is responsible for deleting the Hash.
 
-Hash *BuildHashTable( const vector< string > &words,
-      uint64_t ( *hash )( const char *key ) )
-   {
-   // YOUR CODE HERE
+Hash *BuildHashTable(const vector< string > &words,
+   uint64_t ( *hash )(const char *key)) {
+   Hash *hashtable = new Hash(CompareEqual, hash);
 
-   return nullptr.
+   for (size_t i = 0; i < words.size(); i++) {
+      Pair *p = hashtable->Find(words[i].c_str(), 0);
+      p->value++;
    }
+
+   return hashtable;
+}
 
 
 // Collect words read from a file specified on the command line
@@ -113,4 +123,4 @@ int CollectWordsIn( int argc, char **argv, vector< string > &words )
       }
 
    return i;
-   }
+}
