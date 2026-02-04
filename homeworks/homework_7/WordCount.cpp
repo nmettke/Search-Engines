@@ -9,7 +9,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <vector>
-#include <filesystem>
 #include <fstream>
 
 using namespace std;
@@ -45,12 +44,12 @@ int TotalWords = 0;
 void *WordCount(void *arg)
 {
 
-   ifstream input_file(*(static_cast<filesystem::path *>(arg)));
+   ifstream input_file(*(static_cast<string *>(arg)));
    int *count = new int(0);
    string word;
    while (input_file >> word)
    {
-      count++;
+      (*count)++;
    }
    return count;
 }
@@ -69,26 +68,28 @@ int main(int argc, char **argv)
            << "Invalid paths are ignored." << endl;
       return 1;
    }
+
    size_t thread_count = 0;
-   vector<filesystem::path> paths;
+   vector<string> paths;
 
    for (int i = 1; i < argc; i++)
    {
-      if (filesystem::exists(filesystem::path{argv[i]}))
+      ifstream file(argv[i]);
+      if (file.good())
       {
          thread_count++;
-         paths.emplace_back(filesystem::path{argv[i]});
+         paths.emplace_back(argv[i]);
       }
    }
 
    vector<pthread_t> threads(thread_count);
 
-   for (int i = 0; i < threads.size(); i++)
+   for (int i = 0; i < thread_count; i++)
    {
       pthread_create(&threads[i], NULL, WordCount, &paths[i]);
    }
 
-   void *ret;
+   void *ret = nullptr;
 
    for (pthread_t thread : threads)
    {

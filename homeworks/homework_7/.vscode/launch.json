@@ -9,7 +9,7 @@
         "type": "cppdbg",
         "request": "launch",
         "program": "${workspaceFolder}/WordCountDebug",
-        "args": ["Documents/Text/Shakespeare.txt"],
+        "args": ["Documents/Text/Shakespeare/*"],
         "stopAtEntry": false,
         "cwd": "${fileDirname}",
         "environment": [],
