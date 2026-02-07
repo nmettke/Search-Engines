@@ -84,6 +84,9 @@ public:
          current = current->next;
       }
 
+      Optimize();
+      bucketIndex = hashValue % numberOfBuckets;
+
       Bucket< Key, Value >* newBucket = new Bucket< Key, Value >(
          k, hashValue, initialValue
       );
