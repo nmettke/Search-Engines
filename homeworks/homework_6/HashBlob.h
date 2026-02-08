@@ -17,6 +17,7 @@
 #include <sys/mman.h>
 
 #include "HashTable.h"
+#include "Common.h"
 
 
 using Hash = HashTable< const char *, size_t >;
@@ -98,8 +99,7 @@ struct SerialTuple
   };
 
 
-class HashBlob
-   {
+class HashBlob {
    // This will be a hash specifically designed to hold an
    // entire hash table as a single contiguous blob of bytes.
    // Pointers are disallowed so that the blob can be
@@ -110,10 +110,10 @@ class HashBlob
    // details followed by a concatenated list of all the
    // individual lists of tuples within each bucket.
 
-   public:
+public:
 
-      // Define a MagicNumber and Version so you can validate
-      // a HashBlob really is one of your HashBlobs.
+   // Define a MagicNumber and Version so you can validate
+   // a HashBlob really is one of your HashBlobs.
 
       size_t MagicNumber,
          Version,
@@ -121,65 +121,145 @@ class HashBlob
          NumberOfBuckets,
          Buckets[ Unknown ];
 
-      // The SerialTuples will follow immediately after.
+   // The SerialTuples will follow immediately after.
 
-      const SerialTuple *Find( const char *key ) const
-         {
-         // Search for the key k and return a pointer to the
-         // ( key, value ) entry.  If the key is not found,
-         // return nullptr.
+   const SerialTuple *Find(const char *key) const {
+      // Search for the key k and return a pointer to the
+      // ( key, value ) entry.  If the key is not found,
+      // return nullptr.
 
-         // YOUR CODE HERE
+      // YOUR CODE HERE
+      uint64_t hashValue = hashString(key);
+      size_t bucketIndex = hashValue % NumberOfBuckets;
 
+      size_t bucketOffset = Buckets[bucketIndex];
+
+      if (bucketOffset == 0) {
+         return nullptr; // No entries in this bucket
+      }
+
+      const char *blobStart = reinterpret_cast<const char *>(this);
+      const char *currentPtr = blobStart + bucketOffset;
+
+      while (true) {
+         const SerialTuple *currentTuple = reinterpret_cast<const SerialTuple *>(currentPtr);
+
+         printf("Checking bucket %zu: Key = %s, Value = %zu\n", bucketIndex, currentTuple->Key, currentTuple->Value);
+
+         if (currentTuple->Length == 0) {
+            break;
+         }
+
+         if (currentTuple->HashValue == hashValue && CompareEqual(currentTuple->Key, key)) {
+            return currentTuple;
+         }
+
+         currentPtr += currentTuple->Length;
+      }
+
+      return nullptr;
+   }
+
+
+   static size_t BytesRequired(const Hash *hashTable) {
+      // Calculate how much space it will take to
+      // represent a HashTable as a HashBlob.
+
+      // Need space for the header + buckets +
+      // all the serialized tuples.
+
+      // YOUR CODE HERE
+      size_t totalBytes = 0;
+      totalBytes += sizeof(HashBlob); // Header size
+      totalBytes += hashTable->numberOfBuckets * sizeof(size_t); // Buckets array size
+
+      for (size_t i = 0; i < hashTable->numberOfBuckets; ++i) {
+         HashBucket* current = hashTable->buckets[i];
+
+         // only serialize non-empty buckets
+         if (current != nullptr) {
+            while (current != nullptr) {
+               totalBytes += SerialTuple::BytesRequired(current);
+               current = current->next;
+            }
+            // Add space for the Sentinel (Length = 0) only for non-empty buckets
+            totalBytes += sizeof(size_t); 
+         }
+      }
+
+      return RoundUp(totalBytes, sizeof(size_t));
+   }
+
+   // Write a HashBlob into a buffer, returning a
+   // pointer to the blob.
+
+   static HashBlob *Write(HashBlob *hb, size_t bytes, const Hash *hashTable) {
+      // YOUR CODE HERE
+      hb->MagicNumber = 0xAABBCCDD;
+      hb->Version = 1;
+      hb->BlobSize = bytes;
+      hb->NumberOfBuckets = hashTable->numberOfBuckets;
+
+      char *start = reinterpret_cast<char *>(hb);
+      char *bufferEnd = start + bytes;
+
+      size_t *bucketOffsets = hb->Buckets;
+
+      char *dataPtr = reinterpret_cast<char *>(bucketOffsets + hb->NumberOfBuckets);
+
+      for (size_t i = 0; i < hashTable->numberOfBuckets; ++i) {
+         HashBucket* current = hashTable->buckets[i];
+
+         if (current == nullptr) {
+            bucketOffsets[i] = 0; 
+         } else {
+            bucketOffsets[i] = dataPtr - start;
+
+            while (current != nullptr) {
+               dataPtr = SerialTuple::Write(dataPtr, bufferEnd, current);
+               current = current->next;
+            }
+
+            assert(dataPtr + sizeof(size_t) <= bufferEnd);
+
+            *reinterpret_cast<size_t*>(dataPtr) = 0;
+            dataPtr += sizeof(size_t);
+         }
+      }
+
+      return hb;
+   }
+
+   // Create allocates memory for a HashBlob of required size
+   // and then converts the HashTable into a HashBlob.
+   // Caller is responsible for discarding when done.
+
+   // (No easy way to override the new operator to create a
+   // variable sized object.)
+
+   static HashBlob *Create(const Hash *hashTable) {
+      // YOUR CODE HERE
+      size_t bytes = BytesRequired(hashTable);
+
+      void *memory = malloc(bytes);
+         
+      if (memory == nullptr) {
          return nullptr;
-         }
+      }
 
+      HashBlob *blob = reinterpret_cast<HashBlob *>(memory);
 
-      static size_t BytesRequired( const Hash *hashTable )
-         {
-         // Calculate how much space it will take to
-         // represent a HashTable as a HashBlob.
+      return Write(blob, bytes, hashTable);
+   }
 
-         // Need space for the header + buckets +
-         // all the serialized tuples.
-
-         // YOUR CODE HERE
-
-         return 0;
-         }
-
-      // Write a HashBlob into a buffer, returning a
-      // pointer to the blob.
-
-      static HashBlob *Write( HashBlob *hb, size_t bytes,
-            const Hash *hashTable )
-         {
-         // YOUR CODE HERE
-
-         return nullptr;
-         }
-
-      // Create allocates memory for a HashBlob of required size
-      // and then converts the HashTable into a HashBlob.
-      // Caller is responsible for discarding when done.
-
-      // (No easy way to override the new operator to create a
-      // variable sized object.)
-
-      static HashBlob *Create( const Hash *hashTable )
-         {
-         // YOUR CODE HERE
-
-         return nullptr;
-         }
-
-      // Discard
-
-      static void Discard( HashBlob *blob )
-         {
-         // YOUR CODE HERE
-         }
-   };
+   // Discard
+   static void Discard(HashBlob *blob) {
+      // YOUR CODE HERE
+      if (blob != nullptr) {
+         free(blob);
+      }
+   }
+};
 
 class HashFile
    {
