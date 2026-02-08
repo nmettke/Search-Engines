@@ -144,8 +144,6 @@ public:
       while (true) {
          const SerialTuple *currentTuple = reinterpret_cast<const SerialTuple *>(currentPtr);
 
-         printf("Checking bucket %zu: Key = %s, Value = %zu\n", bucketIndex, currentTuple->Key, currentTuple->Value);
-
          if (currentTuple->Length == 0) {
             break;
          }
