@@ -41,6 +41,7 @@
 *.dwo
 
 .DS_Store/*
+.ini
 
 # For CMake
 build*/
