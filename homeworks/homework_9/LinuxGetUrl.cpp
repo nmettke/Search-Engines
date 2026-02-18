@@ -5,6 +5,7 @@
 #include <netdb.h>
 
 #include <iostream>
+#include <string>
 
 class ParsedUrl
    {
@@ -92,16 +93,44 @@ int main( int argc, char **argv )
    ParsedUrl url( argv[ 1 ] );
 
    // Get the host address.
+   struct addrinfo *address, hints;
+   memset(&hints, 0, sizeof(hints));
+   hints.ai_family = AF_INET;
+   hints.ai_socktype = SOCK_STREAM;
+   hints.ai_protocol = IPPROTO_TCP;
+   getaddrinfo(url.Host, "80", &hints, &address);
 
    // Create a TCP/IP socket.
+   int socketFD = socket(hints.ai_family, hints.ai_socktype, hints.ai_protocol);
 
    // Connect the socket to the host address.
+   int connectResult = connect(socketFD, address->ai_addr, address->ai_addrlen);
 
    // Send a GET message.
+   std::string getMessage = "GET / HTTP/1.1\r\nHost:" + std::string(url.Host) + "\r\nUser-Agent: LinuxGetUrl/2.0 ayayang@umich.edu (Linux)\r\nAccept: */* \r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n";
+   send(socketFD, getMessage.c_str(), getMessage.length(), 0);
 
    // Read from the socket until there's no more data, copying it to
    // stdout.
+   char buffer[10240];
+   int bytes;
+   bool content = false;
+
+   while((bytes = recv(socketFD, buffer, sizeof(buffer), 0)) > 0){
+      if (!content){
+         size_t end = std::string(buffer).find("\r\n\r\n");
+         if(end != std::string::npos){
+            content = true;
+            // end + 4 is the location of the first char in content
+            write(1, buffer+end+4, bytes-end-4);
+         }
+      }
+      else{
+         write(1, buffer, bytes);
+      }
+   }
 
    // Close the socket and free the address info structure.
-
+   close(socketFD);
+   freeaddrinfo(address);
    }
