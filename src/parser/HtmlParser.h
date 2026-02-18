@@ -5,6 +5,9 @@
 
 #include <vector>
 #include <string>
+#include <stack>
+#include <cstring>
+#include <cctype>
 #include "HtmlTags.h"
 
 // This is a simple HTML parser class.  Given a text buffer containing
@@ -69,43 +72,421 @@
 //     <embed> may contain a src="...url..." parameter.  If present, it should be
 //          added to the links with no anchor text.
 
-
-
 class Link
+{
+public:
+   std::string URL;
+   std::vector<std::string> anchorText;
+
+   Link(std::string URL) : URL(URL)
    {
-   public:
-      std::string URL;
-      std::vector< std::string > anchorText;
-
-      Link( std::string URL ) : URL( URL )
-         {
-         }
-   };
-
+   }
+};
 
 class HtmlParser
-   {
-   public:
+{
+public:
+   std::vector<std::string> words, titleWords;
+   std::vector<Link> links;
+   std::string base;
 
-      std::vector< std::string > words, titleWords;
-      std::vector< Link > links;
-      std::string base;
+private:
+   // discard section tags
+   std::stack<std::string> openSections; 
+   bool inTitle = false;
+   bool inAnchor = false;
+   // current link being built
+   Link* currentLink = nullptr; 
 
-   private:
-      // YOUR CODE HERE
+   bool inDiscardSection() const {
+      return !openSections.empty();
+   }
 
+   // if the current position matches a specific closing tag -> return nullptr if not closing tag + not the correct tag if not reutnr pointer to > + 1
+   const char* matchClosingTag(const char *p, const char *end, const std::string& tagName) {
 
-   public:
+      // dont go past end this will fix it 
+      if (p + 2 + tagName.length() >= end)
+      {
+         return nullptr;
+      }
 
-      // The constructor is given a buffer and length containing
-      // presumed HTML.  It will parse the buffer, stripping out
-      // all the HTML tags and producing the list of words in body,
-      // words in title, and links found on the page.
+      if (p[0] != '<' || p[1] != '/')
+      {
+         return nullptr;
+      }
 
-      HtmlParser( const char *buffer, size_t length ) // YOUR CODE HERE
-         {
-         // YOUR CODE HERE
+      // tag name shud match maybe do strncasecmp not sure 
+      if (strncasecmp(p + 2, tagName.c_str(), tagName.length()) != 0)
+      {
+         return nullptr;
+      }
 
+      // should be empty space then by > or only >
+      const char *after = p + 2 + tagName.length();
 
+      // skip spaces after tag name
+      while (after < end && isspace(*after)){
+         after++;
+      }
+      if (after < end && *after == '>') {
+         return after + 1;
+      }
+
+      return nullptr;
+   }
+
+   // add word to its container
+   void addWord(const char *start, const char *end) {
+      if (start >= end) return;
+
+      // make the word
+
+      std::string word(start, end);
+      
+      if (inTitle) {
+         titleWords.push_back(word);
+      } 
+      else {
+         words.push_back(word);
+      }
+
+      if (inAnchor && currentLink) {
+         currentLink->anchorText.push_back(word);
+      }
+   }
+
+   // find the close 
+   // also hamdle quotes 
+   const char *findClose(const char *p, const char *end) {
+      bool inQuote = false;
+      char quoteChar = 0;
+      // <div class="cell small-12 medium-6 large-3  medium-order-1 small-order-2"">
+      bool justExitedQuote = false;
+
+      while (p < end) {
+         if (inQuote) {
+            if (*p == quoteChar)
+            {
+               inQuote = false;
+               justExitedQuote = true;
+            }
+         } 
+         else {
+            if (*p == '"' || *p == '\'') {
+               if (!justExitedQuote){
+                  inQuote = true;
+                  quoteChar = *p;
+               }
+            } 
+            else if (*p == '>') {
+               return p;
+            }
+            if (justExitedQuote && (isspace(*p) || *p == '=' || *p == '>')) {
+               justExitedQuote = false;
+            }
          }
-   };
+         p++;
+      }
+      return nullptr;
+   }
+
+   const char *handleComment(const char *p, const char *end) {
+      // skip <!--
+      p += 4;
+      
+      // search -->
+      while (p + 2 < end) {
+         if (p[0] == '-' && p[1] == '-' && p[2] == '>') {
+            return p + 3;
+         }
+         p++;
+      }
+      
+      // comment never closes so just ignore everything after
+      return end;
+   }
+
+   void handleDiscardSection(const char *tagStart, const char *tagEnd, bool isClosing, bool isSelfClosing) {
+      // <script/> type
+      if (isSelfClosing) {
+         return;
+      }
+      if (isClosing) {
+         if (!openSections.empty()) 
+         {
+            openSections.pop();
+         }
+      } 
+      else {
+         // store tag name -. changed to lowercase for all 
+         std::string tagName;
+         for (const char *p = tagStart; p < tagEnd; p++) {
+            tagName += tolower(*p);
+         }
+         openSections.push(tagName);
+      }
+   }
+
+   // anchor tag
+   void handleAnchor(const char *attrStart, const char *attrEnd, bool isClosing, bool isSelfClosing) {
+      // closing anchor tag
+      if (isClosing) {
+         inAnchor = false;
+         currentLink = nullptr;
+         return;
+      }
+
+      std::string href = extractAttribute(attrStart, attrEnd, "href");
+      if (!href.empty()) {
+         // anchor with valid href closes prev anchor
+         if (inAnchor) {
+            inAnchor = false;
+            currentLink = nullptr;
+         }
+         
+         links.push_back(Link(href));
+
+         if (!isSelfClosing) {
+            inAnchor = true;
+            currentLink = &links.back();
+         }
+      }
+   }
+
+   void handleBase(const char *attrStart, const char *attrEnd) {
+      // only one base
+      if (!base.empty()) return;
+
+      std::string href = extractAttribute(attrStart, attrEnd, "href");
+      if (!href.empty()) {
+         base = href;
+      }
+   }
+
+   void handleEmbed(const char *attrStart, const char *attrEnd) {
+      std::string src = extractAttribute(attrStart, attrEnd, "src");
+      if (!src.empty()) {
+         links.push_back(Link(src));
+      }
+   }
+
+   std::string extractAttribute(const char *start, const char *end, const char *attrName) {
+      size_t nameLen = strlen(attrName);
+
+      for (const char *p = start; p + nameLen < end; p++) {
+
+         if (strncasecmp(p, attrName, nameLen) == 0) {
+            const char *afterName = p + nameLen;
+
+            while (afterName < end && isspace(*afterName))
+            {
+               afterName++;
+            }
+   
+            if (afterName >= end || *afterName != '=')
+            {
+               continue;
+            }
+            afterName++;
+            
+            while (afterName < end && isspace(*afterName))
+            {
+               afterName++;
+            }
+            
+            if (afterName >= end) return "";
+            char quote = *afterName;
+            if (quote != '"' && quote != '\'') {
+
+               if (*afterName == '<')
+               {
+                  return "";
+               }
+
+               const char *valStart = afterName;
+   
+               while (afterName < end && !isspace(*afterName) && *afterName != '>' && *afterName != '<')
+               {
+                  afterName++;
+               }
+               return std::string(valStart, afterName);
+            }
+
+            afterName++;
+            
+            // closing quote
+            const char *valStart = afterName;
+            while (afterName < end && *afterName != quote)
+            {
+               afterName++;
+            }
+            if (afterName < end) {
+               return std::string(valStart, afterName);
+            }
+         }
+      }
+
+      return "";
+   }
+
+   // returns pointer past > if tag or the same position if not
+   const char *processTag(const char *p, const char *end) {
+      if (p >= end) {
+         return p;
+      }
+      // if inside discard section, only look for closing tag
+      if (inDiscardSection()) {
+         const char *closePos = matchClosingTag(p, end, openSections.top());
+         if (closePos) {
+            openSections.pop();
+            return closePos;
+         }
+         // discard this 
+         return p;
+      }
+
+      const char *tagStart = p + 1;
+      bool isClosing = false;
+
+      // check if closing tag
+      if (tagStart < end && *tagStart == '/') {
+         isClosing = true;
+         tagStart++;
+      }
+
+      // find end of tag name could be whitespace, >, or /
+      const char *tagEnd = tagStart;
+      while (tagEnd < end && !isspace(*tagEnd) && *tagEnd != '>' && *tagEnd != '/') {
+         tagEnd++;
+      }
+
+      // check for <>  </
+      if (tagEnd == tagStart) {
+         return p;
+      }
+
+      // comment can start without space
+      if (tagEnd - tagStart >= 3 && tagStart[0] == '!' && tagStart[1] == '-' && tagStart[2] == '-') {
+         return handleComment(p, end);
+      }
+
+      DesiredAction action = LookupPossibleTag(tagStart, tagEnd);
+
+      if (action == DesiredAction::OrdinaryText) {
+         return p;
+      }
+
+      if (action == DesiredAction::Comment) {
+         return handleComment(p, end);
+      }
+
+      const char *close = findClose(tagEnd, end);
+      // just normal word
+      if (!close) {
+         return p;
+      }
+      
+      bool isSelfClosing = (close > p && *(close - 1) == '/');
+
+      switch (action) {
+         case DesiredAction::DiscardSection:
+            handleDiscardSection(tagStart, tagEnd, isClosing, isSelfClosing);
+            break;
+         case DesiredAction::Title:
+            if (isClosing) inTitle = false;
+            else if (!isSelfClosing) inTitle = true;
+            break;
+         case DesiredAction::Anchor:
+            handleAnchor(tagEnd, close, isClosing, isSelfClosing);
+            break;
+         case DesiredAction::Base:
+            handleBase(tagEnd, close);
+            break;
+         case DesiredAction::Embed:
+            handleEmbed(tagEnd, close);
+            break;
+         case DesiredAction::Discard:
+            // skip
+            break;
+         default:
+            break;
+      }
+      
+      return close + 1;
+   }
+
+public:
+   // The constructor is given a buffer and length containing
+   // presumed HTML.  It will parse the buffer, stripping out
+   // all the HTML tags and producing the list of words in body,
+   // words in title, and links found on the page.
+
+   HtmlParser(const char *buffer, size_t length)
+   {
+      const char *p = buffer;
+      const char *end = buffer + length;
+      // start of the current word
+      const char *wordStart = nullptr;
+      
+      while (p < end) {
+
+         if (*p == '<') {
+            // save old state
+            bool wasInTitle = inTitle;
+            bool wasInAnchor = inAnchor;
+            Link* wasCurrentLink = currentLink;
+            bool wasInDiscard = inDiscardSection();
+            
+            // try to find a tag
+            const char *tagStart = p;
+            const char *newP = processTag(p, end);
+
+            if (newP != tagStart) {
+               // put last word to correct place
+               if (wordStart && !wasInDiscard) {
+      
+                  bool savedTitle = inTitle;
+                  bool savedAnchor = inAnchor;
+                  Link* savedLink = currentLink;
+                  inTitle = wasInTitle;
+                  inAnchor = wasInAnchor;
+                  currentLink = wasCurrentLink;
+                  
+                  addWord(wordStart, p);
+
+                  // Restore new state
+                  inTitle = savedTitle;
+                  inAnchor = savedAnchor;
+                  currentLink = savedLink;
+               }
+               wordStart = nullptr;
+               p = newP;
+            } 
+            else {
+               // simple character
+               if (!wordStart && !wasInDiscard) {
+                  wordStart = p;
+               }
+               p++;
+            }
+         }
+         else if (isspace(static_cast<unsigned char>(*p))) {
+            if (wordStart && !inDiscardSection()) {
+               addWord(wordStart, p);
+            }
+            wordStart = nullptr;
+            p++;
+         } 
+         else {
+            if (!wordStart && !inDiscardSection()) {
+               wordStart = p;
+            }
+            p++;
+         }
+      }
+      if (wordStart && !inDiscardSection()) {
+         addWord(wordStart, end);
+      }
+   }
+};
