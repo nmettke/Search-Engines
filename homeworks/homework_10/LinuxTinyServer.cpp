@@ -137,6 +137,26 @@ const char *Mimetype( const string filename )
 
    //    YOUR CODE HERE
 
+   string extension = filename.substr(filename.rfind('.'));
+   
+   size_t left = 0;
+   size_t right = sizeof(MimeTable) / sizeof(MimeTable[0]) - 1;
+
+   while (left <= right){
+      size_t mid = (left + right) / 2;
+
+      int compare = strcasecmp(extension.c_str(), MimeTable[mid].Extension);
+
+      if (compare == 0) {
+         return MimeTable[mid].Mimetype;
+      }
+      else if ( compare < 0) {
+         right = mid - 1;
+      }
+      else {
+         left = mid + 1;
+      }
+   }
 
    // Anything not matched is an "octet-stream", treated as
    // an unknown binary, which browsers treat as a download.
@@ -231,7 +251,21 @@ bool SafePath( const char *path )
    // attempt to go higher than the root directory for the
    // website.
 
+   int count = 0;
+   
    //    YOUR CODE HERE
+   for (size_t i = 0; path[i] != '\0'; ++i){
+      if (path[i] == '/'){
+         count ++; 
+      }
+      else if (path[i] == '.' && path[i+1] == '.'){
+         count --;
+      } 
+
+      if (count == 0){
+         return false;
+      }
+   }
 
    return true;
    }
@@ -362,6 +396,7 @@ int main( int argc, char **argv )
 
 
    //    YOUR CODE HERE
+   listenSocket = socket(listenAddress.sin_family, SOCK_STREAM, IPPROTO_TCP);
 
 
    // Bind the listen socket to the IP address and protocol
@@ -369,13 +404,13 @@ int main( int argc, char **argv )
 
 
    //    YOUR CODE HERE
-
+   bind(listenSocket, listenAddress.sin_addr, sizeof(listenAddress.sin_addr));
 
    // Begin listening for clients to connect to us.
 
 
    //    YOUR CODE HERE
-
+   listen(listenSocket, SOMAXCONN);
 
    // The second argument to listen( ) specifies the maximum
    // number of connection requests that can be allowed to
