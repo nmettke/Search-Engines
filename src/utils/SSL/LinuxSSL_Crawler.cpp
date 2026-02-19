@@ -4,16 +4,10 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <openssl/ssl.h>
-
 #include <iostream>
+#include "LinuxSSL_Crawler.hpp"
 
-class ParsedUrl
-{
-public:
-   const char *CompleteUrl;
-   char *Service, *Host, *Port, *Path;
-
-   ParsedUrl(const char *url)
+   ParsedUrl::ParsedUrl(const char *url)
    {
       // Assumes url points to static text but
       // does not check.
@@ -71,26 +65,91 @@ public:
          Host = Path = p;
    }
 
-   ~ParsedUrl()
+   ParsedUrl::~ParsedUrl()
    {
       delete[] pathBuffer;
    }
 
-private:
-   char *pathBuffer;
-};
+// int main(int argc, char **argv)
+// {
 
-int main(int argc, char **argv)
-{
+//    if (argc != 2)
+//    {
+//       std::cerr << "Usage: " << argv[0] << " url" << std::endl;
+//       return 1;
+//    }
 
-   if (argc != 2)
-   {
-      std::cerr << "Usage: " << argv[0] << " url" << std::endl;
-      return 1;
-   }
+//    // Parse the URL
+//    ParsedUrl url(argv[1]);
 
+//    // Get the host address.
+//    struct addrinfo *address, hints;
+//    memset(&hints, 0, sizeof(hints));
+//    hints.ai_family = AF_INET;
+//    hints.ai_socktype = SOCK_STREAM;
+//    hints.ai_protocol = IPPROTO_TCP;
+//    getaddrinfo(url.Host, "443", &hints, &address);
+
+//    // Create a TCP/IP socket.
+//    int socketFD = socket(hints.ai_family, hints.ai_socktype, hints.ai_protocol);
+
+//    // Connect the socket to the host address.
+//    int connectResult = connect(socketFD, address->ai_addr, address->ai_addrlen);
+
+//    // Build an SSL layer and set it to read/write
+//    // to the socket we've connected.
+
+//    SSL_library_init();
+//    SSL_CTX *ctx = SSL_CTX_new(SSLv23_method());
+//    SSL *ssl = SSL_new(ctx);
+//    SSL_set_tlsext_host_name(ssl, url.Host);
+//    SSL_set_fd(ssl, socketFD);
+//    SSL_connect(ssl);
+
+//    // Send a GET message.
+
+//    std::string path = "/";
+//    if (url.Path && *url.Path)
+//       path += url.Path;
+
+//    std::string getMessage = "GET " + path + " HTTP/1.1\r\nHost:" + std::string(url.Host) + "\r\nUser-Agent: LinuxGetSsl/2.0 mettke@umich.edu (Linux)\r\nAccept: */* \r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n";
+//    SSL_write(ssl, getMessage.c_str(), getMessage.length());
+
+//    // Read from the socket until there's no more data, copying it to
+//    // stdout.
+//    char buffer[buffLength];
+//    int bytes;
+//    bool content = false;
+
+//    while ((bytes = SSL_read(ssl, buffer, sizeof(buffer))) > 0)
+//    {
+//       if (!content)
+//       {
+//          size_t end = std::string(buffer).find("\r\n\r\n");
+//          if (end != std::string::npos)
+//          {
+//             content = true;
+//             // end + 4 is the location of the first char in content
+//             write(1, buffer + end + 4, bytes - end - 4);
+//          }
+//       }
+//       else
+//       {
+//          write(1, buffer, bytes);
+//       }
+//    }
+
+//    // Close the socket and free the address info structure.
+
+//    SSL_shutdown(ssl);
+//    SSL_free(ssl);
+//    close(socketFD);
+//    SSL_CTX_free(ctx);
+// }
+
+std::string readURL(std::string target_url){
    // Parse the URL
-   ParsedUrl url(argv[1]);
+   ParsedUrl url(target_url.c_str());
 
    // Get the host address.
    struct addrinfo *address, hints;
@@ -127,9 +186,12 @@ int main(int argc, char **argv)
 
    // Read from the socket until there's no more data, copying it to
    // stdout.
-   char buffer[10240];
+   char buffer[buffLength];
+   //char* buffer = (char*)(malloc(sizeof(char) * buffLength));
    int bytes;
    bool content = false;
+
+   std::string returnVal = "";
 
    while ((bytes = SSL_read(ssl, buffer, sizeof(buffer))) > 0)
    {
@@ -140,12 +202,14 @@ int main(int argc, char **argv)
          {
             content = true;
             // end + 4 is the location of the first char in content
-            write(1, buffer + end + 4, bytes - end - 4);
+            //write(1, buffer + end + 4, bytes - end - 4);
+            returnVal.append(buffer + end + 4, bytes - end - 4);
          }
       }
       else
       {
-         write(1, buffer, bytes);
+         //write(1, buffer, bytes);
+         returnVal.append(buffer, bytes);
       }
    }
 
@@ -155,4 +219,5 @@ int main(int argc, char **argv)
    SSL_free(ssl);
    close(socketFD);
    SSL_CTX_free(ctx);
+   return returnVal;
 }
