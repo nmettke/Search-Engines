@@ -137,20 +137,33 @@ const char *Mimetype( const string filename )
 
    //    YOUR CODE HERE
 
+   size_t dot = filename.rfind('.'); // find last .
+   size_t slash = filename.rfind('/'); // find last /
+
+   // Handle special cases
+
+   if (  dot == string::npos || 
+         (slash != string::npos && dot < slash) || // dot before last slash
+         (dot + 1 >= filename.size()) || // nothing after dot
+         dot == 0 || (slash != string::npos && dot == slash) // special files like .bashrc
+      ){
+      return "application/octet-stream";
+   }
+
    string extension = filename.substr(filename.rfind('.'));
    
-   size_t left = 0;
-   size_t right = sizeof(MimeTable) / sizeof(MimeTable[0]) - 1;
+   int left = 0;
+   int right = int(sizeof(MimeTable) / sizeof(MimeTable[0])) - 1;
 
    while (left <= right){
-      size_t mid = (left + right) / 2;
-
+      int mid = (left + right) / 2;
       int compare = strcasecmp(extension.c_str(), MimeTable[mid].Extension);
 
       if (compare == 0) {
          return MimeTable[mid].Mimetype;
       }
-      else if ( compare < 0) {
+      
+      if ( compare < 0) {
          right = mid - 1;
       }
       else {
@@ -252,19 +265,30 @@ bool SafePath( const char *path )
    // website.
 
    int count = 0;
+   const char *p = path;
    
    //    YOUR CODE HERE
-   for (size_t i = 0; path[i] != '\0'; ++i){
-      if (path[i] == '/'){
-         count ++; 
-      }
-      else if (path[i] == '.' && path[i+1] == '.'){
-         count --;
-      } 
+   while (*p){
+      // Check path segment by segment 
+      while (*p == '/') p++;
+      if (*p == '\0') break;
 
-      if (count == 0){
-         return false;
+      const char *left = p;
+
+      while (*p != '/' && *p != '\0') p++;
+      size_t len = (size_t)(p - left);
+
+      if (len == 1 && left[0] == '.') {
+         continue;
       }
+
+      if (len == 2 && left[0] == '.' && left[1] == '.') {
+         if (count == 0) return false;
+         count--;
+         continue;
+      }
+
+        count++;
    }
 
    return true;
@@ -332,8 +356,92 @@ void *Talk( void *talkSocket )
 
 
    //    YOUR CODE HERE
+      int socket = *(int*)talkSocket;
+      delete talkSocket;
 
+      // read request header
+      char buffer[10240];
+      int bytes;
+      string request;
 
+      while((bytes = recv(socket, buffer, sizeof(buffer), 0)) > 0){
+         request.append(buffer, bytes);
+         if (request.find("\r\n\r\n") != string::npos) break;
+      }
+
+      // Parse first request line (METHOD PATH HTTP/VER \r\n)
+      size_t end = request.find("\r\n");
+      request = request.substr(0, end); // we only need first line
+
+      string method, path;
+      size_t first_space = request.find(' ');
+      size_t second_space = request.find(' ', first_space+1);
+
+      method = request.substr(0, first_space);
+      path = request.substr(first_space+1, second_space-first_space-1);
+
+      if (method != "GET" || !SafePath(path.c_str())) {
+         // Not GET or not safe path
+         AccessDenied(socket);
+         close(socket);
+         return nullptr;
+      }
+
+      string fullpath = string(RootDirectory) + path;
+      int f = open(fullpath.c_str(), O_RDONLY);
+      
+      if (f < 0) {
+         // File not fount
+         FileNotFound(socket);
+         close(socket);
+         return nullptr;
+      }
+
+      off_t size = FileSize(f);
+      if (size < 0) {
+         // Directory
+         close(f);
+         AccessDenied(socket);
+         close(socket);
+         return nullptr;
+      }
+
+      const char *type = Mimetype(path);
+
+      // Write response header
+      char header[1024];
+      int headerLen = snprintf(header, sizeof(header),
+         "HTTP/1.1 200 OK\r\n"
+         "Content-Length: %lld\r\n"
+         "Connection: close\r\n"
+         "Content-Type: %s\r\n"
+         "\r\n",
+         type, (long long)size);
+
+      send(socket, header, headerLen, 0);
+
+      // Write file content
+      char filebuffer[10240];
+      ssize_t r;
+
+      while((r = read(f, filebuffer, sizeof(filebuffer)) > 0)){
+         // Ensure all bytes get sent
+         ssize_t sent = 0;
+         while (sent < r) {
+               ssize_t w = send(socket, filebuffer+sent, (size_t)(r - sent), 0);
+               if (w <= 0) {
+                  // client disconnected or error
+                  close(f);
+                  close(socket);
+                  return nullptr;
+               }
+               sent += w;
+         }
+      }
+
+      close(f);
+      close(socket);
+      return nullptr;
    }
 
 
@@ -449,7 +557,7 @@ int main( int argc, char **argv )
       // demonstrate what to do in the general case.)
 
 
-      //    YOIUR CODE HERE
+      //    YOUR CODE HERE
       }
 
    close( listenSocket );
