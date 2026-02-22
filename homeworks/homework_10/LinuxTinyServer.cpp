@@ -329,8 +329,7 @@ void FileNotFound( int talkSocket )
    }
 
 
-void *Talk( void *talkSocket )
-   {
+void *Talk(void *talkSocket) {
    // look for a GET message, then reply with the
    // requested file.
 
@@ -356,120 +355,136 @@ void *Talk( void *talkSocket )
 
 
    //    YOUR CODE HERE
-      int socket = *(int*)talkSocket;
-      delete talkSocket;
 
-      // read request header
-      char buffer[10240];
-      int bytes;
-      string request;
+   // recover the talk socket id
+   int *socketPtr = (int*)talkSocket;
+   int ts = *socketPtr;
+   delete socketPtr;
 
-      while((bytes = recv(socket, buffer, sizeof(buffer), 0)) > 0){
-         request.append(buffer, bytes);
-         if (request.find("\r\n\r\n") != string::npos) break;
-      }
 
-      // Parse first request line (METHOD PATH HTTP/VER \r\n)
-      size_t end = request.find("\r\n");
-      request = request.substr(0, end); // we only need first line
+   // read request
+   char buffer[10240];
+   int bytes = recv(ts, buffer, sizeof(buffer) - 1, 0);
+   if (bytes <= 0) {
+      close(ts);
+      return nullptr;
+   }
+   buffer[bytes] = '\0';
+   string request(buffer, bytes);
 
-      string method, path;
-      size_t first_space = request.find(' ');
-      size_t second_space = request.find(' ', first_space+1);
+   // parse (e.g. GET /index.htm HTTP/1.1)
+   size_t space1 = request.find(' ');
+   size_t space2 = request.find(' ', space1 + 1);
 
-      method = request.substr(0, first_space);
-      path = request.substr(first_space+1, second_space-first_space-1);
-
-      if (method != "GET" || !SafePath(path.c_str())) {
-         // Not GET or not safe path
-         AccessDenied(socket);
-         close(socket);
-         return nullptr;
-      }
-
-      string fullpath = string(RootDirectory) + path;
-      int f = open(fullpath.c_str(), O_RDONLY);
-      
-      if (f < 0) {
-         // File not fount
-         FileNotFound(socket);
-         close(socket);
-         return nullptr;
-      }
-
-      off_t size = FileSize(f);
-      if (size < 0) {
-         // Directory
-         close(f);
-         AccessDenied(socket);
-         close(socket);
-         return nullptr;
-      }
-
-      const char *type = Mimetype(path);
-
-      // Write response header
-      char header[1024];
-      int headerLen = snprintf(header, sizeof(header),
-         "HTTP/1.1 200 OK\r\n"
-         "Content-Length: %lld\r\n"
-         "Connection: close\r\n"
-         "Content-Type: %s\r\n"
-         "\r\n",
-         type, (long long)size);
-
-      send(socket, header, headerLen, 0);
-
-      // Write file content
-      char filebuffer[10240];
-      ssize_t r;
-
-      while((r = read(f, filebuffer, sizeof(filebuffer)) > 0)){
-         // Ensure all bytes get sent
-         ssize_t sent = 0;
-         while (sent < r) {
-               ssize_t w = send(socket, filebuffer+sent, (size_t)(r - sent), 0);
-               if (w <= 0) {
-                  // client disconnected or error
-                  close(f);
-                  close(socket);
-                  return nullptr;
-               }
-               sent += w;
-         }
-      }
-
-      close(f);
-      close(socket);
+   if (space1 == string::npos || space2 == string::npos) {
+      close(ts);
       return nullptr;
    }
 
+   string method = request.substr(0, space1);
+   string path = request.substr(space1 + 1, space2 - space1 - 1);
 
+   // unencode the path
+   path = UnencodeUrlEncoding(path);
 
-int main( int argc, char **argv )
-   {
-   if ( argc != 3 )
-      {
-      cerr << "Usage:  " << argv[ 0 ] << " port rootdirectory" << endl;
-      return 1;
+   // check for plugin
+   if (Plugin && Plugin->MagicPath(path)) {
+      // The plugin handles the logic and returns the full HTTP response
+      string response = Plugin->ProcessRequest(request);
+      send(ts, response.c_str(), response.size(), 0);
+      close(ts);
+      return nullptr;
+   }
+
+   // check for get request
+   if (method != "GET" || !SafePath(path.c_str())) {
+      AccessDenied(ts);
+      close(ts);
+      return nullptr;
+   }
+
+   // serve file
+   string fullpath = string(RootDirectory) + path;
+   int f = open(fullpath.c_str(), O_RDONLY);
+
+   if (f < 0) {
+      FileNotFound(ts);
+      close(ts);
+      return nullptr;
+   }
+
+   off_t size = FileSize(f);
+   if (size < 0) {
+      // it's a directory, not a file
+      close(f);
+      AccessDenied(ts);
+      close(ts);
+      return nullptr;
+   }
+
+   const char *type = Mimetype(path);
+
+   // create and send the HTTP header
+   char header[1024];
+   int headerLen = snprintf(
+      header,
+      sizeof(header),
+      "HTTP/1.1 200 OK\r\n"
+      "Content-Length: %lld\r\n"
+      "Connection: close\r\n"
+      "Content-Type: %s\r\n"
+      "\r\n",
+      (long long)size, type
+   );
+
+   send(ts, header, headerLen, 0);
+
+   // Read from the file and write to the socket
+   char filebuffer[10240];
+   ssize_t r;
+   while ((r = read(f, filebuffer, sizeof(filebuffer))) > 0) {
+      ssize_t sent = 0;
+      while (sent < r) {
+         ssize_t w = send(ts, filebuffer + sent, r - sent, 0);
+         if (w <= 0) {
+            close(f);
+            close(ts);
+            return nullptr;
+         }
+         sent += w;
       }
+   }
 
-   int port = atoi( argv[ 1 ] );
-   RootDirectory = argv[ 2 ];
+   close(f);
+   close(ts);
+   return nullptr;
+}
+
+
+
+int main( int argc, char **argv ) {
+   if (argc != 3) {
+      cerr << "Usage:  " << argv[0] << " port rootdirectory" << endl;
+      return 1;
+   }
+
+   int port = atoi(argv[1]);
+   RootDirectory = argv[2];
 
    // Discard any trailing slash.  (Any path specified in
    // an HTTP header will have to start with /.)
 
    char *r = RootDirectory;
-   if ( *r )
-      {
-      do
+   if (*r) {
+      do {
          r++;
-      while ( *r );
+      } while (*r);
+
       r--;
-      if ( *r == '/' )
+      if (*r == '/') {
          *r = 0;
       }
+   }
 
    // We'll use two sockets, one for listening for new
    // connection requests, the other for talking to each
@@ -481,9 +496,9 @@ int main( int argc, char **argv )
    // socket.
 
    struct sockaddr_in listenAddress,  talkAddress;
-   socklen_t talkAddressLength = sizeof( talkAddress );
-   memset( &listenAddress, 0, sizeof( listenAddress ) );
-   memset( &talkAddress, 0, sizeof( talkAddress ) );
+   socklen_t talkAddressLength = sizeof(talkAddress);
+   memset(&listenAddress, 0, sizeof(listenAddress));
+   memset(&talkAddress, 0, sizeof(talkAddress));
 
    // Fill in details of where we'll listen.
 
@@ -493,26 +508,29 @@ int main( int argc, char **argv )
    // htons( ) transforms the port number from host (our)
    // byte-ordering into network byte-ordering (which could
    // be different).
-   listenAddress.sin_port = htons( port );
+   listenAddress.sin_port = htons(port);
 
    // INADDR_ANY means we'll accept connections to any IP
    // assigned to this machine.
-   listenAddress.sin_addr.s_addr = htonl( INADDR_ANY );
+   listenAddress.sin_addr.s_addr = htonl(INADDR_ANY);
 
    // Create the listenSocket, specifying that we'll r/w
    // it as a stream of bytes using TCP/IP.
 
 
    //    YOUR CODE HERE
-   listenSocket = socket(listenAddress.sin_family, SOCK_STREAM, IPPROTO_TCP);
-
+   listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+   if (listenSocket < 0) {
+      cerr << "Failed to create socket" << endl;
+      return 1;
+   }
 
    // Bind the listen socket to the IP address and protocol
    // where we'd like to listen for connections.
 
 
    //    YOUR CODE HERE
-   bind(listenSocket, listenAddress.sin_addr, sizeof(listenAddress.sin_addr));
+   bind(listenSocket, (struct sockaddr *)&listenAddress, sizeof(listenAddress));
 
    // Begin listening for clients to connect to us.
 
@@ -536,7 +554,17 @@ int main( int argc, char **argv )
 
    //    YOUR CODE HERE
 
-
+   while ((talkSocket = accept(listenSocket, (struct sockaddr *)&talkAddress, &talkAddressLength)) && talkSocket != -1) {
+       pthread_t child;
+       int *socketPtr = new int(talkSocket); 
+       
+       if (pthread_create(&child, nullptr, Talk, socketPtr) != 0) {
+           cerr << "Failed to create thread" << endl;
+           delete socketPtr;
+       } else {
+           pthread_detach(child);
+       }
+   }
 
       {
       // When creating a child thread, you get to pass a void *,
@@ -560,5 +588,5 @@ int main( int argc, char **argv )
       //    YOUR CODE HERE
       }
 
-   close( listenSocket );
-   }
+   close(listenSocket);
+}
