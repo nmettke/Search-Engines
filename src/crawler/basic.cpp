@@ -1,8 +1,8 @@
 #include <iostream>
 #include <fstream>
 #include <iostream>
-#include "../utils/string.h"
-#include "../utils/vector.h"
+#include "../utils/string.hpp"
+#include "../utils/vector.hpp"
 #include <vector>
 #include "../parser/HtmlParser.h"
 #include "../utils/SSL/LinuxSSL_Crawler.hpp"
