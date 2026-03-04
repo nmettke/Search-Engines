@@ -1,0 +1,15 @@
+#!/bin/bash
+
+echo "Building project..."
+cmake --build build
+
+echo "Running tests..."
+cd build || exit 1
+ctest --output-on-failure
+
+if [ $? -ne 0 ]; then
+    echo "Tests failed. Fix before committing."
+    exit 1
+fi
+
+echo "Tests passed!"
