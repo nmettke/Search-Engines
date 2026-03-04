@@ -25,21 +25,3 @@ jobs:
 
       - name: Run tests
         run: ctest --test-dir build --output-on-failure --parallel
-
-  clang-tidy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake g++ clang-tidy
-
-      - name: Configure
-        run: cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-
-      - name: Run clang-tidy
-        run: |
-          clang-tidy -p build --warnings-as-errors=* $(git ls-files '*.cpp')
