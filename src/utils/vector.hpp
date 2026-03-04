@@ -1,9 +1,6 @@
-// vector.h
-//
-// Starter file for a vector template
-
 #pragma once
 #include <cstddef>
+#include <utility>
 template <typename T>
 class vector
 {
@@ -20,7 +17,8 @@ public:
    // EFFECTS: Performs any neccessary clean up operations
    ~vector()
    {
-      delete[] data_;
+      destroyRange(begin(), end());
+      ::operator delete(data_);
    }
 
    // Resize Constructor
@@ -32,7 +30,15 @@ public:
    {
       size_ = num_elements;
       capacity_ = num_elements;
-      data_ = new T[num_elements];
+      data_ = static_cast<T *>(::operator new(sizeof(T) * capacity_));
+
+      T *p = data_;
+      T *e = data_ + size_;
+
+      for (; p != e; ++p)
+      {
+         new (p) T();
+      }
    }
 
    // Fill Constructor
@@ -40,33 +46,26 @@ public:
    // MODIFIES: *this
    // EFFECTS: Creates a vector with size num_elements, all assigned to val
    vector(size_t num_elements, const T &val)
+       : data_(nullptr), size_(num_elements), capacity_(num_elements)
    {
-      size_ = num_elements;
-      capacity_ = num_elements;
-      data_ = new T[num_elements];
+      data_ = allocate(capacity_);
+
       T *p = data_;
-      T *e = data_ + num_elements;
+      T *e = data_ + size_;
+
       for (; p != e; ++p)
-      {
-         *p = val;
-      }
+         new (p) T(val);
    }
 
    // Copy Constructor
    // REQUIRES: Nothing
    // MODIFIES: *this
    // EFFECTS: Creates a clone of the vector other
-   vector(const vector<T> &other) : data_(nullptr), size_(other.size_), capacity_(other.capacity_)
+   vector(const vector<T> &other)
+       : data_(nullptr), size_(other.size_), capacity_(other.size_)
    {
-      data_ = new T[capacity_];
-      T *p = data_;
-      T *q = other.data_;
-      const T *q_end = other.data_ + other.size_;
-
-      for (; q != q_end; ++q)
-      {
-         *p++ = *q;
-      }
+      data_ = allocate(capacity_);
+      copyRange(data_, other.data_, other.data_ + other.size_);
    }
 
    // Assignment operator
@@ -75,20 +74,17 @@ public:
    // EFFECTS: Duplicates the state of other to *this
    vector operator=(const vector<T> &other)
    {
-      delete[] data_;
+      if (this == &other)
+         return *this;
+
+      destroyRange(data_, data_ + size_);
+      ::operator delete(data_);
 
       size_ = other.size_;
-      capacity_ = other.capacity_;
-      data_ = new T[capacity_];
+      capacity_ = other.size_;
+      data_ = allocate(capacity_);
 
-      T *p = data_;
-      const T *q = other.data_;
-      const T *e = other.data_ + other.size_;
-
-      for (; q != e; ++q)
-      {
-         *p++ = *q;
-      }
+      copyRange(data_, other.data_, other.data_ + other.size_);
 
       return *this;
    }
@@ -99,13 +95,7 @@ public:
    // EFFECTS: Takes the data from other into a newly constructed vector
    vector(vector<T> &&other)
    {
-      data_ = other.data_;
-      capacity_ = other.capacity_;
-      size_ = other.size_;
-
-      other.data_ = nullptr;
-      other.capacity_ = 0;
-      other.size_ = 0;
+      steal(other);
    }
 
    // Move Assignment Operator
@@ -114,15 +104,15 @@ public:
    // EFFECTS: Takes the data from other in constant time
    vector operator=(vector<T> &&other)
    {
-      delete[] data_;
+      if (this == &other)
+         return *this;
 
-      data_ = other.data_;
-      capacity_ = other.capacity_;
-      size_ = other.size_;
+      destroyRange(data_, data_ + size_);
+      ::operator delete(data_);
 
-      other.data_ = nullptr;
-      other.capacity_ = 0;
-      other.size_ = 0;
+      steal(other);
+
+      return *this;
    }
 
    // REQUIRES: new_capacity > capacity( )
@@ -131,17 +121,23 @@ public:
    //    elements before having to reallocate
    void reserve(size_t newCapacity)
    {
-      T *tmp = new T[newCapacity];
-      T *start = tmp;
-      T *end = tmp + size_;
-      T *it_ptr = data_;
+      if (newCapacity <= capacity_)
+         return;
 
-      for (; start != end; ++start)
+      T *tmp = allocate(newCapacity);
+
+      T *src = data_;
+      T *dst = tmp;
+      T *end = data_ + size_;
+
+      for (; src != end; ++src, ++dst)
       {
-         *start = *it_ptr++;
+         new (dst) T(*src);
+         src->~T();
       }
 
-      delete[] data_;
+      ::operator delete(data_);
+
       data_ = tmp;
       capacity_ = newCapacity;
    }
@@ -189,7 +185,18 @@ public:
          reserve(capacity_ == 0 ? 8 : capacity_ * 3);
       }
 
-      *(data_ + size_) = x;
+      new (data_ + size_) T(x);
+      size_++;
+   }
+
+   // TODO
+   template <typename... Args>
+   void emplaceBack(Args &&...args)
+   {
+      if (size_ == capacity_)
+         reserve(capacity_ == 0 ? 8 : capacity_ * 3);
+
+      new (data_ + size_) T(std::forward<Args>(args)...);
       size_++;
    }
 
@@ -199,6 +206,7 @@ public:
    //    leaving capacity unchanged
    void popBack()
    {
+      data_[size_ - 1].~T();
       size_--;
    }
 
@@ -241,5 +249,32 @@ private:
    T *data_;
    size_t size_;
    size_t capacity_;
-   // TODO
+
+   void copyRange(T *dest, const T *src, const T *src_end)
+   {
+      for (; src != src_end; ++src, ++dest)
+         new (dest) T(*src);
+   }
+
+   void destroyRange(T *first, T *last)
+   {
+      for (; first != last; ++first)
+         first->~T();
+   }
+
+   void steal(vector &other)
+   {
+      data_ = other.data_;
+      size_ = other.size_;
+      capacity_ = other.capacity_;
+
+      other.data_ = nullptr;
+      other.size_ = 0;
+      other.capacity_ = 0;
+   }
+
+   T *allocate(size_t n)
+   {
+      return static_cast<T *>(::operator new(sizeof(T) * n));
+   }
 };
