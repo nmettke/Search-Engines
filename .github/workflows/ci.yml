@@ -8,7 +8,7 @@ on:
 jobs:
   test:
     name: ${{ matrix.suite }} tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -37,8 +37,7 @@ jobs:
 
   format-check:
     name: Format check
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
@@ -46,6 +45,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang-format
+
+      - name: Show formatter version
+        run: clang-format --version
 
       - name: Check formatting
         run: |
