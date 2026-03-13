@@ -9,5 +9,4 @@
 //
 // the best sum = 20, left = 1, right = 10.
 
-int MostPositiveSubsequence( const int a[ ], const int n,
-      int &bestL, int &bestR );
+int MostPositiveSubsequence(const int a[], const int n, int &bestL, int &bestR);

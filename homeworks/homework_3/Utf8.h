@@ -5,27 +5,22 @@
 // This file defines some basic utility functions for reading and
 // writing UTF-8 and UTF-16 characters, translating to/from Unicode.
 
-
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
 
-
 //
 // Basic Types
 //
 
-
 typedef uint32_t Unicode;
-typedef uint8_t  Utf8;
+typedef uint8_t Utf8;
 typedef uint16_t Utf16;
-
 
 //
 // Unicode
 //
-
 
 // Unicode is a standard that defines a codespace of code points in the range of
 // 0 to 1,114,111 (0x10ffff) (21 bits).
@@ -37,11 +32,9 @@ typedef uint16_t Utf16;
 // Some code points are forbidden due to security risks or to reserve them for
 // internal use.
 
-
 //
 // UTF-8 Format
 //
-
 
 // UTF-8 encodes Unicode character values into a varying length sequence of bytes.
 // It uses the same one-byte encoding for ASCII character values 0x00 to 0x7f but
@@ -65,8 +58,9 @@ typedef uint16_t Utf16;
 //                              1100000x (10xxxxxx) 11 bits when only 7 needed
 //                              11100000 100xxxxx (10xxxxxx) 16 bits when only 11 needed
 //                              11110000 1000xxxx (10xxxxxx 10xxxxxx) 21 bits when only 16 needed
-//                              11111000 10000xxx (10xxxxxx 10xxxxxx 10xxxxxx) 26 bits when only 21 needed
-//                              11111100 100000xx (10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx) 31 bits when only 26 needed
+//                              11111000 10000xxx (10xxxxxx 10xxxxxx 10xxxxxx) 26 bits when only 21
+//                              needed 11111100 100000xx (10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx) 31
+//                              bits when only 26 needed
 //
 //
 // Overlong forms of characters (e.g., encoding a / character as 0xC0 0xAF
@@ -82,19 +76,16 @@ typedef uint16_t Utf16;
 // we will follow convention, which is to replace any overlong or malformed characters
 // with the replacement character, 0xfffd, and advance the read pointer past the end.
 
-const   Unicode  ReplacementCharacter = 0xfffd;
-
+const Unicode ReplacementCharacter = 0xfffd;
 
 // NOT PART OF THIS ASSIGNMENT
 //
 // To use Utf8 encoding for arbitrary 32-bit numbers, not text, extend the format
 // to 7 bytes (36 bits) and skip the checks for characters that present security risks.
 
-
 //
 // UTF-16 Format
 //
-
 
 // Utf16 uses aligned 16-bit characters in either big-endian (high byte first)
 // or little-endian (low byte first) format to represent Unicode values in
@@ -113,11 +104,9 @@ const   Unicode  ReplacementCharacter = 0xfffd;
 //
 // Reading consists of reversing the steps.
 
-
 //
 // Byte Order Marks (BOMs)
 //
-
 
 // Utf16 text files are are required to start with a Byte Order Mark (BOM) to
 // indicate whether they are big-endian (high byte first) or little-endian
@@ -127,14 +116,13 @@ const   Unicode  ReplacementCharacter = 0xfffd;
 // you are reading it with the correct "endian-ness".  All Windows and Apple
 // computers are little-endian, so that is what we will support.
 
-const Unicode  ByteOrderMark = 0xfeff;
+const Unicode ByteOrderMark = 0xfeff;
 
 // If it's actually a big endian file, that first 16-bit character will have
 // the two bytes flipped.  (To read big-endian text, simply flip the bytes
 // before decoding.)
 
-const Unicode  BigEndianBOM = 0xfffe;
-
+const Unicode BigEndianBOM = 0xfffe;
 
 // Utf8 text files do not need a BOM because they're written as a sequence
 // of bytes.  Adding BOM to the start of a Utf8 file is permitted but
@@ -143,13 +131,11 @@ const Unicode  BigEndianBOM = 0xfffe;
 // The Utf8 byte order mark is the same 0xfeff Unicode character value
 // but written out as Utf8.
 
-const Utf8     Utf8BOMString[ ] = { 0xef, 0xbb, 0xbf };
-
+const Utf8 Utf8BOMString[] = {0xef, 0xbb, 0xbf};
 
 //
 // UTF-8 Library Functions
 //
-
 
 // SizeOfUtf8 tells the number of bytes it will take to encode the
 // specified value as Utf8.  Assumes values over 31 bits will be replaced.
@@ -158,21 +144,18 @@ const Utf8     Utf8BOMString[ ] = { 0xef, 0xbb, 0xbf };
 // the character pointed to by p because p may point to a malformed
 // character.
 
-size_t SizeOfUtf8( Unicode c );
-
+size_t SizeOfUtf8(Unicode c);
 
 // SizeOfUtf16 tells the number of bytes it will take to encode the
 // specified value as Utf16. Assumes values over 0xffff will be written as
 // surrogates and that values > 0x10ffff will be replaced.
 
-size_t SizeOfUtf16( Unicode c );
-
+size_t SizeOfUtf16(Unicode c);
 
 // IndicatedLength looks at the first byte of a Utf8 sequence and
 // determines the expected length.  Return 1 for an invalid first byte.
 
-size_t IndicatedLength( const Utf8 *p );
-
+size_t IndicatedLength(const Utf8 *p);
 
 // Read the next Utf8 character beginning at **pp and bump *pp past
 // the end of the character.  if bound != null, bound points one past
@@ -188,15 +171,13 @@ size_t IndicatedLength( const Utf8 *p );
 // surrogates), "noncharacters" 0xfdd0 to 0xfdef, and the values 0xfffe
 // and 0xffff should be returned as the replacement character.
 
-Unicode ReadUtf8( const Utf8 **p, const Utf8 *bound = nullptr );
-
+Unicode ReadUtf8(const Utf8 **p, const Utf8 *bound = nullptr);
 
 // Scan backward for the first PREVIOUS byte which could
 // be the start of a UTF-8 character.  If bound != null,
 // bound points to the first (leftmost) valid byte.
 
-const Utf8 *PreviousUtf8( const Utf8 *p, const Utf8 *bound = nullptr );
-
+const Utf8 *PreviousUtf8(const Utf8 *p, const Utf8 *bound = nullptr);
 
 // Write a Unicode character in UTF-8, returning one past
 // the the last byte that was written.
@@ -207,8 +188,7 @@ const Utf8 *PreviousUtf8( const Utf8 *p, const Utf8 *bound = nullptr );
 //
 // If c > 0x7fffffff (31 bits) write the replacement character.
 
-Utf8 *WriteUtf8( Utf8 *p, Unicode c, Utf8 *bound = nullptr );
-
+Utf8 *WriteUtf8(Utf8 *p, Unicode c, Utf8 *bound = nullptr);
 
 // Read a Utf16 little-endian character beginning at **pp and
 // bump *pp past the end of the character.  if bound != null,
@@ -219,8 +199,7 @@ Utf8 *WriteUtf8( Utf8 *p, Unicode c, Utf8 *bound = nullptr );
 // a low surrogate. Unpaired or out-of-order surrogates are
 // read as literal values.
 
-Unicode ReadUtf16( const Utf16 **p, const Utf16 *bound = nullptr );
-
+Unicode ReadUtf16(const Utf16 **p, const Utf16 *bound = nullptr);
 
 // Write a Unicode character in UTF-16, returning one past
 // the the last byte that was written.
@@ -231,16 +210,14 @@ Unicode ReadUtf16( const Utf16 **p, const Utf16 *bound = nullptr );
 //
 // If c > 0x10ffff (21 bits) write the replacement character.
 
-Utf16 *WriteUtf16( Utf16 *p, Unicode c, Utf16 *bound = nullptr );
-
+Utf16 *WriteUtf16(Utf16 *p, Unicode c, Utf16 *bound = nullptr);
 
 // Wrappers that read the character but don't advance the pointer.
 
-Unicode GetUtf8( const Utf8 *p, const Utf8 *bound = nullptr );
-Unicode GetUtf16( const Utf16 *p, const Utf16 *bound = nullptr );
-
+Unicode GetUtf8(const Utf8 *p, const Utf8 *bound = nullptr);
+Unicode GetUtf16(const Utf16 *p, const Utf16 *bound = nullptr);
 
 // Wrappers that advance the pointer but throw away the value.
 
-const Utf8 *NextUtf8( const Utf8 *p, const Utf8 *bound = nullptr );
-const Utf16 *NextUtf16( const Utf16 *p, const Utf16 *bound = nullptr );
+const Utf8 *NextUtf8(const Utf8 *p, const Utf8 *bound = nullptr);
+const Utf16 *NextUtf16(const Utf16 *p, const Utf16 *bound = nullptr);

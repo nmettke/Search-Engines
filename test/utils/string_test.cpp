@@ -1,22 +1,19 @@
-#include <gtest/gtest.h>
 #include "string.hpp"
+#include <gtest/gtest.h>
 
-TEST(StringConstructorTest, DefaultConstructor)
-{
+TEST(StringConstructorTest, DefaultConstructor) {
     string s;
     EXPECT_EQ(s.size(), 0);
     EXPECT_STREQ(s.cstr(), "");
 }
 
-TEST(StringConstructorTest, CStringConstructor)
-{
+TEST(StringConstructorTest, CStringConstructor) {
     string s("hello");
     EXPECT_EQ(s.size(), 5);
     EXPECT_STREQ(s.cstr(), "hello");
 }
 
-TEST(StringConstructorTest, CopyConstructor)
-{
+TEST(StringConstructorTest, CopyConstructor) {
     string a("hello");
     string b(a);
 
@@ -24,8 +21,7 @@ TEST(StringConstructorTest, CopyConstructor)
     EXPECT_STREQ(b.cstr(), "hello");
 }
 
-TEST(StringAssignmentTest, AssignmentOperator)
-{
+TEST(StringAssignmentTest, AssignmentOperator) {
     string a("hello");
     string b("world");
 
@@ -35,8 +31,7 @@ TEST(StringAssignmentTest, AssignmentOperator)
     EXPECT_STREQ(b.cstr(), "hello");
 }
 
-TEST(StringAppendTest, OperatorPlusEquals)
-{
+TEST(StringAppendTest, OperatorPlusEquals) {
     string a("hello");
     string b("world");
 
@@ -46,8 +41,7 @@ TEST(StringAppendTest, OperatorPlusEquals)
     EXPECT_STREQ(a.cstr(), "helloworld");
 }
 
-TEST(StringAppendTest, OperatorPlus)
-{
+TEST(StringAppendTest, OperatorPlus) {
     string a("hello");
     string b("world");
 
@@ -58,8 +52,7 @@ TEST(StringAppendTest, OperatorPlus)
     EXPECT_STREQ(b.cstr(), "world");
 }
 
-TEST(StringAppendTest, LiteralPlusString)
-{
+TEST(StringAppendTest, LiteralPlusString) {
     string s("world");
 
     string result = "hello " + s;
@@ -67,8 +60,7 @@ TEST(StringAppendTest, LiteralPlusString)
     EXPECT_STREQ(result.cstr(), "hello world");
 }
 
-TEST(StringAppendTest, StringPlusLiteral)
-{
+TEST(StringAppendTest, StringPlusLiteral) {
     string s("hello");
 
     string result = s + " world";
@@ -76,8 +68,7 @@ TEST(StringAppendTest, StringPlusLiteral)
     EXPECT_STREQ(result.cstr(), "hello world");
 }
 
-TEST(StringPushPopTest, PushBack)
-{
+TEST(StringPushPopTest, PushBack) {
     string s("abc");
 
     s.pushBack('d');
@@ -86,8 +77,7 @@ TEST(StringPushPopTest, PushBack)
     EXPECT_STREQ(s.cstr(), "abcd");
 }
 
-TEST(StringPushPopTest, PopBack)
-{
+TEST(StringPushPopTest, PopBack) {
     string s("abcd");
 
     s.popBack();
@@ -96,8 +86,7 @@ TEST(StringPushPopTest, PopBack)
     EXPECT_STREQ(s.cstr(), "abc");
 }
 
-TEST(StringComparisonTest, Equality)
-{
+TEST(StringComparisonTest, Equality) {
     string a("test");
     string b("test");
 
@@ -105,8 +94,7 @@ TEST(StringComparisonTest, Equality)
     EXPECT_FALSE(a != b);
 }
 
-TEST(StringComparisonTest, Ordering)
-{
+TEST(StringComparisonTest, Ordering) {
     string a("abc");
     string b("abd");
 
@@ -114,8 +102,7 @@ TEST(StringComparisonTest, Ordering)
     EXPECT_TRUE(b > a);
 }
 
-TEST(StringFindTest, SubstringFound)
-{
+TEST(StringFindTest, SubstringFound) {
     string s("hello world");
 
     size_t pos = s.find("world");
@@ -123,8 +110,7 @@ TEST(StringFindTest, SubstringFound)
     EXPECT_EQ(pos, 6);
 }
 
-TEST(StringFindTest, SubstringNotFound)
-{
+TEST(StringFindTest, SubstringNotFound) {
     string s("hello");
 
     size_t pos = s.find("xyz");
@@ -132,8 +118,7 @@ TEST(StringFindTest, SubstringNotFound)
     EXPECT_EQ(pos, string::npos);
 }
 
-TEST(StringAppendTest, AppendRawBuffer)
-{
+TEST(StringAppendTest, AppendRawBuffer) {
     string s("hello");
 
     s.append(" world", 6);
@@ -141,8 +126,7 @@ TEST(StringAppendTest, AppendRawBuffer)
     EXPECT_STREQ(s.cstr(), "hello world");
 }
 
-TEST(StringEdgeCases, EmptyStringBehavior)
-{
+TEST(StringEdgeCases, EmptyStringBehavior) {
     string s;
 
     EXPECT_EQ(s.size(), 0);
@@ -153,19 +137,16 @@ TEST(StringEdgeCases, EmptyStringBehavior)
     EXPECT_STREQ(s.cstr(), "a");
 }
 
-TEST(StringCapacityTest, LargeGrowthMaintainsCorrectContent)
-{
+TEST(StringCapacityTest, LargeGrowthMaintainsCorrectContent) {
     string s;
 
-    for (int i = 0; i < 10000; i++)
-    {
+    for (int i = 0; i < 10000; i++) {
         s.pushBack('a');
     }
 
     EXPECT_EQ(s.size(), 10000);
 
-    for (size_t i = 0; i < s.size(); i++)
-    {
+    for (size_t i = 0; i < s.size(); i++) {
         EXPECT_EQ(s[i], 'a');
     }
 

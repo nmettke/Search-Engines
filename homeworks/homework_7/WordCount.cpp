@@ -4,12 +4,12 @@
 //
 // Compile with g++ --std=c++17 WordCount.cpp -pthread -o WordCount
 
-#include <pthread.h>
-#include <iostream>
-#include <unistd.h>
 #include <fcntl.h>
-#include <vector>
 #include <fstream>
+#include <iostream>
+#include <pthread.h>
+#include <unistd.h>
+#include <vector>
 
 using namespace std;
 
@@ -41,17 +41,15 @@ int TotalWords = 0;
 
 // YOUR CODE HERE
 
-void *WordCount(void *arg)
-{
+void *WordCount(void *arg) {
 
-   ifstream input_file(*(static_cast<string *>(arg)));
-   int *count = new int(0);
-   string word;
-   while (input_file >> word)
-   {
-      (*count)++;
-   }
-   return count;
+    ifstream input_file(*(static_cast<string *>(arg)));
+    int *count = new int(0);
+    string word;
+    while (input_file >> word) {
+        (*count)++;
+    }
+    return count;
 }
 
 // main() should iterate over the list of filenames given as
@@ -59,46 +57,40 @@ void *WordCount(void *arg)
 // files.  Do not wait for a thread to finish before creating the
 // next one.  Once all the threads complete, print total words.
 
-int main(int argc, char **argv)
-{
-   if (argc <= 1)
-   {
-      cerr << "Usage: WordCount <filenames>" << endl
-           << "Count the total number of word in the files." << endl
-           << "Invalid paths are ignored." << endl;
-      return 1;
-   }
+int main(int argc, char **argv) {
+    if (argc <= 1) {
+        cerr << "Usage: WordCount <filenames>" << endl
+             << "Count the total number of word in the files." << endl
+             << "Invalid paths are ignored." << endl;
+        return 1;
+    }
 
-   size_t thread_count = 0;
-   vector<string> paths;
+    size_t thread_count = 0;
+    vector<string> paths;
 
-   for (int i = 1; i < argc; i++)
-   {
-      ifstream file(argv[i]);
-      if (file.good())
-      {
-         thread_count++;
-         paths.emplace_back(argv[i]);
-      }
-   }
+    for (int i = 1; i < argc; i++) {
+        ifstream file(argv[i]);
+        if (file.good()) {
+            thread_count++;
+            paths.emplace_back(argv[i]);
+        }
+    }
 
-   vector<pthread_t> threads(thread_count);
+    vector<pthread_t> threads(thread_count);
 
-   for (int i = 0; i < thread_count; i++)
-   {
-      pthread_create(&threads[i], NULL, WordCount, &paths[i]);
-   }
+    for (int i = 0; i < thread_count; i++) {
+        pthread_create(&threads[i], NULL, WordCount, &paths[i]);
+    }
 
-   void *ret = nullptr;
+    void *ret = nullptr;
 
-   for (pthread_t thread : threads)
-   {
-      pthread_join(thread, &ret);
-      int *count = static_cast<int *>(ret);
-      TotalWords += *count;
-      delete count;
-   }
+    for (pthread_t thread : threads) {
+        pthread_join(thread, &ret);
+        int *count = static_cast<int *>(ret);
+        TotalWords += *count;
+        delete count;
+    }
 
-   cout << "Total words = " << TotalWords << endl;
-   return 0;
+    cout << "Total words = " << TotalWords << endl;
+    return 0;
 }
