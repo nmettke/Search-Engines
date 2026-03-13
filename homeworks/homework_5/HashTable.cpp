@@ -3,100 +3,89 @@
 // Nicole Hamilton  nham@umich.edu
 
 #include <cassert>
-#include <iostream>
+#include <cstring>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <string>
-#include <cstring>
 #include <vector>
 
-#include "HashTable.h"
 #include "Common.h"
+#include "HashTable.h"
 #include "Timer.h"
 
 using namespace std;
 
+void Usage() {
+    cout <<
 
-void Usage( )
-   {
-   cout <<
+        "Usage:  HashTable [ -vL ] wordsin.txt\n"
+        "\n"
+        "Reads words from wordsin.txt, creates a HashTable\n"
+        "in memory, optimizes it, then searches it for words\n"
+        "read from cin.\n"
+        "\n"
+        "-v means verbose output\n"
+        "-L means read whole lines as words\n";
 
-      "Usage:  HashTable [ -vL ] wordsin.txt\n"
-      "\n"
-      "Reads words from wordsin.txt, creates a HashTable\n"
-      "in memory, optimizes it, then searches it for words\n"
-      "read from cin.\n"
-      "\n"
-      "-v means verbose output\n"
-      "-L means read whole lines as words\n";
+    exit(0);
+}
 
-   exit( 0 );
-   }
+using Hash = HashTable<const char *, size_t>;
+using Pair = Tuple<const char *, size_t>;
 
+void Search(const Hash *hashtable) {
+    // Search the HashTable for words read from cin.
 
-using Hash = HashTable< const char *, size_t >;
-using Pair = Tuple< const char *, size_t >;
+    string word;
+    while (cin >> word) {
+        const Pair *p = hashtable->Find(word.c_str());
+        cout << (p ? p->value : 0) << "   " << word << endl;
+    }
+}
 
+int main(int argc, char **argv) {
+    if (argc < 2)
+        Usage();
 
-void Search( const Hash *hashtable )
-   {
-   // Search the HashTable for words read from cin.
+    vector<string> words;
 
-   string word;
-   while ( cin >> word )
-      {
-      const Pair *p = hashtable->Find( word.c_str( ) );
-      cout << ( p ? p->value : 0 ) << "   " << word << endl;
-      }
-   }
+    CollectWordsIn(argc, argv, words);
 
+    if (optVerbose) {
+        cout << "Building HashTable" << endl;
 
-int main( int argc, char **argv )
-   {
-   if ( argc < 2 )
-      Usage( );
+        Timer time;
+        time.Start();
 
-   vector< string > words;
+        Hash *hashtable = BuildHashTable(words);
 
-   CollectWordsIn( argc, argv, words );
+        time.Finish();
+        time.PrintElapsed();
 
-   if ( optVerbose )
-      {
-      cout << "Building HashTable" << endl;
+        cout << "Optimizing HashTable" << endl;
 
-      Timer time;
-      time.Start( );
+        time.Start();
 
-      Hash *hashtable = BuildHashTable( words );
+        hashtable->Optimize();
 
-      time.Finish( );
-      time.PrintElapsed( );
+        time.Finish();
+        time.PrintElapsed();
 
-      cout << "Optimizing HashTable" << endl;
+        time.Start();
 
-      time.Start( );
+        cout << "Enter search words:" << endl;
 
-      hashtable->Optimize( );
+        Search(hashtable);
 
-      time.Finish( );
-      time.PrintElapsed( );
+        time.Finish();
+        time.PrintElapsed();
 
-      time.Start( );
-
-      cout << "Enter search words:" << endl;
-
-      Search( hashtable );
-
-      time.Finish( );
-      time.PrintElapsed( );
-
-      delete hashtable;
-      }
-   else
-      {
-      Hash *hashtable = BuildHashTable( words );
-      hashtable->Optimize( );
-      Search( hashtable );
-      delete hashtable;
-      }
-   }
+        delete hashtable;
+    } else {
+        Hash *hashtable = BuildHashTable(words);
+        hashtable->Optimize();
+        Search(hashtable);
+        delete hashtable;
+    }
+}

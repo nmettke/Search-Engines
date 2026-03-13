@@ -6,8 +6,17 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
+  test:
+    name: ${{ matrix.suite }} tests
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: vector
+            regex: "^vector::"
+          - suite: string
+            regex: "^string::"
 
     steps:
       - uses: actions/checkout@v4
@@ -15,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ clang-tidy
+          sudo apt-get install -y cmake g++ clang-format
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
@@ -23,5 +32,26 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
-      - name: Run tests
-        run: ctest --test-dir build --output-on-failure --parallel
+      - name: Run ${{ matrix.suite }} tests
+        run: ctest --test-dir build --output-on-failure -R "${{ matrix.regex }}"
+
+  format-check:
+    name: Format check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: Show formatter version
+        run: clang-format --version
+
+      - name: Check formatting
+        run: |
+          files=$(find src test \( -name '*.cpp' -o -name '*.cc' -o -name '*.hpp' -o -name '*.h' \))
+          if [ -n "$files" ]; then
+            clang-format --dry-run --Werror $files
+          fi

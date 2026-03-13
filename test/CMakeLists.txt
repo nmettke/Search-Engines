@@ -14,7 +14,9 @@ target_link_libraries(vector_tests
         GTest::gtest_main
 )
 
-gtest_discover_tests(vector_tests)
+gtest_discover_tests(vector_tests
+    TEST_PREFIX "vector::"
+)
 
 
 # -------------------------
@@ -31,4 +33,6 @@ target_link_libraries(string_tests
         GTest::gtest_main
 )
 
-gtest_discover_tests(string_tests)
+gtest_discover_tests(string_tests
+    TEST_PREFIX "string::"
+)

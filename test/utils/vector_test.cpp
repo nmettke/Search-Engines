@@ -1,16 +1,14 @@
+#include "vector.hpp"
 #include <gtest/gtest.h>
 #include <string>
-#include "vector.hpp"
 
-TEST(VectorTest, DefaultConstructor)
-{
+TEST(VectorTest, DefaultConstructor) {
     vector<int> v;
     EXPECT_EQ(v.size(), 0);
     EXPECT_EQ(v.capacity(), 0);
 }
 
-TEST(VectorTest, ResizeConstructor)
-{
+TEST(VectorTest, ResizeConstructor) {
     vector<int> v(5);
 
     EXPECT_EQ(v.size(), 5);
@@ -20,8 +18,7 @@ TEST(VectorTest, ResizeConstructor)
         EXPECT_EQ(v[i], 0);
 }
 
-TEST(VectorTest, FillConstructor)
-{
+TEST(VectorTest, FillConstructor) {
     vector<int> v(4, 7);
 
     EXPECT_EQ(v.size(), 4);
@@ -30,8 +27,7 @@ TEST(VectorTest, FillConstructor)
         EXPECT_EQ(v[i], 7);
 }
 
-TEST(VectorTest, PushBack)
-{
+TEST(VectorTest, PushBack) {
     vector<int> v;
 
     v.pushBack(1);
@@ -44,8 +40,7 @@ TEST(VectorTest, PushBack)
     EXPECT_EQ(v[2], 3);
 }
 
-TEST(VectorTest, PopBack)
-{
+TEST(VectorTest, PopBack) {
     vector<int> v;
 
     v.pushBack(10);
@@ -59,8 +54,7 @@ TEST(VectorTest, PopBack)
     EXPECT_EQ(v[1], 20);
 }
 
-TEST(VectorTest, CopyConstructor)
-{
+TEST(VectorTest, CopyConstructor) {
     vector<int> a;
 
     for (int i = 0; i < 5; ++i)
@@ -74,8 +68,7 @@ TEST(VectorTest, CopyConstructor)
         EXPECT_EQ(a[i], b[i]);
 }
 
-TEST(VectorTest, CopyAssignment)
-{
+TEST(VectorTest, CopyAssignment) {
     vector<int> a;
     vector<int> b;
 
@@ -90,8 +83,7 @@ TEST(VectorTest, CopyAssignment)
         EXPECT_EQ(b[i], a[i]);
 }
 
-TEST(VectorTest, MoveConstructor)
-{
+TEST(VectorTest, MoveConstructor) {
     vector<int> a;
 
     a.pushBack(1);
@@ -108,8 +100,7 @@ TEST(VectorTest, MoveConstructor)
     EXPECT_EQ(a.size(), 0);
 }
 
-TEST(VectorTest, MoveAssignment)
-{
+TEST(VectorTest, MoveAssignment) {
     vector<int> a;
     vector<int> b;
 
@@ -125,8 +116,7 @@ TEST(VectorTest, MoveAssignment)
     EXPECT_EQ(a.size(), 0);
 }
 
-TEST(VectorTest, Reserve)
-{
+TEST(VectorTest, Reserve) {
     vector<int> v;
 
     v.reserve(20);
@@ -134,8 +124,7 @@ TEST(VectorTest, Reserve)
     EXPECT_GE(v.capacity(), 20);
 }
 
-TEST(VectorTest, EmplaceBack)
-{
+TEST(VectorTest, EmplaceBack) {
     vector<std::string> v;
 
     v.emplaceBack("hello");
@@ -146,8 +135,7 @@ TEST(VectorTest, EmplaceBack)
     EXPECT_EQ(v[1], "world");
 }
 
-TEST(VectorTest, Iterators)
-{
+TEST(VectorTest, Iterators) {
     vector<int> v;
 
     for (int i = 0; i < 5; ++i)
@@ -155,15 +143,13 @@ TEST(VectorTest, Iterators)
 
     int expected = 0;
 
-    for (int *it = v.begin(); it != v.end(); ++it)
-    {
+    for (int *it = v.begin(); it != v.end(); ++it) {
         EXPECT_EQ(*it, expected);
         expected++;
     }
 }
 
-TEST(VectorTest, ManyPushBack)
-{
+TEST(VectorTest, ManyPushBack) {
     vector<int> v;
 
     for (int i = 0; i < 1000; ++i)
@@ -175,8 +161,7 @@ TEST(VectorTest, ManyPushBack)
         EXPECT_EQ(v[i], i);
 }
 
-TEST(VectorEdgeCases, ReservePreservesData)
-{
+TEST(VectorEdgeCases, ReservePreservesData) {
     vector<int> v;
 
     for (int i = 0; i < 20; ++i)
@@ -192,8 +177,7 @@ TEST(VectorEdgeCases, ReservePreservesData)
         EXPECT_EQ(v[i], i);
 }
 
-TEST(VectorEdgeCases, CopyIsDeep)
-{
+TEST(VectorEdgeCases, CopyIsDeep) {
     vector<int> a;
 
     for (int i = 0; i < 5; ++i)
@@ -207,24 +191,19 @@ TEST(VectorEdgeCases, CopyIsDeep)
     EXPECT_EQ(b[0], 999);
 }
 
-struct Counted
-{
+struct Counted {
     static int destructCount;
 
     int value;
 
     Counted(int v) : value(v) {}
 
-    ~Counted()
-    {
-        destructCount++;
-    }
+    ~Counted() { destructCount++; }
 };
 
 int Counted::destructCount = 0;
 
-TEST(VectorEdgeCases, DestructorsCalled)
-{
+TEST(VectorEdgeCases, DestructorsCalled) {
     Counted::destructCount = 0;
 
     {
@@ -239,8 +218,7 @@ TEST(VectorEdgeCases, DestructorsCalled)
     EXPECT_EQ(Counted::destructCount, 5);
 }
 
-TEST(VectorEdgeCases, SelfAssignment)
-{
+TEST(VectorEdgeCases, SelfAssignment) {
     vector<int> v;
 
     for (int i = 0; i < 10; ++i)

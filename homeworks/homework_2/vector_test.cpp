@@ -1,12 +1,6 @@
 #include "vector.h"
 #include <iostream>
 
-void testVectorClass()
-{
-    std::cout << "tmp\n";
-}
+void testVectorClass() { std::cout << "tmp\n"; }
 
-int main()
-{
-    testVectorClass();
-}
+int main() { testVectorClass(); }

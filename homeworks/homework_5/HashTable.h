@@ -5,285 +5,249 @@
 #pragma once
 
 #include <cassert>
-#include <iostream>
-#include <iomanip>
 #include <cstdint>
-
+#include <iomanip>
+#include <iostream>
 
 const size_t INITIAL_BUCKET_COUNT = 2048;
 
+template <typename Key, typename Value> class Tuple {
+  public:
+    Key key;
+    Value value;
 
-template <typename Key, typename Value>
-class Tuple {
-public:
-   Key key;
-   Value value;
-
-   Tuple(const Key &k, const Value v): key(k), value(v) {}
+    Tuple(const Key &k, const Value v) : key(k), value(v) {}
 };
 
+template <typename Key, typename Value> class Bucket {
+  public:
+    Bucket *next;
+    uint64_t hashValue;
+    Tuple<Key, Value> tuple;
 
-template <typename Key, typename Value>
-class Bucket {
-public:
-   Bucket *next;
-   uint64_t hashValue;
-   Tuple< Key, Value > tuple;
-
-   Bucket(const Key &k, uint64_t h, const Value v)
-   : tuple(k, v), next(nullptr), hashValue(h) {}
+    Bucket(const Key &k, uint64_t h, const Value v) : tuple(k, v), next(nullptr), hashValue(h) {}
 };
 
+template <typename Key, typename Value> class HashTable {
 
-template <typename Key, typename Value>
-class HashTable {
+  private:
+    Bucket<Key, Value> **buckets;
+    size_t numberOfBuckets;
 
-private:
+    uint64_t (*hash)(const Key);
+    bool (*compareEqual)(const Key, const Key);
+    size_t uniqueKeys;
 
-   Bucket< Key, Value > **buckets;
-   size_t numberOfBuckets;
+    friend class Iterator;
+    friend class HashBlob;
 
-   uint64_t ( *hash )( const Key );
-   bool ( *compareEqual )( const Key, const Key );
-   size_t uniqueKeys;
+    void clear() {
+        for (size_t i = 0; i < numberOfBuckets; i++) {
+            Bucket<Key, Value> *current = buckets[i];
+            while (current != nullptr) {
+                Bucket<Key, Value> *toDelete = current;
+                current = current->next;
+                delete toDelete;
+            }
+            buckets[i] = nullptr;
+        }
 
-   friend class Iterator;
-   friend class HashBlob;
+        uniqueKeys = 0;
+        numberOfBuckets = 0;
+        delete[] buckets;
+        buckets = nullptr;
+    }
 
-   void clear() {
-      for (size_t i = 0; i < numberOfBuckets; i++) {
-         Bucket<Key, Value>* current = buckets[i];
-         while (current != nullptr) {
-            Bucket<Key, Value>* toDelete = current;
+  public:
+    Tuple<Key, Value> *Find(const Key k, const Value initialValue) {
+        // Search for the key k and return a pointer to the
+        // ( key, value ) entry.  If the key is not already
+        // in the hash, add it with the initial value.
+        uint64_t hashValue = hash(k);
+        size_t bucketIndex = hashValue % numberOfBuckets;
+
+        Bucket<Key, Value> *current = buckets[bucketIndex];
+        while (current != nullptr) {
+            if (compareEqual(current->tuple.key, k)) {
+                return &(current->tuple);
+            }
             current = current->next;
-            delete toDelete;
-         }
-         buckets[i] = nullptr;
-      }
+        }
 
-      uniqueKeys = 0;
-      numberOfBuckets = 0;
-      delete[] buckets;
-      buckets = nullptr;
-   }
+        Optimize();
+        bucketIndex = hashValue % numberOfBuckets;
 
-public:
+        Bucket<Key, Value> *newBucket = new Bucket<Key, Value>(k, hashValue, initialValue);
+        newBucket->next = buckets[bucketIndex];
+        buckets[bucketIndex] = newBucket;
+        uniqueKeys++;
 
-   Tuple< Key, Value >* Find(const Key k, const Value initialValue) {
-      // Search for the key k and return a pointer to the
-      // ( key, value ) entry.  If the key is not already
-      // in the hash, add it with the initial value.
-      uint64_t hashValue = hash(k);
-      size_t bucketIndex = hashValue % numberOfBuckets;
+        return &(newBucket->tuple);
+    }
 
-      Bucket< Key, Value >* current = buckets[bucketIndex];
-      while (current != nullptr) {
-         if (compareEqual(current->tuple.key, k)) {
-            return &(current->tuple);
-         }
-         current = current->next;
-      }
+    Tuple<Key, Value> *Find(const Key k) const {
+        // Search for the key k and return a pointer to the
+        // ( key, value ) enty.  If the key is not already
+        // in the hash, return nullptr.
 
-      Optimize();
-      bucketIndex = hashValue % numberOfBuckets;
+        uint64_t hashValue = hash(k);
+        size_t bucketIndex = hashValue % numberOfBuckets;
 
-      Bucket< Key, Value >* newBucket = new Bucket< Key, Value >(
-         k, hashValue, initialValue
-      );
-      newBucket->next = buckets[bucketIndex];
-      buckets[bucketIndex] = newBucket;
-      uniqueKeys++;
+        Bucket<Key, Value> *current = buckets[bucketIndex];
+        while (current != nullptr) {
+            if (compareEqual(current->tuple.key, k)) {
+                return &(current->tuple);
+            }
+            current = current->next;
+        }
+        return nullptr;
+    }
 
-      return &(newBucket->tuple);
-   }
+    void Optimize(double loading = 1.5) {
+        // Grow or shrink the table as appropriate once we know the loading. A
+        // goodrule of thumb is that the table size should be at least 1.5x the
+        // number of unique keys.
+        size_t desiredSize = static_cast<size_t>(uniqueKeys * loading);
+        if (desiredSize <= numberOfBuckets) {
+            return;
+        }
 
-   Tuple< Key, Value >* Find(const Key k) const {
-      // Search for the key k and return a pointer to the
-      // ( key, value ) enty.  If the key is not already
-      // in the hash, return nullptr.
+        size_t newSize = (numberOfBuckets == 0) ? 1 : numberOfBuckets;
+        while (newSize < desiredSize) {
+            newSize *= 2;
+        }
 
-      uint64_t hashValue = hash(k);
-      size_t bucketIndex = hashValue % numberOfBuckets;
+        Bucket<Key, Value> **newBuckets = new Bucket<Key, Value> *[newSize];
+        for (size_t i = 0; i < newSize; i++) {
+            newBuckets[i] = nullptr;
+        }
 
-      Bucket< Key, Value >* current = buckets[bucketIndex];
-      while (current != nullptr) {
-         if (compareEqual(current->tuple.key, k)) {
-            return &(current->tuple);
-         }
-         current = current->next;
-      }
-      return nullptr;
-   }
+        for (size_t i = 0; i < numberOfBuckets; i++) {
+            Bucket<Key, Value> *current = buckets[i];
+            while (current != nullptr) {
+                Bucket<Key, Value> *nextBucket = current->next;
 
-   void Optimize(double loading = 1.5) {
-      // Grow or shrink the table as appropriate once we know the loading. A
-      // goodrule of thumb is that the table size should be at least 1.5x the
-      // number of unique keys.
-      size_t desiredSize = static_cast<size_t>(uniqueKeys * loading);
-      if (desiredSize <= numberOfBuckets) {
-         return;
-      }
+                size_t newIndex = current->hashValue % newSize;
+                current->next = newBuckets[newIndex];
+                newBuckets[newIndex] = current;
 
-      size_t newSize = (numberOfBuckets == 0) ? 1 : numberOfBuckets;
-      while (newSize < desiredSize) {
-         newSize *= 2;
-      }
+                current = nextBucket;
+            }
+        }
 
-      Bucket< Key, Value >** newBuckets = new Bucket< Key, Value >*[newSize];
-      for (size_t i = 0; i < newSize; i++) {
-         newBuckets[i] = nullptr;
-      }
+        delete[] buckets;
+        buckets = newBuckets;
+        numberOfBuckets = newSize;
+    }
 
-      for (size_t i = 0; i < numberOfBuckets; i++) {
-         Bucket< Key, Value >* current = buckets[i];
-         while (current != nullptr) {
-            Bucket< Key, Value >* nextBucket = current->next;
+    // Your constructor may add defaults for arguments to the
+    // constructor.  The compareEqual function should return
+    // true if the keys are equal.  The hash function should
+    // return a 64-bit value.
+    HashTable(bool (*compareEqual)(const Key, const Key), uint64_t (*hash)(const Key),
+              size_t numberOfBuckets = INITIAL_BUCKET_COUNT)
+        : buckets(nullptr), numberOfBuckets(numberOfBuckets), hash(hash),
+          compareEqual(compareEqual), uniqueKeys(0) {
+        if (this->numberOfBuckets == 0) {
+            this->numberOfBuckets = INITIAL_BUCKET_COUNT;
+        }
 
-            size_t newIndex = current->hashValue % newSize;
-            current->next = newBuckets[newIndex];
-            newBuckets[newIndex] = current;
+        buckets = new Bucket<Key, Value> *[this->numberOfBuckets];
+        for (size_t i = 0; i < this->numberOfBuckets; i++) {
+            buckets[i] = nullptr;
+        }
+    }
 
-            current = nextBucket;
-         }
-      }
+    // Disable copy constructor and assignment operator
+    HashTable(const HashTable &) = delete;
+    HashTable &operator=(const HashTable &) = delete;
 
-      delete[] buckets;
-      buckets = newBuckets;
-      numberOfBuckets = newSize;
-   }
+    HashTable(HashTable &&other) noexcept
+        : buckets(other.buckets), numberOfBuckets(other.numberOfBuckets), hash(other.hash),
+          compareEqual(other.compareEqual), uniqueKeys(other.uniqueKeys) {
+        other.buckets = nullptr;
+        other.numberOfBuckets = 0;
+        other.uniqueKeys = 0;
+    }
 
+    HashTable &operator=(HashTable &&other) noexcept {
+        if (this != &other) {
+            clear();
+            buckets = other.buckets;
+            numberOfBuckets = other.numberOfBuckets;
+            hash = other.hash;
+            compareEqual = other.compareEqual;
+            uniqueKeys = other.uniqueKeys;
 
-   // Your constructor may add defaults for arguments to the
-   // constructor.  The compareEqual function should return
-   // true if the keys are equal.  The hash function should
-   // return a 64-bit value.
-   HashTable(
-      bool ( *compareEqual )(const Key, const Key),
-      uint64_t ( *hash )(const Key),
-      size_t numberOfBuckets = INITIAL_BUCKET_COUNT
-   ) :   buckets(nullptr),
-         numberOfBuckets(numberOfBuckets),
-         hash(hash),
-         compareEqual(compareEqual),
-         uniqueKeys(0)
-   {
-      if (this->numberOfBuckets == 0) {
-         this->numberOfBuckets = INITIAL_BUCKET_COUNT;
-      }
+            other.buckets = nullptr;
+            other.numberOfBuckets = 0;
+            other.uniqueKeys = 0;
+        }
+        return *this;
+    }
 
-      buckets = new Bucket<Key, Value>*[this->numberOfBuckets];
-      for (size_t i = 0; i < this->numberOfBuckets; i++) {
-         buckets[i] = nullptr;
-      }
-   }
+    ~HashTable() { clear(); }
 
-   // Disable copy constructor and assignment operator
-   HashTable(const HashTable&) = delete;
-   HashTable& operator=(const HashTable&) = delete;
+    class Iterator {
 
-   HashTable(HashTable&& other) noexcept 
-      : buckets(other.buckets), numberOfBuckets(other.numberOfBuckets), 
-        hash(other.hash), compareEqual(other.compareEqual),
-        uniqueKeys(other.uniqueKeys) 
-   {
-      other.buckets = nullptr;
-      other.numberOfBuckets = 0;
-      other.uniqueKeys = 0;
-   }
+      private:
+        friend class HashTable;
 
-   HashTable& operator=(HashTable&& other) noexcept {
-      if (this != &other) {
-         clear();
-         buckets = other.buckets;
-         numberOfBuckets = other.numberOfBuckets;
-         hash = other.hash;
-         compareEqual = other.compareEqual;
-         uniqueKeys = other.uniqueKeys;
+        HashTable *table;
+        size_t bucketIndex;
+        Bucket<Key, Value> *currentBucket;
 
-         other.buckets = nullptr;
-         other.numberOfBuckets = 0;
-         other.uniqueKeys = 0;
-      }
-      return *this;
-   }
+        Iterator(HashTable *table, size_t bucket, Bucket<Key, Value> *b)
+            : table(table), bucketIndex(bucket), currentBucket(b) {}
 
-   ~HashTable( ) {
-      clear();
-   }
+      public:
+        Iterator() : Iterator(nullptr, 0, nullptr) {}
 
+        ~Iterator() = default;
 
-   class Iterator {
-   
-   private:
+        Tuple<Key, Value> &operator*() { return currentBucket->tuple; }
 
-      friend class HashTable;
+        Tuple<Key, Value> *operator->() const { return &(currentBucket->tuple); }
 
-      HashTable* table;
-      size_t bucketIndex;
-      Bucket<Key, Value>* currentBucket;
-
-      Iterator(HashTable* table, size_t bucket, Bucket<Key, Value>* b)
-      :  table(table), bucketIndex(bucket), currentBucket(b) { }
-
-   public:
-
-      Iterator() : Iterator(nullptr, 0, nullptr) {}
-
-      ~Iterator() = default;
-
-      Tuple< Key, Value >& operator*() {
-         return currentBucket->tuple;
-      }
-
-      Tuple< Key, Value > *operator->() const {
-         return &(currentBucket->tuple);
-      }
-
-      // Prefix ++
-      Iterator &operator++() {
-         if (currentBucket != nullptr && currentBucket->next != nullptr) {
-            currentBucket = currentBucket->next;
-            return *this;
-         }
-
-         do {
-            ++bucketIndex;
-            if (bucketIndex >= table->numberOfBuckets) {
-               currentBucket = nullptr;
-               return *this;
+        // Prefix ++
+        Iterator &operator++() {
+            if (currentBucket != nullptr && currentBucket->next != nullptr) {
+                currentBucket = currentBucket->next;
+                return *this;
             }
 
-            currentBucket = table->buckets[bucketIndex];
-         } while (currentBucket == nullptr);
-         return *this;
-      }
+            do {
+                ++bucketIndex;
+                if (bucketIndex >= table->numberOfBuckets) {
+                    currentBucket = nullptr;
+                    return *this;
+                }
 
-      // Postfix ++
-      Iterator operator++(int) {
-         Iterator temp = *this;
-         ++(*this);
-         return temp;
-      }
+                currentBucket = table->buckets[bucketIndex];
+            } while (currentBucket == nullptr);
+            return *this;
+        }
 
-      bool operator==(const Iterator &rhs) const {
-         return currentBucket == rhs.currentBucket;
-      }
+        // Postfix ++
+        Iterator operator++(int) {
+            Iterator temp = *this;
+            ++(*this);
+            return temp;
+        }
 
-      bool operator!=(const Iterator &rhs) const {
-         return !(*this == rhs);
-      }
-   };
+        bool operator==(const Iterator &rhs) const { return currentBucket == rhs.currentBucket; }
 
-   Iterator begin() {
-      for (size_t i = 0; i < numberOfBuckets; i++) {
-         if (buckets[i] != nullptr) {
-            return Iterator(this, i, buckets[i]);
-         }
-      }
-      return end();
-   }
+        bool operator!=(const Iterator &rhs) const { return !(*this == rhs); }
+    };
 
-   Iterator end() {
-      return Iterator(this, numberOfBuckets, nullptr);
-   }
+    Iterator begin() {
+        for (size_t i = 0; i < numberOfBuckets; i++) {
+            if (buckets[i] != nullptr) {
+                return Iterator(this, i, buckets[i]);
+            }
+        }
+        return end();
+    }
+
+    Iterator end() { return Iterator(this, numberOfBuckets, nullptr); }
 };
