@@ -1,27 +1,30 @@
+#include <fstream>
+#include <iostream>
+
 #include "../parser/HtmlParser.h"
 #include "../utils/SSL/LinuxSSL_Crawler.hpp"
 #include "../utils/string.hpp"
 #include "../utils/vector.hpp"
-#include <fstream>
-#include <iostream>
-#include <vector>
 
-std::vector<std::string> links;
+vector<string> links;
 
 const bool debug = false;
 
 int main() {
-    // Debug Config
     std::ifstream seedList("seedList.txt");
     if (!seedList.is_open()) {
         std::cerr << "Failed to open file\n";
         return 1;
     }
+
+    // std::string allowed here only for getline
     std::string line;
+
     while (std::getline(seedList, line)) {
-        links.emplace_back(line);
+        links.emplaceBack(string(line.c_str()));
     }
-    for (const std::string &link : links) {
+
+    for (const string &link : links) {
         std::cout << link << '\n';
     }
 
@@ -31,16 +34,21 @@ int main() {
         if (debug) {
             std::cout << "Searching " << links[i] << std::endl;
         }
-        std::string buffer = readURL(links[i]);
-        HtmlParser parsed(buffer.c_str(), buffer.size());
+
+        // readURL already returns your string
+        string page = readURL(links[i]);
+
+        HtmlParser parsed(page.cstr(), page.size());
 
         if (debug) {
             std::cout << "Searched " << links[i] << std::endl;
         }
 
         for (const Link &link : parsed.links) {
-            if (link.URL.find("http") != link.URL.npos) {
-                links.push_back(link.URL);
+            // parser still uses std::string
+            if (link.URL.find("http") != std::string::npos) {
+                links.pushBack(string(link.URL.c_str()));
+
                 if (debug) {
                     std::cout << "Found " << link.URL << std::endl;
                 }
@@ -48,7 +56,7 @@ int main() {
         }
     }
 
-    for (const std::string &link : links) {
+    for (const string &link : links) {
         std::cout << link << std::endl;
     }
 }
