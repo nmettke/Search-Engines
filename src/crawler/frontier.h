@@ -1,17 +1,21 @@
 #pragma once
+#include "condition_variable.hpp"
+#include "lock_guard.hpp"
+#include "mutex.hpp"
 #include "string.hpp"
 #include "vector.hpp"
 #include <fstream>
 #include <iostream>
 #include <optional>
-
+#include <queue>
+#include <stdexcept>
 class Frontier {
   public:
-    Frontier() {};
+    Frontier(const std::string seed_list_str) {};
 
     ~Frontier() = default;
 
-    bool push(const string &url);
+    void push(const string &url);
 
     std::optional<string> pop();
 
@@ -22,5 +26,6 @@ class Frontier {
     bool empty() const;
 
   private:
-    vector<string> frontier;
+    std::priority_queue<string> pq;
+    mutex m;
 };
