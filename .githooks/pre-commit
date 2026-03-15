@@ -1,5 +1,13 @@
 #!/bin/bash
 
+set -e
+
+echo "Checking formatting..."
+files=$(find src test \( -name '*.cpp' -o -name '*.cc' -o -name '*.hpp' -o -name '*.h' \))
+if [ -n "$files" ]; then
+    clang-format --dry-run --Werror $files
+fi
+
 echo "Building project..."
 cmake --build build
 

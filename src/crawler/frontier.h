@@ -11,7 +11,7 @@
 #include <stdexcept>
 class Frontier {
   public:
-    Frontier(const std::string seed_list_str) {};
+    Frontier(const std::string seed_list_str);
 
     ~Frontier() = default;
 
