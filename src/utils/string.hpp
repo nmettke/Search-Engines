@@ -88,6 +88,9 @@ class string {
     // EFFECTS: Returns the i'th character of the string
     char &operator[](size_t i) { return _buffer[i]; }
 
+    // //I added in something for read only!
+    // const char &operator[](size_t i) { return _buffer[i]; }
+
     // string Append
     // REQUIRES: Nothing
     // MODIFIES: *this
