@@ -36,3 +36,21 @@ target_link_libraries(string_tests
 gtest_discover_tests(string_tests
     TEST_PREFIX "string::"
 )
+
+# -------------------------
+# FrontierItemHelper Tests
+# -------------------------
+
+add_executable(FrontierItemHelper_tests
+    crawler/FrontierItemHelper_test.cpp
+)
+
+target_link_libraries(FrontierItemHelper_tests
+    PRIVATE
+        crawler
+        GTest::gtest_main
+)
+
+gtest_discover_tests(FrontierItemHelper_tests
+    TEST_PREFIX "FrontierItemHelper::"
+)
