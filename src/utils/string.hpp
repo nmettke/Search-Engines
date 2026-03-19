@@ -89,7 +89,7 @@ class string {
     char &operator[](size_t i) { return _buffer[i]; }
 
     // //I added in something for read only!
-    // const char &operator[](size_t i) { return _buffer[i]; }
+    const char &operator[](size_t i) const { return _buffer[i]; }
 
     // string Append
     // REQUIRES: Nothing

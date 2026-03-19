@@ -8,7 +8,7 @@ add_library(utils
 
 target_include_directories(utils
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/utils
+        ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_compile_features(utils PUBLIC cxx_std_17)
@@ -26,7 +26,7 @@ add_library(parser
 
 target_include_directories(parser
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/parser
+        ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(parser
@@ -43,11 +43,14 @@ target_compile_features(parser PUBLIC cxx_std_17)
 
 add_library(crawler
     crawler/basic.cpp
+    crawler/FrontierItemHelper.cpp
+    crawler/FrontierItem.cpp
+    crawler/frontier.cpp
 )
 
 target_include_directories(crawler
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/crawler
+        ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(crawler
