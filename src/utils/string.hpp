@@ -265,26 +265,26 @@ class string {
     }
 };
 
-std::ostream &operator<<(std::ostream &os, const string &s) {
+inline std::ostream &operator<<(std::ostream &os, const string &s) {
     if (s.size() > 0) {
         os << s.cstr();
     }
     return os;
 }
 
-string operator+(const string &lhs, const char *rhs) {
+inline string operator+(const string &lhs, const char *rhs) {
     string result(lhs);
     result += string(rhs);
     return result;
 }
 
-string operator+(const char *lhs, const string &rhs) {
+inline string operator+(const char *lhs, const string &rhs) {
     string result(lhs);
     result += rhs;
     return result;
 }
 
-string operator+(const string &lhs, const string &rhs) {
+inline string operator+(const string &lhs, const string &rhs) {
     string result(lhs);
     result += rhs;
     return result;

@@ -42,7 +42,6 @@ target_compile_features(parser PUBLIC cxx_std_17)
 # -------------------------
 
 add_library(crawler
-    crawler/basic.cpp
     crawler/FrontierItemHelper.cpp
     crawler/FrontierItem.cpp
     crawler/frontier.cpp
