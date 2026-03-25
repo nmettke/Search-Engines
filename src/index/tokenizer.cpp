@@ -1,0 +1,76 @@
+#include "tokenizer.h"
+
+std::string PorterStemmer::stem(const std::string &token) {
+    // For now, we skip stemming
+    return token;
+}
+
+bool Tokenizer::isAlphaNumeric(unsigned char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+}
+
+std::string Tokenizer::makeLowerCase(std::string s) {
+    for (char &c : s) {
+        // Use ASCII property to avoid std::tolower cost
+        if (c >= 'A' && c <= 'Z')
+            c = static_cast<char>(c + 32);
+    }
+    return s;
+}
+
+std::string Tokenizer::stripPunc(const std::string &s) {
+    // Strip punctuations on the sides
+    if (s.empty())
+        return s;
+    size_t i = 0;
+    size_t j = s.size();
+    while (i < j && !isAlphaNumeric(static_cast<unsigned char>(s[i])))
+        ++i;
+    while (j > i && !isAlphaNumeric(static_cast<unsigned char>(s[j - 1])))
+        --j;
+    return s.substr(i, j - i);
+}
+
+std::vector<std::string> Tokenizer::processToken(const std::string &raw) {
+    // Process token: lowercase, strip puncutation, stemming, explode hyphen
+    std::vector<std::string> out;
+    std::string lowered = makeLowerCase(raw);
+    std::string stripped = stripPunc(lowered);
+    if (stripped.empty())
+        return out;
+
+    // Add full word
+    out.push_back(PorterStemmer::stem(stripped));
+
+    // Check hyphen, add left right word if exist
+    const size_t hyphen = stripped.find('-');
+    if (hyphen != std::string::npos && hyphen > 0 && hyphen + 1 < stripped.size()) {
+        std::string left = stripped.substr(0, hyphen);
+        std::string right = stripped.substr(hyphen + 1);
+        if (!left.empty())
+            out.push_back(PorterStemmer::stem(left));
+        if (!right.empty())
+            out.push_back(PorterStemmer::stem(right));
+    }
+    return out;
+}
+
+TokenizedDocument Tokenizer::processDocument(const HtmlParser &doc) {
+    TokenizedDocument out;
+    const uint32_t doc_start = next_location;
+    uint32_t body_word_count = 0;
+
+    for (const std::string &raw_word : doc.words) {
+        auto expanded = processToken(raw_word);
+        for (const auto &token : expanded) {
+            out.tokens.push_back(TokenOutput{token, next_location});
+        }
+        ++body_word_count;
+        ++next_location;
+    }
+
+    out.doc_end = DocEndOutput{next_location, doc.base, body_word_count,
+                               static_cast<uint16_t>(doc.titleWords.size()), doc_start};
+    ++next_location; // shift one to account for #DocEnd
+    return out;
+}
