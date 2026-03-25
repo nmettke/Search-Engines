@@ -1,0 +1,1 @@
+// This header contains type definition for data structures used throught index
