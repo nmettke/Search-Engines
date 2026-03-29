@@ -2,6 +2,7 @@
 #include "../utils/SSL/LinuxSSL_Crawler.hpp"
 #include "../utils/string.hpp"
 #include "../utils/vector.hpp"
+#include "url_dedup.h"
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -18,8 +19,12 @@ int main() {
         return 1;
     }
     std::string line;
+    UrlBloomFilter bloom(1000000, 0.0001);
     while (std::getline(seedList, line)) {
-        links.emplace_back(line);
+        std::string canonical;
+        if (shouldEnqueueUrl(line, bloom, canonical)) {
+            links.emplace_back(canonical);
+        }
     }
     for (const std::string &link : links) {
         std::cout << link << '\n';
@@ -40,7 +45,10 @@ int main() {
 
         for (const Link &link : parsed.links) {
             if (link.URL.find("http") != link.URL.npos) {
-                links.push_back(link.URL);
+                std::string canonical;
+                if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
+                    links.push_back(canonical);
+                }
                 if (debug) {
                     std::cout << "Found " << link.URL << std::endl;
                 }
