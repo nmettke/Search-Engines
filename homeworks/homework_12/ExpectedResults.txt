@@ -1,0 +1,57 @@
+The following sitemaps were found.
+https://foo.x:50/y.xml
+http://zork.com/map.xml
+Checking user = LinuxGet, URL = http://x.y/foo
+Access denied
+Checking user = LinuxGet, URL = http://x.y/foo/bar
+Access allowed, crawl delay = 5
+Checking user = Linux, URL = http://x.y/foo
+Access allowed
+Checking user = LinuxGetUrl, URL = http://s.y/foo
+Access denied
+Checking user = Linu, URL = http://s.y/foo
+Access allowed
+Checking user = linuxGET, URL = http://x.y/foo
+Access denied
+Checking user = zebra, URL = http://x.y/foo/zebrak
+Access allowed, crawl delay = 5
+Checking user = zebra, URL = http://x.y/foo/zebrark
+Access allowed, crawl delay = 5
+Checking user = hello, URL = http://x.y/zoork
+Access denied
+Checking user = zebra, URL = http://z.y/zork
+Access allowed
+Checking user = xx, URL = http://x.y/fubar
+Access allowed
+Checking user = xx, URL = http://x.y/fuzzbar
+Access allowed
+Checking user = ZZ, URL = http://x.y/tmp
+Access denied
+Checking user = ZZ, URL = http://x.y/tmp/
+Access denied
+Checking user = ZZ, URL = http://x.y/tmp.html
+Access denied
+Checking user = ZZ, URL = http://x.y/tmp/a.html
+Access denied
+Checking user = YY, URL = http://x.y/tmp
+Access allowed
+Checking user = YY, URL = http://x.y/tmp/
+Access denied
+Checking user = YY, URL = http://x.y/tmp.html
+Access allowed
+Checking user = YY, URL = http://x.y/tmp/a.html
+Access denied
+Checking user = xx, URL = http://x.y/z/.html
+Access allowed
+Checking user = xx, URL = http://x.y/a%2fb.html
+Access denied
+Checking user = xx, URL = http://x.y/a/.html
+Access allowed
+Checking user = xx, URL = http://x.y/a..bx
+Access denied
+Checking user = xx, URL = http://x.y/a%2e.bx
+Access denied
+Checking user = xx, URL = http://x.y/%61%2e.bx
+Access denied
+Checking user = xx, URL = http://x.y/ffadsfasd
+Access allowed

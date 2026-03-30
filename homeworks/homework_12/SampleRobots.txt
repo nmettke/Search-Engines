@@ -1,0 +1,27 @@
+User-agent:  LinuxGet
+User-agent: ZEBRA
+User-agent: xx
+Disallow: /foo
+Allow:  /foo/bar
+sitemap:  https://foo.x:50/y.xml
+Allow:  /foo/*ze*bra
+Crawl-delay: 5
+
+User-agent: *
+Disallow: z*rk
+Allow:  zork
+Disallow:  fu*Libar
+Allow:  fubar
+
+disallow:  /a%3cd.html
+disallow:  /a%2fb.html
+SiteMap:  http://zork.com/map.xml
+
+disallow:  /a%2e.b
+disallow:  /b.c
+
+User-agent: ZZ
+disallow: /tmp
+
+User-agent: YY
+disallow: /tmp/
