@@ -4,6 +4,7 @@
 
 add_library(utils
     utils/SSL/LinuxSSL_Crawler.cpp
+    utils/Utf8.cpp
 )
 
 target_include_directories(utils
