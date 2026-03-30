@@ -4,6 +4,7 @@
 #pragma once
 
 #include "HtmlTags.h"
+#include "Utf8.h"
 #include <cctype>
 #include <cstring>
 #include <stack>
@@ -93,6 +94,11 @@ class HtmlParser {
     bool inAnchor = false;
     // current link being built
     Link *currentLink = nullptr;
+
+    // Structural integrity signals for isBroken()
+    bool sawBodyTag = false;
+    bool sawCloseHtml = false;
+    bool truncated = false;
 
     bool inDiscardSection() const { return !openSections.empty(); }
 
@@ -395,9 +401,15 @@ class HtmlParser {
         case DesiredAction::Embed:
             handleEmbed(tagEnd, close);
             break;
-        case DesiredAction::Discard:
-            // skip
+        case DesiredAction::Discard: {
+            // Track structural tags for broken HTML detection
+            size_t tagLen = tagEnd - tagStart;
+            if (tagLen == 4 && strncasecmp(tagStart, "body", 4) == 0 && !isClosing)
+                sawBodyTag = true;
+            if (tagLen == 4 && strncasecmp(tagStart, "html", 4) == 0 && isClosing)
+                sawCloseHtml = true;
             break;
+        }
         default:
             break;
         }
@@ -473,5 +485,30 @@ class HtmlParser {
         if (wordStart && !inDiscardSection()) {
             addWord(wordStart, end);
         }
+
+        // Check for truncation: scan backward for last '<' and see if it was closed
+        if (length > 0) {
+            for (const char *scan = end - 1; scan >= buffer; --scan) {
+                if (*scan == '>') break;
+                if (*scan == '<') { truncated = true; break; }
+            }
+        }
     }
+
+    // Returns true if page has too many broken-HTML signals to be worth indexing.
+    // Fires when 2+ of 5 signals are present to avoid false positives.
+    bool isBroken() const {
+        int score = 0;
+        if (!openSections.empty()) ++score;  // unclosed <script>/<style>/<svg>
+        if (words.size() < 20)     ++score;  // near-empty page
+        if (!sawBodyTag)           ++score;  // no <body> tag found
+        if (!sawCloseHtml)         ++score;  // no </html> — likely truncated
+        if (truncated)             ++score;  // buffer ends mid-tag
+        return score >= 2;
+    }
+
+    // Returns true if the page text is predominantly Latin-script (English).
+    // Uses ReadUtf8 from Utf8.h to decode words into Unicode codepoints,
+    // then checks ratio of Latin alphabetic chars to total alphabetic chars.
+    bool isEnglish(double threshold = 0.6) const;
 };
