@@ -489,8 +489,12 @@ class HtmlParser {
         // Check for truncation: scan backward for last '<' and see if it was closed
         if (length > 0) {
             for (const char *scan = end - 1; scan >= buffer; --scan) {
-                if (*scan == '>') break;
-                if (*scan == '<') { truncated = true; break; }
+                if (*scan == '>')
+                    break;
+                if (*scan == '<') {
+                    truncated = true;
+                    break;
+                }
             }
         }
     }
@@ -499,11 +503,16 @@ class HtmlParser {
     // Fires when 2+ of 5 signals are present to avoid false positives.
     bool isBroken() const {
         int score = 0;
-        if (!openSections.empty()) ++score;  // unclosed <script>/<style>/<svg>
-        if (words.size() < 20)     ++score;  // near-empty page
-        if (!sawBodyTag)           ++score;  // no <body> tag found
-        if (!sawCloseHtml)         ++score;  // no </html> — likely truncated
-        if (truncated)             ++score;  // buffer ends mid-tag
+        if (!openSections.empty())
+            ++score; // unclosed <script>/<style>/<svg>
+        if (words.size() < 20)
+            ++score; // near-empty page
+        if (!sawBodyTag)
+            ++score; // no <body> tag found
+        if (!sawCloseHtml)
+            ++score; // no </html> — likely truncated
+        if (truncated)
+            ++score; // buffer ends mid-tag
         return score >= 2;
     }
 
