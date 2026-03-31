@@ -39,8 +39,8 @@ struct DocumentRecord {
 };
 
 struct FileHeader {
-    uint32_t magic = magic;
-    uint32_t version = version;
+    uint32_t magic = ::magic;
+    uint32_t version = ::version;
     uint32_t num_documents = 0;
     uint64_t total_locations = 0;
     uint32_t num_unique_terms = 0;
