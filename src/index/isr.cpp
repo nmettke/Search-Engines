@@ -1,6 +1,8 @@
 #include "isr.h"
 #include "vbyte.h"
 
+ISR::ISR() = default;
+
 ISR::ISR(const uint8_t *data, uint32_t num_postings)
     : data(data), current_ptr(data), num_postings(num_postings) {}
 
