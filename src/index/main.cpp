@@ -38,7 +38,6 @@ int main() {
         return 1;
     }
 
-    /*
     DiskChunkReader reader;
     if (!reader.open(path)) {
         std::cerr << "Failed to open chunk\n";
@@ -63,7 +62,27 @@ int main() {
         std::cout << "doc0 url=" << doc0->url << ", range=["
                   << doc0->start_location << ", " << doc0->end_location << "]\n";
     }
-    */
+
+    // get all documents containing "cat" by iterating through 
+    // the ISR and mapping locations to documents
+    isr = reader.createISR("cat");
+    
+    std::cout << "Pages containing 'cat':\n";
+
+    std::string last_printed_url = "";
+
+    // iterate through every location
+    while (!isr.done()) {
+        uint32_t loc = isr.next();
+        
+        // map the location to the actual Document Record
+        auto doc = reader.getDocumentByLocation(loc);
+
+        if (doc.has_value() && doc->url != last_printed_url) {
+            std::cout << "- " << doc->url << " (Found at location: " << loc << ")\n";
+            last_printed_url = doc->url;
+        }
+    }
 
     return 0;
 }
