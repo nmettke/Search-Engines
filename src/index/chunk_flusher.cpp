@@ -28,7 +28,7 @@ void flushIndexChunk(const InMemoryIndex &mem_index, const std::string &filename
         DiskChunkWriter::DictionaryEntry entry;
         entry.term = term;
         entry.disk_info.occupied = 1;
-        entry.disk_info.posting_offset = current_posting_offset;
+        entry.disk_info.posting_offset = current_posting_offset - sizeof(FileHeader);
         entry.disk_info.doc_frequency = posting_list.doc_frequency;
         entry.disk_info.collection_frequency = posting_list.collection_frequency;
 
