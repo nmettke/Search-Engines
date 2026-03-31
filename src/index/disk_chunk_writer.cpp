@@ -87,16 +87,14 @@ uint64_t DiskChunkWriter::writeDocumentTable(const std::vector<DocumentRecord> &
         }
 
         // write remaining fixed-size fields
-        struct __attribute__((packed)) FixedDocData {
-            uint32_t start_location;
-            uint32_t end_location;
-            uint32_t word_count;
-            uint16_t title_word_count;
-        } fixed_data = {doc.start_location, doc.end_location, doc.word_count, doc.title_word_count};
+        DocumentRecordDisk disk_record;
+        disk_record.start_location = doc.start_location;
+        disk_record.end_location = doc.end_location;
+        disk_record.word_count = doc.word_count;
+        disk_record.title_word_count = doc.title_word_count;
 
-        if (write(fd_, &fixed_data, sizeof(FixedDocData)) != sizeof(FixedDocData)) {
-            throw std::system_error(errno, std::generic_category(),
-                                    "Failed to write fixed document metadata");
+        if (write(fd_, &disk_record, sizeof(DocumentRecordDisk)) != sizeof(DocumentRecordDisk)) {
+            throw std::system_error(errno, std::generic_category(), "Failed to write fixed document metadata");
         }
     }
 

@@ -69,3 +69,12 @@ struct DictionaryHeader {
     uint32_t table_size = 0;
     uint32_t string_pool_size = 0;
 };
+
+// Represents the fixed-size metadata of a document on disk.
+// The URL length and URL string immediately precede this in the file.
+struct __attribute__((packed)) DocumentRecordDisk {
+    uint32_t start_location = 0;
+    uint32_t end_location = 0;
+    uint32_t word_count = 0;
+    uint16_t title_word_count = 0;
+};
