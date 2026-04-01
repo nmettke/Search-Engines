@@ -29,6 +29,10 @@ public:
     // returns std::nullopt if the ID is out of bounds.
     std::optional<DocumentRecord> getDocument(uint32_t doc_id) const;
 
+    // retrieves a document that contains the given location.
+    // returns std::nullopt if no document contains that location.
+    std::optional<DocumentRecord> getDocumentByLocation(uint32_t location) const;
+
 private:
     int fd_;                  // File descriptor
     size_t mapped_size_;      // Total size of the mapped file

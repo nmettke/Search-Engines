@@ -1,5 +1,7 @@
 #include "Common.h"
 #include "disk_chunk_reader.h"
+#include "buffer_reader.h"
+#include "types.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -38,8 +40,9 @@ bool DiskChunkReader::open(const std::string& filename) {
     data_ = static_cast<const uint8_t*>(mapped);
 
     // validate the header
-    const FileHeader* file_header = reinterpret_cast<const FileHeader*>(data_);
-    
+    BufferReader reader(data_);
+    const FileHeader* file_header = reader.readPOD<FileHeader>();
+
     if (file_header->magic != ::magic) {
         std::cerr << "Invalid chunk file: Magic number mismatch.\n";
         return false;
@@ -67,41 +70,32 @@ ISR DiskChunkReader::createISR(const std::string& term) const {
 
     // look up the Bucket Offset
     const size_t* buckets_array = reinterpret_cast<const size_t*>(dict_ptr + sizeof(size_t));
-    size_t bucket_idx = hash_val % num_buckets;
-    size_t chain_offset = buckets_array[bucket_idx];
-
+    size_t chain_offset = buckets_array[hash_val % num_buckets];
     if (chain_offset == 0) return ISR();
 
     // walk the chain
-    const uint8_t* chain_ptr = dict_ptr + chain_offset;
-    
+    BufferReader reader(dict_ptr + chain_offset);
+
     while (true) {
-        const BucketDisk* b_disk = reinterpret_cast<const BucketDisk*>(chain_ptr);
-        
-        // check Sentinel
-        if (b_disk->occupied == 0) {
-            break;
-        }
+        const BucketDisk* b_disk = reader.readPOD<BucketDisk>();
+        if (b_disk->occupied == 0) break;
 
         // read the string immediately following the struct
-        const char* str_ptr = reinterpret_cast<const char*>(chain_ptr + sizeof(BucketDisk));
-        std::string current_term(str_ptr, b_disk->string_length);
+        std::string_view current_term(reinterpret_cast<const char*>(reader.current()), b_disk->string_length);
+        reader.skip(b_disk->string_length);
 
-        if (current_term == term) {
+        if (std::string(current_term) == term) {
             // jump to the posting list offset
-            const uint8_t* p_list_ptr = data_ + header_.postings_offset + b_disk->posting_offset;
+            BufferReader p_reader(data_ + header_.postings_offset + b_disk->posting_offset);
             
             // read PostingListHeader
-            const PostingListHeader* p_header = reinterpret_cast<const PostingListHeader*>(p_list_ptr);
+            const PostingListHeader* p_header = p_reader.readPOD<PostingListHeader>();
             
             // read the compressed VByte data
-            const uint8_t* compressed_data = p_list_ptr + sizeof(PostingListHeader);
+            const uint8_t* compressed_data = p_reader.current();
 
             return ISR(compressed_data, p_header->num_postings);
         }
-
-        // move pointer to the next entry in the chain
-        chain_ptr += sizeof(BucketDisk) + b_disk->string_length;
     }
 
     return ISR();
@@ -112,33 +106,52 @@ std::optional<DocumentRecord> DiskChunkReader::getDocument(uint32_t doc_id) cons
         return std::nullopt;
     }
 
-    const uint8_t* ptr = data_ + header_.doctable_offset;
+    BufferReader reader(data_ + header_.doctable_offset);
 
     // skip the total number of documents header
-    ptr += sizeof(uint32_t);
+    reader.skip(sizeof(uint32_t));
 
     // scan until we find the target document ID
     for (uint32_t i = 0; i <= doc_id; ++i) {
-        uint16_t url_len = *reinterpret_cast<const uint16_t*>(ptr);
-        ptr += sizeof(uint16_t);
-
         if (i == doc_id) {
-            DocumentRecord doc;
-            
-            // extract the URL string
-            doc.url = std::string(reinterpret_cast<const char*>(ptr), url_len);
-            ptr += url_len;
+            std::string_view url_view = reader.readString16();
+            const DocumentRecordDisk* disk_rec = reader.readPOD<DocumentRecordDisk>();
 
-            // extract fixed metadata
-            const DocumentRecordDisk* disk_rec = reinterpret_cast<const DocumentRecordDisk*>(ptr);
+            DocumentRecord doc;
+            doc.url = std::string(url_view);
             doc.start_location = disk_rec->start_location;
             doc.end_location = disk_rec->end_location;
             doc.word_count = disk_rec->word_count;
             doc.title_word_count = disk_rec->title_word_count;
-
             return doc;
         } else {
-            ptr += url_len + sizeof(DocumentRecordDisk);
+            reader.readString16();  // advance past URL
+            reader.skip(sizeof(DocumentRecordDisk));
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::optional<DocumentRecord> DiskChunkReader::getDocumentByLocation(uint32_t location) const {
+    if (!data_) return std::nullopt;
+
+    BufferReader reader(data_ + header_.doctable_offset);
+    reader.skip(sizeof(uint32_t));
+
+    for (uint32_t i = 0; i < header_.num_documents; ++i) {
+        // Read cleanly!
+        std::string_view url_view = reader.readString16();
+        const DocumentRecordDisk* disk_rec = reader.readPOD<DocumentRecordDisk>();
+
+        if (location >= disk_rec->start_location && location <= disk_rec->end_location) {
+            DocumentRecord doc;
+            doc.url = std::string(url_view); 
+            doc.start_location = disk_rec->start_location;
+            doc.end_location = disk_rec->end_location;
+            doc.word_count = disk_rec->word_count;
+            doc.title_word_count = disk_rec->title_word_count;
+            return doc;
         }
     }
 
