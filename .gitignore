@@ -46,3 +46,6 @@
 # For CMake
 build*/
 .DS_Store
+
+# For Vasu
+vasuBuild.sh

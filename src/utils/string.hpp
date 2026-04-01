@@ -27,6 +27,24 @@ class string {
         _buffer[_size] = '\0';
     }
 
+    // Range constructor [begin, end)
+    // REQUIRES: begin/end define a valid range or both are null
+    // MODIFIES: *this
+    // EFFECTS: Creates a string containing characters from begin up to (not including) end
+    string(const char *begin, const char *end) : _buffer(nullptr), _size(0), _capacity(0) {
+        if (begin == nullptr || end == nullptr || end <= begin) {
+            _buffer = new char[1];
+            _buffer[0] = '\0';
+            return;
+        }
+
+        _size = static_cast<size_t>(end - begin);
+        _capacity = _size;
+        _buffer = new char[_capacity + 1];
+        copyData(_buffer, begin, _size);
+        _buffer[_size] = '\0';
+    }
+
     // deep copy constructor
     string(const string &other) : _buffer(nullptr), _size(other._size), _capacity(other._capacity) {
         _buffer = new char[_capacity + 1];
@@ -63,12 +81,15 @@ class string {
     // MODIFIES: Nothing
     // EFFECTS: Returns the number of characters in the string
     size_t size() const { return _size; }
+    size_t length() const { return _size; }
+    bool empty() const { return _size == 0; }
 
     // C string Conversion
     // REQUIRES: Nothing
     // MODIFIES: Nothing
     // EFFECTS: Returns a pointer to a null terminated C string of *this
     const char *cstr() const { return _buffer; }
+    const char *c_str() const { return _buffer; }
 
     // Iterator Begin
     // REQUIRES: Nothing
@@ -104,6 +125,8 @@ class string {
         _size += other_size;
         _buffer[_size] = '\0';
     }
+
+    void operator+=(char c) { pushBack(c); }
 
     void append(const char *data, size_t count) {
         growCapacity(_size + count);
@@ -256,8 +279,9 @@ class string {
             newCapacity *= 2;
         }
 
-        char *newBuffer = new char[newCapacity];
+        char *newBuffer = new char[newCapacity + 1];
         copyData(newBuffer, _buffer, _size);
+        newBuffer[_size] = '\0';
         delete[] _buffer;
 
         _buffer = newBuffer;

@@ -15,6 +15,8 @@ class FrontierItem {
 
     double getScore() const;
 
+    string link;
+
   private:
     Suffix suffix = Suffix::OTHER;
     size_t baseLength = 0;

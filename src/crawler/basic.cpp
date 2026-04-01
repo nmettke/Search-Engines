@@ -11,7 +11,7 @@ vector<string> links;
 const bool debug = false;
 
 int main() {
-    std::ifstream seedList("seedList.txt");
+    std::ifstream seedList("src/crawler/seedList.txt");
     if (!seedList.is_open()) {
         std::cerr << "Failed to open file\n";
         return 1;
@@ -36,8 +36,8 @@ int main() {
         }
 
         // readURL already returns your string
-        // string page = readURL(links[i]); Need to fix conversion between string and std::string
-        string page = "";
+        string page = readURL(links[i]); //Need to fix conversion between string and std::string
+        //string page = "";
 
         HtmlParser parsed(page.cstr(), page.size());
 
