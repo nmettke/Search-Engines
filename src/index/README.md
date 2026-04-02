@@ -36,3 +36,12 @@ g++ -std=c++17 tests/test_tokenizer.cpp src/lib/tokenizer.cpp -o test_tokenizer
 
 ./test_tokenizer
 ```
+
+## Main
+`main.cpp` shows the overall process of building inverted index, save index, read index, and query documents
+
+```
+g++ -std=c++17 src/main.cpp src/lib/disk_chunk_writer.cpp src/lib/vbyte.cpp src/lib/in_memory_index.cpp src/lib/Common.cpp src/lib/chunk_flusher.cpp src/lib/disk_chunk_reader.cpp src/lib/isr.cpp src/lib/tokenizer.cpp -o main
+
+./main
+```

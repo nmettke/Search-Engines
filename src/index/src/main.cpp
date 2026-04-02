@@ -15,7 +15,7 @@ int main() {
     std::vector<HtmlParser> docs = {
         // Initialization: {words}, {titleWords}, {links}, base_url
         {{"The", "CAT", "sat."}, {}, {}, "http://example.com/cats"},
-        {{"A", "Dog", "Running!"}, {}, {}, "http://example.com/dogs"},
+        {{"A", "Dog", "Running", "after", "the", "cat!"}, {}, {}, "http://example.com/dogs"},
     };
 
     // 2. Tokenize and build the In-Memory Index
@@ -54,7 +54,7 @@ int main() {
     ISR isr = reader.createISR("cat");
     std::cout << "Posting list for 'cat': ";
     while (!isr.done()) {
-        std::cout << isr.next() << ' ';
+        std::cout << isr.next() << ", ";
     }
     std::cout << "\n";
 
@@ -62,6 +62,12 @@ int main() {
     if (doc0) {
         std::cout << "doc0 url=" << doc0->url << ", range=[" << doc0->start_location << ", "
                   << doc0->end_location << "]\n";
+    }
+
+    auto doc1 = reader.getDocument(1);
+    if (doc1) {
+        std::cout << "doc1 url=" << doc1->url << ", range=[" << doc1->start_location << ", "
+                  << doc1->end_location << "]\n";
     }
 
     // get all documents containing "cat" by iterating through
@@ -76,13 +82,14 @@ int main() {
     while (!isr.done()) {
         uint32_t loc = isr.next();
 
+        std::cout << "Looking up location: " << loc << "\n";
         // map the location to the actual Document Record
         auto doc = reader.getDocumentByLocation(loc);
 
-        if (doc.has_value() && doc->url != last_printed_url) {
+        // if (doc.has_value() && doc->url != last_printed_url) {
             std::cout << "- " << doc->url << " (Found at location: " << loc << ")\n";
             last_printed_url = doc->url;
-        }
+        // }
     }
 
     return 0;

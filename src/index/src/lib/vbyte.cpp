@@ -27,11 +27,11 @@ uint32_t VariableByteEncoder::decode(const uint8_t *&ptr) {
         uint8_t b = *ptr;
         result |= static_cast<uint32_t>(b & 0x7F) << shift;
 
-        if ((b & 0x80) == 0)
-            break;
-
         ptr += 1;
         shift += 7;
+
+        if ((b & 0x80) == 0)
+            break;
     }
 
     return result;
@@ -66,7 +66,6 @@ std::vector<uint32_t> VariableByteEncoder::decodeDeltaList(const uint8_t *data, 
         delta = decode(data);
         out.push_back(prev + delta);
         prev += delta;
-        data += 1;
     }
 
     return out;
