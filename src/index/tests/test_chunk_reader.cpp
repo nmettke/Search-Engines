@@ -1,24 +1,23 @@
 // tests/test_chunk_reader.cpp
+#include "../src/lib/Common.h"
+#include "../src/lib/chunk_flusher.h"
+#include "../src/lib/disk_chunk_reader.h"
+#include "../src/lib/disk_chunk_writer.h"
+#include "../src/lib/in_memory_index.h"
 #include <iostream>
 #include <unistd.h>
-#include "../src/lib/Common.h"
-#include "../src/lib/disk_chunk_reader.h"
-#include "../src/lib/in_memory_index.h"
-#include "../src/lib/disk_chunk_writer.h"
-#include "../src/lib/chunk_flusher.h"
 
-
-#define TEST_ASSERT(condition, message) \
-    do { \
-        if (!(condition)) { \
-            std::cerr << "FAIL: " << message << " (Line: " << __LINE__ << ")\n"; \
-            exit(1); \
-        } \
+#define TEST_ASSERT(condition, message)                                                            \
+    do {                                                                                           \
+        if (!(condition)) {                                                                        \
+            std::cerr << "FAIL: " << message << " (Line: " << __LINE__ << ")\n";                   \
+            exit(1);                                                                               \
+        }                                                                                          \
     } while (false)
 
 void test_open_and_mmap() {
     std::cout << "Running test_open_and_mmap...\n";
-    const char* test_file = "test_chunk_reader.idx";
+    const char *test_file = "test_chunk_reader.idx";
     unlink(test_file);
 
     // 1. Create a valid chunk file to read
@@ -29,7 +28,7 @@ void test_open_and_mmap() {
 
     // 2. Test the reader
     DiskChunkReader reader;
-    
+
     // Should fail on non-existent file
     TEST_ASSERT(!reader.open("does_not_exist.idx"), "Should return false for bad file");
 
@@ -37,7 +36,7 @@ void test_open_and_mmap() {
     TEST_ASSERT(reader.open(test_file), "Should successfully open and mmap the valid chunk");
 
     // Verify header was parsed correctly
-    const FileHeader& header = reader.header();
+    const FileHeader &header = reader.header();
     TEST_ASSERT(header.magic == magic, "Magic number should match");
     TEST_ASSERT(header.num_documents == 1, "Should have 1 document");
     TEST_ASSERT(header.num_unique_terms == 2, "Should have 2 unique terms (test + #DocEnd)");
@@ -48,7 +47,7 @@ void test_open_and_mmap() {
 
 void test_create_isr() {
     std::cout << "Running test_create_isr...\n";
-    const char* test_file = "test_chunk_reader_isr.idx";
+    const char *test_file = "test_chunk_reader_isr.idx";
     unlink(test_file);
 
     // 1. Setup a chunk with two terms
@@ -79,17 +78,17 @@ void test_create_isr() {
 
 void test_get_document() {
     std::cout << "Running test_get_document...\n";
-    const char* test_file = "test_chunk_reader_docs.idx";
+    const char *test_file = "test_chunk_reader_docs.idx";
     unlink(test_file);
 
     // 1. Setup a chunk with two documents
     InMemoryIndex mem_index;
     mem_index.addToken({"cat", 0});
     mem_index.finishDocument({1, "http://cat.com", 1, 0, 0});
-    
+
     mem_index.addToken({"dog", 2});
     mem_index.finishDocument({3, "http://dog.com", 1, 0, 2});
-    
+
     flushIndexChunk(mem_index, test_file);
 
     // 2. Open reader

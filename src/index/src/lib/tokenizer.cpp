@@ -1,11 +1,6 @@
 // src/lib/tokenizer.cpp
 #include "tokenizer.h"
 
-std::string PorterStemmer::stem(const std::string &token) {
-    // For now, we skip stemming
-    return token;
-}
-
 bool Tokenizer::isAlphaNumeric(unsigned char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
 }

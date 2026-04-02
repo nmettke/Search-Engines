@@ -87,8 +87,8 @@ int main() {
         auto doc = reader.getDocumentByLocation(loc);
 
         // if (doc.has_value() && doc->url != last_printed_url) {
-            std::cout << "- " << doc->url << " (Found at location: " << loc << ")\n";
-            last_printed_url = doc->url;
+        std::cout << "- " << doc->url << " (Found at location: " << loc << ")\n";
+        last_printed_url = doc->url;
         // }
     }
 
