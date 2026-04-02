@@ -1,7 +1,7 @@
 // src/lib/tokenizer.h
 #pragma once
 
-#include "../../../parser/HtmlParser.h"
+#include "html_parser.h"
 #include "types.h"
 
 #include <string>

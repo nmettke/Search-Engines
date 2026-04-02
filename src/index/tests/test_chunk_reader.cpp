@@ -1,4 +1,4 @@
-// index/tests/test_chunk_reader.cpp
+// tests/test_chunk_reader.cpp
 #include <iostream>
 #include <unistd.h>
 #include "../src/lib/Common.h"

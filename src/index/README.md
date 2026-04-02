@@ -23,3 +23,16 @@ g++ -std=c++17 tests/test_chunk_reader.cpp src/lib/disk_chunk_reader.cpp src/lib
 ./test_chunk_reader
 ```
  
+### Test VBytes
+```
+g++ -std=c++17 tests/test_vbyte.cpp src/lib/vbyte.cpp -o test_vbyte
+
+./test_vbyte
+```
+
+### Test Tokenizer
+```
+g++ -std=c++17 tests/test_tokenizer.cpp src/lib/tokenizer.cpp -o test_tokenizer
+
+./test_tokenizer
+```
