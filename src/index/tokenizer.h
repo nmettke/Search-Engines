@@ -4,7 +4,10 @@
 #include "../parser/HtmlParser.h"
 #include "types.h"
 
+#include <array>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 struct TokenizedDocument {
@@ -47,6 +50,10 @@ class PorterStemmer {
     }
 
   private:
+    static constexpr bool isAsciiVowel(char c) {
+        return c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u';
+    }
+
     static bool ends_with(std::string_view value, std::string_view ending) {
         if (ending.size() > value.size())
             return false;
@@ -64,25 +71,31 @@ class PorterStemmer {
 
     static int getMeasure(std::string_view w) {
         int m = 0;
-        size_t i = 0, n = w.length();
-        while (i < n && !isVowel(w, i))
-            i++;
-        while (i < n) {
-            while (i < n && isVowel(w, i))
-                i++;
-            if (i < n) {
+        bool prev_is_vowel = false;
+        bool in_vowel_run = false;
+        for (size_t i = 0; i < w.size(); ++i) {
+            const char c = w[i];
+            const bool is_vowel = isAsciiVowel(c) || (c == 'y' && i > 0 && !prev_is_vowel);
+            if (is_vowel) {
+                in_vowel_run = true;
+            } else if (in_vowel_run) {
                 m++;
-                while (i < n && !isVowel(w, i))
-                    i++;
+                in_vowel_run = false;
             }
+            prev_is_vowel = is_vowel;
         }
         return m;
     }
 
     static bool containsVowel(std::string_view w) {
-        for (size_t i = 0; i < w.length(); ++i)
-            if (isVowel(w, i))
+        bool prev_is_vowel = false;
+        for (size_t i = 0; i < w.size(); ++i) {
+            const char c = w[i];
+            const bool is_vowel = isAsciiVowel(c) || (c == 'y' && i > 0 && !prev_is_vowel);
+            if (is_vowel)
                 return true;
+            prev_is_vowel = is_vowel;
+        }
         return false;
     }
 
@@ -140,39 +153,50 @@ class PorterStemmer {
     }
 
     static void step2(std::string &w) {
-        static const std::vector<std::pair<std::string, std::string>> subs = {
+        static constexpr std::array<std::pair<std::string_view, std::string_view>, 20> subs = {{
             {"ational", "ate"}, {"tional", "tion"}, {"enci", "ence"},   {"anci", "ance"},
             {"izer", "ize"},    {"abli", "able"},   {"alli", "al"},     {"entli", "ent"},
             {"eli", "e"},       {"ousli", "ous"},   {"ization", "ize"}, {"ation", "ate"},
             {"ator", "ate"},    {"alism", "al"},    {"iveness", "ive"}, {"fulness", "ful"},
-            {"ousness", "ous"}, {"aliti", "al"},    {"iviti", "ive"},   {"biliti", "ble"}};
-        for (auto const &[suffix, rep] : subs) {
+            {"ousness", "ous"}, {"aliti", "al"},    {"iviti", "ive"},   {"biliti", "ble"},
+        }};
+        for (const auto &[suffix, rep] : subs) {
             if (ends_with(w, suffix)) {
-                if (getMeasure(std::string_view(w).substr(0, w.length() - suffix.length())) > 0)
-                    w.replace(w.length() - suffix.length(), suffix.length(), rep);
+                if (getMeasure(std::string_view(w).substr(0, w.length() - suffix.length())) > 0) {
+                    w.replace(w.length() - suffix.length(), suffix.length(), rep.data(),
+                              rep.length());
+                }
                 break;
             }
         }
     }
 
     static void step3(std::string &w) {
-        static const std::vector<std::pair<std::string, std::string>> subs = {
-            {"icate", "ic"}, {"ative", ""}, {"alize", "al"}, {"iciti", "ic"},
-            {"ical", "ic"},  {"ful", ""},   {"ness", ""}};
-        for (auto const &[suffix, rep] : subs) {
+        static constexpr std::array<std::pair<std::string_view, std::string_view>, 7> subs = {{
+            {"icate", "ic"},
+            {"ative", ""},
+            {"alize", "al"},
+            {"iciti", "ic"},
+            {"ical", "ic"},
+            {"ful", ""},
+            {"ness", ""},
+        }};
+        for (const auto &[suffix, rep] : subs) {
             if (ends_with(w, suffix)) {
-                if (getMeasure(std::string_view(w).substr(0, w.length() - suffix.length())) > 0)
-                    w.replace(w.length() - suffix.length(), suffix.length(), rep);
+                if (getMeasure(std::string_view(w).substr(0, w.length() - suffix.length())) > 0) {
+                    w.replace(w.length() - suffix.length(), suffix.length(), rep.data(),
+                              rep.length());
+                }
                 break;
             }
         }
     }
 
     static void step4(std::string &w) {
-        static const std::vector<std::string> suffixes = {
+        static constexpr std::array<std::string_view, 18> suffixes = {
             "al",   "ance", "ence", "er",  "ic",  "able", "ible", "ant", "ement",
             "ment", "ent",  "ou",   "ism", "ate", "iti",  "ous",  "ive", "ize"};
-        for (const std::string &s : suffixes) {
+        for (std::string_view s : suffixes) {
             if (ends_with(w, s)) {
                 if (getMeasure(std::string_view(w).substr(0, w.length() - s.length())) > 1)
                     w.erase(w.length() - s.length());

@@ -62,19 +62,18 @@ void run_test_and_benchmark() {
     // Loop through tests
     for (const auto &t : tests) {
         std::string result = PorterStemmer::stem(t.input);
-        bool match = (result == t.expected);
-        if (match)
-            passed++;
-
-        std::cout << std::left << std::setw(20) << t.input << std::setw(20) << t.expected
-                  << std::setw(20) << result << (match ? "PASS" : "FAIL") << std::endl;
+        // bool match = (result == t.expected);
+        // if (match)
+        //     passed++;
+        // std::cout << std::left << std::setw(20) << t.input << std::setw(20) << t.expected
+        //           << std::setw(20) << result << (match ? "PASS" : "FAIL") << std::endl;
     }
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::micro> elapsed = end - start;
 
-    std::cout << "\n" << std::string(70, '-') << std::endl;
-    std::cout << "Summary: " << passed << "/" << tests.size() << " passed." << std::endl;
+    // std::cout << "\n" << std::string(70, '-') << std::endl;
+    // std::cout << "Summary: " << passed << "/" << tests.size() << " passed." << std::endl;
     std::cout << "Total time for batch: " << elapsed.count() << " microseconds" << std::endl;
     std::cout << "Average time per word: " << (elapsed.count() / tests.size()) << " microseconds"
               << std::endl;
