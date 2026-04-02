@@ -27,6 +27,171 @@ class Tokenizer {
 };
 
 class PorterStemmer {
+    // following https://vijinimallawaarachchi.com/2017/05/09/porter-stemming-algorithm/
   public:
-    static std::string stem(const std::string &token);
+    static std::string stem(const std::string &token) {
+        if (token.length() <= 2)
+            return token;
+
+        std::string w = token;
+
+        step1(w);
+        if (w.length() > 2) {
+            step2(w);
+            step3(w);
+            step4(w);
+            step5(w);
+        }
+
+        return w;
+    }
+
+  private:
+    static bool ends_with(std::string_view value, std::string_view ending) {
+        if (ending.size() > value.size())
+            return false;
+        return value.compare(value.size() - ending.size(), ending.size(), ending) == 0;
+    }
+
+    static inline bool isVowel(std::string_view w, size_t i) {
+        char c = w[i];
+        if (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u')
+            return true;
+        if (c == 'y')
+            return (i == 0) ? false : !isVowel(w, i - 1);
+        return false;
+    }
+
+    static int getMeasure(std::string_view w) {
+        int m = 0;
+        size_t i = 0, n = w.length();
+        while (i < n && !isVowel(w, i))
+            i++;
+        while (i < n) {
+            while (i < n && isVowel(w, i))
+                i++;
+            if (i < n) {
+                m++;
+                while (i < n && !isVowel(w, i))
+                    i++;
+            }
+        }
+        return m;
+    }
+
+    static bool containsVowel(std::string_view w) {
+        for (size_t i = 0; i < w.length(); ++i)
+            if (isVowel(w, i))
+                return true;
+        return false;
+    }
+
+    static bool endsWithDoubleConsonant(std::string_view w) {
+        if (w.length() < 2)
+            return false;
+        return (w[w.length() - 1] == w[w.length() - 2] && !isVowel(w, w.length() - 1));
+    }
+
+    static bool ends_cvc(std::string_view w) {
+        size_t n = w.length();
+        if (n < 3)
+            return false;
+        char c = w[n - 1];
+        if (isVowel(w, n - 1) || !isVowel(w, n - 2) || isVowel(w, n - 3))
+            return false;
+        return (c != 'w' && c != 'x' && c != 'y');
+    }
+
+    static void step1(std::string &w) {
+        if (ends_with(w, "sses"))
+            w.erase(w.length() - 2);
+        else if (ends_with(w, "ies"))
+            w.replace(w.length() - 3, 3, "i");
+        else if (ends_with(w, "s") && !ends_with(w, "ss"))
+            w.pop_back();
+
+        bool do_cleanup = false;
+        if (ends_with(w, "eed")) {
+            if (getMeasure(std::string_view(w).substr(0, w.length() - 3)) > 0)
+                w.pop_back();
+        } else if (ends_with(w, "ed")) {
+            if (containsVowel(std::string_view(w).substr(0, w.length() - 2))) {
+                w.erase(w.length() - 2);
+                do_cleanup = true;
+            }
+        } else if (ends_with(w, "ing")) {
+            if (containsVowel(std::string_view(w).substr(0, w.length() - 3))) {
+                w.erase(w.length() - 3);
+                do_cleanup = true;
+            }
+        }
+
+        if (do_cleanup) {
+            if (ends_with(w, "at") || ends_with(w, "bl") || ends_with(w, "iz"))
+                w += "e";
+            else if (endsWithDoubleConsonant(w) && !ends_with(w, "l") && !ends_with(w, "s") &&
+                     !ends_with(w, "z"))
+                w.pop_back();
+            else if (getMeasure(w) == 1 && ends_cvc(w))
+                w += "e";
+        }
+        if (ends_with(w, "y") && containsVowel(std::string_view(w).substr(0, w.length() - 1)))
+            w[w.length() - 1] = 'i';
+    }
+
+    static void step2(std::string &w) {
+        static const std::vector<std::pair<std::string, std::string>> subs = {
+            {"ational", "ate"}, {"tional", "tion"}, {"enci", "ence"},   {"anci", "ance"},
+            {"izer", "ize"},    {"abli", "able"},   {"alli", "al"},     {"entli", "ent"},
+            {"eli", "e"},       {"ousli", "ous"},   {"ization", "ize"}, {"ation", "ate"},
+            {"ator", "ate"},    {"alism", "al"},    {"iveness", "ive"}, {"fulness", "ful"},
+            {"ousness", "ous"}, {"aliti", "al"},    {"iviti", "ive"},   {"biliti", "ble"}};
+        for (auto const &[suffix, rep] : subs) {
+            if (ends_with(w, suffix)) {
+                if (getMeasure(std::string_view(w).substr(0, w.length() - suffix.length())) > 0)
+                    w.replace(w.length() - suffix.length(), suffix.length(), rep);
+                break;
+            }
+        }
+    }
+
+    static void step3(std::string &w) {
+        static const std::vector<std::pair<std::string, std::string>> subs = {
+            {"icate", "ic"}, {"ative", ""}, {"alize", "al"}, {"iciti", "ic"},
+            {"ical", "ic"},  {"ful", ""},   {"ness", ""}};
+        for (auto const &[suffix, rep] : subs) {
+            if (ends_with(w, suffix)) {
+                if (getMeasure(std::string_view(w).substr(0, w.length() - suffix.length())) > 0)
+                    w.replace(w.length() - suffix.length(), suffix.length(), rep);
+                break;
+            }
+        }
+    }
+
+    static void step4(std::string &w) {
+        static const std::vector<std::string> suffixes = {
+            "al",   "ance", "ence", "er",  "ic",  "able", "ible", "ant", "ement",
+            "ment", "ent",  "ou",   "ism", "ate", "iti",  "ous",  "ive", "ize"};
+        for (const std::string &s : suffixes) {
+            if (ends_with(w, s)) {
+                if (getMeasure(std::string_view(w).substr(0, w.length() - s.length())) > 1)
+                    w.erase(w.length() - s.length());
+                return;
+            }
+        }
+        if (ends_with(w, "ion")) {
+            std::string_view stem = std::string_view(w).substr(0, w.length() - 3);
+            if (getMeasure(stem) > 1 && (ends_with(stem, "s") || ends_with(stem, "t")))
+                w.erase(w.length() - 3);
+        }
+    }
+
+    static void step5(std::string &w) {
+        int m = getMeasure(std::string_view(w).substr(0, w.length() - 1));
+        if (ends_with(w, "e") &&
+            (m > 1 || (m == 1 && !ends_cvc(std::string_view(w).substr(0, w.length() - 1)))))
+            w.pop_back();
+        if (getMeasure(w) > 1 && endsWithDoubleConsonant(w) && ends_with(w, "l"))
+            w.pop_back();
+    }
 };
