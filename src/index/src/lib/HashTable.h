@@ -25,7 +25,7 @@ template <typename Key, typename Value> class Bucket {
     uint64_t hashValue;
     Tuple<Key, Value> tuple;
 
-    Bucket(const Key &k, uint64_t h, const Value v) : tuple(k, v), next(nullptr), hashValue(h) {}
+    Bucket(const Key &k, uint64_t h, const Value v) : next(nullptr), hashValue(h), tuple(k, v) {}
 };
 
 template <typename Key, typename Value> class HashTable {

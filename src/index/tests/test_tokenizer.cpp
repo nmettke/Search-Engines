@@ -98,8 +98,7 @@ void test_normalization() {
     TEST_ASSERT(out.tokens[3].location == out.tokens[4].location, "Hyphen parts share location");
 
     // check stemming
-    TEST_ASSERT(out.tokens[5].term == "univers",
-                "Currently unstemmed. Update to 'univers' later.");
+    TEST_ASSERT(out.tokens[5].term == "univers", "Should stem to univers");
 
     std::cout << "test_normalization PASSED.\n";
 }

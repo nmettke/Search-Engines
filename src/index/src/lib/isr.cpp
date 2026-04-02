@@ -5,7 +5,7 @@
 ISR::ISR() = default;
 
 ISR::ISR(const uint8_t *data, uint32_t num_postings)
-    : data(data), current_ptr(data), num_postings(num_postings) {}
+    : num_postings(num_postings), data(data), current_ptr(data) {}
 
 uint32_t ISR::next() {
     if (done())
