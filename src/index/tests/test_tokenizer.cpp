@@ -12,6 +12,60 @@
         }                                                                                          \
     } while (false)
 
+struct TestCase {
+    std::string input;
+    std::string expected;
+};
+
+void test_stemmer() {
+    std::vector<TestCase> tests = {{"caresses", "caress"},
+                                   {"ponies", "poni"},
+                                   {"ties", "ti"},
+                                   {"caress", "caress"},
+                                   {"cats", "cat"},
+                                   {"feed", "feed"},
+                                   {"agreed", "agre"},
+                                   {"disabled", "disabl"},
+                                   {"matting", "mat"},
+                                   {"mating", "mate"},
+                                   {"meeting", "meet"},
+                                   {"milling", "mill"},
+                                   {"messing", "mess"},
+                                   {"meetings", "meet"},
+                                   {"conflated", "conflat"},
+                                   {"troubled", "troubl"},
+                                   {"sized", "size"},
+                                   {"hopping", "hop"},
+                                   {"tanned", "tan"},
+                                   {"falling", "fall"},
+                                   {"hissing", "hiss"},
+                                   {"fizzed", "fizz"},
+                                   {"failing", "fail"},
+                                   {"filing", "file"},
+                                   {"happy", "happi"},
+                                   {"sky", "sky"},
+                                   {"relational", "relat"},
+                                   {"conditional", "condit"},
+                                   {"rational", "ration"},
+                                   {"valency", "valenc"},
+                                   {"hesitancy", "hesit"},
+                                   {"digitizer", "digit"},
+                                   {"conformability", "conform"},
+                                   {"radically", "radic"},
+                                   {"differentli", "differ"},
+                                   {"vileli", "vile"},
+                                   {"analogousli", "analog"},
+                                   {"vietnamization", "vietnam"},
+                                   {"predication", "predic"}};
+
+    std::cout << "Running test_stemmer...\n";
+    for (const auto &test : tests) {
+        std::string actual = PorterStemmer::stem(test.input);
+        TEST_ASSERT(actual == test.expected, "Stemming failed for input: " + test.input);
+    }
+    std::cout << "test_stemmer PASSED.\n";
+}
+
 void test_normalization() {
     std::cout << "Running test_normalization...\n";
     Tokenizer tokenizer;
@@ -26,7 +80,7 @@ void test_normalization() {
     // 1. "HELLO" -> "hello"
     // 2. "world!" -> "world"
     // 3. "!@#" -> (discarded)
-    // 4. "real-time" -> "real-time", "real", "time"
+    // 4. "real-time" -> "real-tim", "real", "time"
     // 5. "universities" -> "universities" (TODO: change to "univers" when stemmer is ready)
 
     TEST_ASSERT(out.tokens.size() == 6, "Should emit exactly 6 valid tokens");
@@ -35,7 +89,7 @@ void test_normalization() {
     TEST_ASSERT(out.tokens[1].term == "world", "Should strip trailing punctuation");
 
     // hyphen handling
-    TEST_ASSERT(out.tokens[2].term == "real-time", "Should keep full hyphenated word");
+    TEST_ASSERT(out.tokens[2].term == "real-tim", "Should keep full hyphenated word");
     TEST_ASSERT(out.tokens[3].term == "real", "Should split hyphen left");
     TEST_ASSERT(out.tokens[4].term == "time", "Should split hyphen right");
 
@@ -43,8 +97,8 @@ void test_normalization() {
     TEST_ASSERT(out.tokens[2].location == out.tokens[3].location, "Hyphen parts share location");
     TEST_ASSERT(out.tokens[3].location == out.tokens[4].location, "Hyphen parts share location");
 
-    // TODO: update this assertion when your teammate finishes the Porter Stemmer!
-    TEST_ASSERT(out.tokens[5].term == "universities",
+    // check stemming
+    TEST_ASSERT(out.tokens[5].term == "univers",
                 "Currently unstemmed. Update to 'univers' later.");
 
     std::cout << "test_normalization PASSED.\n";
@@ -76,6 +130,7 @@ void test_global_location_counter() {
 }
 
 int main() {
+    test_stemmer();
     test_normalization();
     test_global_location_counter();
     std::cout << "All Tokenizer tests passed!\n";
