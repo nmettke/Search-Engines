@@ -1,7 +1,7 @@
-// This header includes code needed for tokenizing
+// src/lib/tokenizer.h
 #pragma once
 
-#include "../parser/HtmlParser.h"
+#include "../../../parser/HtmlParser.h"
 #include "types.h"
 
 #include <string>

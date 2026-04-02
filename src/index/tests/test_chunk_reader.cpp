@@ -1,11 +1,11 @@
 // index/tests/test_chunk_reader.cpp
 #include <iostream>
 #include <unistd.h>
-#include "../Common.h"
-#include "../disk_chunk_reader.h"
-#include "../in_memory_index.h"
-#include "../disk_chunk_writer.h"
-#include "../chunk_flusher.h"
+#include "../src/lib/Common.h"
+#include "../src/lib/disk_chunk_reader.h"
+#include "../src/lib/in_memory_index.h"
+#include "../src/lib/disk_chunk_writer.h"
+#include "../src/lib/chunk_flusher.h"
 
 
 #define TEST_ASSERT(condition, message) \

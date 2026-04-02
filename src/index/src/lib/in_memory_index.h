@@ -1,4 +1,4 @@
-// This header includes code needed to build an index in-memory
+// src/lib/in_memory_index.h
 #pragma once
 
 #include "types.h"

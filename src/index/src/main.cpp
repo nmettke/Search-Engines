@@ -1,7 +1,8 @@
-#include "chunk_flusher.h"
-#include "disk_chunk_reader.h" // TODO
-#include "in_memory_index.h"
-#include "tokenizer.h"
+// src/main.cpp
+#include "lib/chunk_flusher.h"
+#include "lib/disk_chunk_reader.h"
+#include "lib/in_memory_index.h"
+#include "lib/tokenizer.h"
 
 #include <exception>
 #include <iostream>
@@ -59,14 +60,14 @@ int main() {
 
     auto doc0 = reader.getDocument(0);
     if (doc0) {
-        std::cout << "doc0 url=" << doc0->url << ", range=["
-                  << doc0->start_location << ", " << doc0->end_location << "]\n";
+        std::cout << "doc0 url=" << doc0->url << ", range=[" << doc0->start_location << ", "
+                  << doc0->end_location << "]\n";
     }
 
-    // get all documents containing "cat" by iterating through 
+    // get all documents containing "cat" by iterating through
     // the ISR and mapping locations to documents
     isr = reader.createISR("cat");
-    
+
     std::cout << "Pages containing 'cat':\n";
 
     std::string last_printed_url = "";
@@ -74,7 +75,7 @@ int main() {
     // iterate through every location
     while (!isr.done()) {
         uint32_t loc = isr.next();
-        
+
         // map the location to the actual Document Record
         auto doc = reader.getDocumentByLocation(loc);
 

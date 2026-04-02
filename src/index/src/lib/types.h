@@ -1,4 +1,4 @@
-// This header contains type definition for data structures used throught index
+// src/lib/types.h
 #pragma once
 
 #include <cstdint>

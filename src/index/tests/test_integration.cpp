@@ -1,7 +1,7 @@
 // index/tests/test_integration.cpp
-#include "../Common.h" // For hashString
-#include "../disk_chunk_writer.h"
-#include "../in_memory_index.h"
+#include "../src/lib/Common.h" // For hashString
+#include "../src/lib/disk_chunk_writer.h"
+#include "../src/lib/in_memory_index.h"
 #include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>

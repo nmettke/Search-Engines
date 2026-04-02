@@ -1,4 +1,4 @@
-// chunk_flusher.h
+// src/lib/chunk_flusher.h
 #pragma once
 
 #include "disk_chunk_writer.h"

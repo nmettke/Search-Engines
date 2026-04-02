@@ -1,7 +1,7 @@
 // tests/test_chunk_writer.cpp
-#include "../disk_chunk_writer.h"
-#include "../types.h"
-#include "../vbyte.h"
+#include "../src/lib/disk_chunk_writer.h"
+#include "../src/lib/types.h"
+#include "../src/lib/vbyte.h"
 #include <cassert>
 #include <cstring>
 #include <fcntl.h>

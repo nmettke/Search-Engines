@@ -1,4 +1,4 @@
-// This header includes code needed for variable byte encoding
+// src/lib/vbyte.h
 #pragma once
 
 #include <cstddef>

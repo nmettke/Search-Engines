@@ -1,3 +1,4 @@
+// src/lib/vbyte.cpp
 #include "vbyte.h"
 
 size_t VariableByteEncoder::encode(uint32_t value, uint8_t *out) {

@@ -1,4 +1,4 @@
-// This header includes code needed for the index stream reader
+// src/lib/isr.h
 #pragma once
 
 #include "types.h"

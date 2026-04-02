@@ -1,4 +1,4 @@
-// disk_chunk_writer.h
+// src/lib/disk_chunk_writer.h
 #pragma once
 
 #include "types.h"

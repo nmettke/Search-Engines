@@ -1,4 +1,4 @@
-// disk_chunk_writer.cpp
+// src/lib/disk_chunk_writer.cpp
 #include "disk_chunk_writer.h"
 #include "binary_writer.h"
 #include "vbyte.h"
@@ -44,14 +44,14 @@ uint64_t DiskChunkWriter::writePostingList(const std::vector<uint32_t> &location
 
 uint64_t DiskChunkWriter::writeDocumentTable(const std::vector<DocumentRecord> &documents) {
     BinaryWriter writer(fd_);
-    
+
     uint64_t current_offset = static_cast<uint64_t>(writer.currentOffset());
 
     // write num_documents
     writer.writePOD(static_cast<uint32_t>(documents.size()));
 
     // write each document
-    for (const auto& doc : documents) {
+    for (const auto &doc : documents) {
         writer.writeString16(doc.url);
 
         DocumentRecordDisk disk_record;
@@ -66,8 +66,8 @@ uint64_t DiskChunkWriter::writeDocumentTable(const std::vector<DocumentRecord> &
     return current_offset;
 }
 
-
-uint64_t DiskChunkWriter::writeDictionary(const std::vector<std::vector<DictionaryEntry>> &buckets) {
+uint64_t
+DiskChunkWriter::writeDictionary(const std::vector<std::vector<DictionaryEntry>> &buckets) {
     BinaryWriter writer(fd_);
     off_t dict_start_offset = writer.currentOffset();
 
@@ -82,30 +82,31 @@ uint64_t DiskChunkWriter::writeDictionary(const std::vector<std::vector<Dictiona
 
     // write the chains and record their start offsets
     for (size_t i = 0; i < num_buckets; ++i) {
-        if (buckets[i].empty()) continue;
+        if (buckets[i].empty())
+            continue;
 
         off_t current_chain_start = writer.currentOffset();
         bucket_offsets[i] = current_chain_start - dict_start_offset;
 
-        for (const auto& entry : buckets[i]) {
+        for (const auto &entry : buckets[i]) {
             BucketDisk b_disk = entry.disk_info;
             b_disk.string_length = static_cast<uint16_t>(entry.term.size());
-            
+
             writer.writePOD(b_disk);
             writer.writeBuffer(entry.term.data(), b_disk.string_length);
         }
 
         BucketDisk sentinel;
-        sentinel.occupied = 0; 
+        sentinel.occupied = 0;
         writer.writePOD(sentinel);
     }
 
     // seek back and overwrite the placeholder Buckets[] array with real offsets
     off_t end_of_dict = writer.currentOffset();
-    
+
     writer.seekSet(bucket_array_start);
     writer.writeBuffer(bucket_offsets.data(), num_buckets);
-    
+
     writer.seekSet(end_of_dict); // return to the end of the file
 
     return static_cast<uint64_t>(dict_start_offset);
