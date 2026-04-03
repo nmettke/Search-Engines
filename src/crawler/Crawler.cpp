@@ -3,7 +3,6 @@
 #include "url_dedup.h"
 
 int main() {
-    vector<pthread_t> threads(ThreadCount);
 
     Frontier f("src/crawler/seedList.txt");
     UrlBloomFilter bloom(1000000, 0.0001);
