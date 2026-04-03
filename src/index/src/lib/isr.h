@@ -13,8 +13,10 @@ class ISR {
     uint32_t seek(uint32_t target);
 
     uint32_t currentLocation() const { return current_loc; }
+    uint32_t currentIndex() const { return current_index; }
     uint32_t remaining() const { return num_postings - current_index; }
-    bool done() const { return current_index >= num_postings; }
+
+    bool done() const { return is_exhausted; }
 
   private:
     uint32_t num_postings = 0;
@@ -24,4 +26,6 @@ class ISR {
     const uint8_t *current_ptr = nullptr;
 
     std::optional<SeekTable> seek_table;
+
+    bool is_exhausted = true;
 };

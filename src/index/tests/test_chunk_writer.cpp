@@ -68,7 +68,8 @@ void test_write_posting_list() {
     // Deltas: [4, 11, 3, 284]. VByte should compress this to roughly 5 bytes.
     struct stat st;
     stat(test_file, &st);
-    TEST_ASSERT(st.st_size > sizeof(PostingListHeader), "File should contain header and data");
+    TEST_ASSERT(static_cast<unsigned long>(st.st_size) > sizeof(PostingListHeader),
+                "File should contain header and data");
 
     unlink(test_file);
     std::cout << "test_write_posting_list PASSED.\n";

@@ -1,4 +1,4 @@
-// tests/test_integration.cpp
+// tests/test_chunk_flusher.cpp
 #include "../src/lib/Common.h" // For hashString
 #include "../src/lib/disk_chunk_writer.h"
 #include "../src/lib/in_memory_index.h"

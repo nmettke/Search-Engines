@@ -5,11 +5,25 @@
 ISR::ISR() = default;
 
 ISR::ISR(const uint8_t *data, uint32_t num_postings, std::optional<SeekTable> table)
-    : num_postings(num_postings), data(data), current_ptr(data), seek_table(std::move(table)) {}
+    : num_postings(num_postings), data(data), current_ptr(data), seek_table(std::move(table)) {
+
+    is_exhausted = (num_postings == 0);
+
+    if (!is_exhausted) {
+        next();
+    }
+}
 
 uint32_t ISR::next() {
     if (done())
         return ISRSentinel;
+
+    if (current_index >= num_postings) {
+        is_exhausted = true;
+        current_loc = ISRSentinel;
+        return ISRSentinel;
+    }
+
     uint32_t delta = VariableByteEncoder::decode(current_ptr);
     current_loc += delta;
     current_index += 1;
@@ -17,6 +31,9 @@ uint32_t ISR::next() {
 }
 
 uint32_t ISR::seek(uint32_t target) {
+    if (is_exhausted)
+        return ISRSentinel;
+
     if (current_loc >= target && current_index > 0) {
         return current_loc;
     }

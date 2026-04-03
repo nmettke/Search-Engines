@@ -64,8 +64,9 @@ void test_create_isr() {
     // 3. Test successful lookup
     ISR isr_cat = reader.createISR("cat");
     TEST_ASSERT(!isr_cat.done(), "ISR for 'cat' should not be empty");
-    TEST_ASSERT(isr_cat.next() == 5, "First location should be 5");
+    TEST_ASSERT(isr_cat.currentLocation() == 5, "First location should be 5");
     TEST_ASSERT(isr_cat.next() == 10, "Second location should be 10");
+    isr_cat.next(); // Move past the last posting
     TEST_ASSERT(isr_cat.done(), "ISR should be exhausted");
 
     // 4. Test missing lookup

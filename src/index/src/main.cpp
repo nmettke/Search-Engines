@@ -2,8 +2,10 @@
 #include "lib/chunk_flusher.h"
 #include "lib/disk_chunk_reader.h"
 #include "lib/in_memory_index.h"
+#include "lib/query_engine.h"
 #include "lib/tokenizer.h"
 
+#include <cstdint>
 #include <exception>
 #include <iostream>
 #include <vector>
@@ -54,37 +56,49 @@ int main() {
               << ", terms=" << reader.header().num_unique_terms
               << ", total_locations=" << reader.header().total_locations << "\n";
 
-    // Reusing the teammate's ISR component
-    ISR isr = reader.createISR("cat");
+    ISR cat_isr = reader.createISR("cat");
     std::cout << "Posting list for 'cat': ";
-    while (!isr.done()) {
-        std::cout << isr.next() << ", ";
+    while (!cat_isr.done()) {
+        std::cout << cat_isr.currentLocation() << ", ";
+        cat_isr.next();
     }
     std::cout << "\n";
 
-    auto doc0 = reader.getDocument(0);
-    if (doc0) {
-        std::cout << "doc0 url=" << doc0->url << ", range=[" << doc0->start_location << ", "
-                  << doc0->end_location << "]\n";
+    ISR dog_isr = reader.createISR("dog");
+    std::cout << "Posting list for 'dog': ";
+    while (!dog_isr.done()) {
+        std::cout << dog_isr.currentLocation() << ", ";
+        dog_isr.next();
     }
+    std::cout << "\n";
 
-    auto doc1 = reader.getDocument(1);
-    if (doc1) {
-        std::cout << "doc1 url=" << doc1->url << ", range=[" << doc1->start_location << ", "
-                  << doc1->end_location << "]\n";
+    ISR doc_end_isr = reader.createISR(docEndToken);
+    std::cout << "Posting list for docEndToken: ";
+    while (!doc_end_isr.done()) {
+        std::cout << doc_end_isr.currentLocation() << ", ";
+        doc_end_isr.next();
+    }
+    std::cout << "\n";
+
+    for (uint32_t i = 0; i < reader.header().num_documents; i++) {
+        auto doc = reader.getDocument(i);
+        if (doc) {
+            std::cout << "Document " << i << ": url=" << doc->url << ", range=["
+                      << doc->start_location << ", " << doc->end_location << "]\n";
+        }
     }
 
     // get all documents containing "cat" by iterating through
     // the ISR and mapping locations to documents
-    isr = reader.createISR("cat");
+    cat_isr = reader.createISR("cat");
 
     std::cout << "Pages containing 'cat':\n";
 
     std::string last_printed_url = "";
 
     // iterate through every location
-    while (!isr.done()) {
-        uint32_t loc = isr.next();
+    while (!cat_isr.done()) {
+        uint32_t loc = cat_isr.next();
 
         std::cout << "Looking up location: " << loc << "\n";
         // map the location to the actual Document Record
@@ -93,7 +107,18 @@ int main() {
         // if (doc.has_value() && doc->url != last_printed_url) {
         std::cout << "- " << doc->url << " (Found at location: " << loc << ")\n";
         last_printed_url = doc->url;
-        // }
+    }
+
+    QueryEngine engine(reader);
+
+    // Search for a multi-word phrase!
+    std::vector<std::string> query = {"cat", "dog"};
+
+    auto results = engine.search(query);
+
+    std::cout << "\nResults for 'cat dog':\n";
+    for (const auto &doc : results) {
+        std::cout << "- " << doc.url << "\n";
     }
 
     return 0;
