@@ -103,20 +103,16 @@ ISR DiskChunkReader::createISR(const std::string &term) const {
             std::optional<SeekTable> table = std::nullopt;
 
             if (p_header->has_seek_table) {
-                const uint8_t* table_data = p_reader.current();
+                const uint8_t *table_data = p_reader.current();
                 p_reader.skip(SeekTable::SerializedSize);
-                
-                const uint8_t* compressed_data = p_reader.current();
 
-                table = SeekTable::deserialize(
-                    table_data, 
-                    compressed_data, 
-                    p_header->data_size, 
-                    p_header->num_postings
-                );
+                const uint8_t *compressed_data = p_reader.current();
+
+                table = SeekTable::deserialize(table_data, compressed_data, p_header->data_size,
+                                               p_header->num_postings);
                 return ISR(compressed_data, p_header->num_postings, table);
             } else {
-                const uint8_t* compressed_data = p_reader.current();
+                const uint8_t *compressed_data = p_reader.current();
                 return ISR(compressed_data, p_header->num_postings);
             }
         }
@@ -130,31 +126,26 @@ std::optional<DocumentRecord> DiskChunkReader::getDocument(uint32_t doc_id) cons
         return std::nullopt;
     }
 
-    BufferReader reader(data_ + header_.doctable_offset);
+    const uint8_t *doctable_ptr = data_ + header_.doctable_offset;
 
-    // skip the total number of documents header
-    reader.skip(sizeof(uint32_t));
+    const uint64_t *offsets_array =
+        reinterpret_cast<const uint64_t *>(doctable_ptr + sizeof(uint32_t));
 
-    // scan until we find the target document ID
-    for (uint32_t i = 0; i <= doc_id; ++i) {
-        if (i == doc_id) {
-            std::string_view url_view = reader.readString16();
-            const DocumentRecordDisk *disk_rec = reader.readPOD<DocumentRecordDisk>();
+    uint64_t doc_offset = offsets_array[doc_id];
 
-            DocumentRecord doc;
-            doc.url = std::string(url_view);
-            doc.start_location = disk_rec->start_location;
-            doc.end_location = disk_rec->end_location;
-            doc.word_count = disk_rec->word_count;
-            doc.title_word_count = disk_rec->title_word_count;
-            return doc;
-        } else {
-            reader.readString16(); // advance past URL
-            reader.skip(sizeof(DocumentRecordDisk));
-        }
-    }
+    BufferReader reader(doctable_ptr + doc_offset);
 
-    return std::nullopt;
+    std::string_view url_view = reader.readString16();
+    const DocumentRecordDisk *disk_rec = reader.readPOD<DocumentRecordDisk>();
+
+    DocumentRecord doc;
+    doc.url = std::string(url_view);
+    doc.start_location = disk_rec->start_location;
+    doc.end_location = disk_rec->end_location;
+    doc.word_count = disk_rec->word_count;
+    doc.title_word_count = disk_rec->title_word_count;
+
+    return doc;
 }
 
 std::optional<DocumentRecord> DiskChunkReader::getDocumentByLocation(uint32_t location) const {
@@ -163,6 +154,7 @@ std::optional<DocumentRecord> DiskChunkReader::getDocumentByLocation(uint32_t lo
 
     BufferReader reader(data_ + header_.doctable_offset);
     reader.skip(sizeof(uint32_t));
+    reader.skip(header_.num_documents * sizeof(uint64_t));
 
     for (uint32_t i = 0; i < header_.num_documents; ++i) {
         // Read cleanly!

@@ -7,7 +7,6 @@ ISR::ISR() = default;
 ISR::ISR(const uint8_t *data, uint32_t num_postings, std::optional<SeekTable> table)
     : num_postings(num_postings), data(data), current_ptr(data), seek_table(std::move(table)) {}
 
-
 uint32_t ISR::next() {
     if (done())
         return ISRSentinel;
@@ -25,11 +24,12 @@ uint32_t ISR::seek(uint32_t target) {
     if (seek_table.has_value()) {
         auto entry = seek_table->entryForLocation(target);
 
-        if (entry.posting_index != SeekTable::NoPosting && entry.posting_index + 1 > current_index) {
+        if (entry.posting_index != SeekTable::NoPosting &&
+            entry.posting_index + 1 > current_index) {
             current_ptr = data + entry.byte_offset;
             current_loc = entry.base_location;
 
-            current_index = entry.posting_index + 1; 
+            current_index = entry.posting_index + 1;
 
             if (current_loc >= target) {
                 return current_loc;

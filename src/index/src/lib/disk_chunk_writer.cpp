@@ -58,14 +58,20 @@ uint64_t DiskChunkWriter::writePostingList(const std::vector<uint32_t> &location
 
 uint64_t DiskChunkWriter::writeDocumentTable(const std::vector<DocumentRecord> &documents) {
     BinaryWriter writer(fd_);
+    uint64_t doctable_start = static_cast<uint64_t>(writer.currentOffset());
 
-    uint64_t current_offset = static_cast<uint64_t>(writer.currentOffset());
+    uint32_t num_docs = static_cast<uint32_t>(documents.size());
+    writer.writePOD(num_docs);
 
-    // write num_documents
-    writer.writePOD(static_cast<uint32_t>(documents.size()));
+    off_t offsets_array_start = writer.currentOffset();
+    std::vector<uint64_t> doc_offsets(num_docs, 0);
+    writer.writeBuffer(doc_offsets.data(), num_docs);
 
-    // write each document
-    for (const auto &doc : documents) {
+    for (size_t i = 0; i < num_docs; ++i) {
+        const auto &doc = documents[i];
+
+        doc_offsets[i] = static_cast<uint64_t>(writer.currentOffset()) - doctable_start;
+
         writer.writeString16(doc.url);
 
         DocumentRecordDisk disk_record;
@@ -77,7 +83,13 @@ uint64_t DiskChunkWriter::writeDocumentTable(const std::vector<DocumentRecord> &
         writer.writePOD(disk_record);
     }
 
-    return current_offset;
+    off_t end_of_doctable = writer.currentOffset();
+    writer.seekSet(offsets_array_start);
+    writer.writeBuffer(doc_offsets.data(), num_docs);
+
+    writer.seekSet(end_of_doctable);
+
+    return doctable_start;
 }
 
 uint64_t

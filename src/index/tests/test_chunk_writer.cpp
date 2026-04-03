@@ -92,10 +92,11 @@ void test_write_document_table() {
     TEST_ASSERT(stat(test_file, &st) == 0, "File should exist");
 
     // Header: 4 bytes (num_documents)
+    // Offsets array: 2 docs * 8 bytes each = 16 bytes
     // Doc 1: 2 (url_len) + 24 (url bytes) + 4 (start) + 4 (end) + 4 (wc) + 2 (title_wc) = 40 bytes
     // Doc 2: 2 (url_len) + 24 (url bytes) + 4 (start) + 4 (end) + 4 (wc) + 2 (title_wc) = 40 bytes
-    // Total expected: 4 + 40 + 40 = 84 bytes
-    TEST_ASSERT(st.st_size == 84, "Document table size should be exactly 84 bytes");
+    // Total expected: 4 + 16 + 40 + 40 = 100 bytes
+    TEST_ASSERT(st.st_size == 100, "Document table size should be exactly 100 bytes");
 
     unlink(test_file);
     std::cout << "test_write_document_table PASSED.\n";

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "types.h"
 #include "seek_table.h"
+#include "types.h"
 #include <optional>
 
 class ISR {
@@ -22,6 +22,6 @@ class ISR {
     uint32_t current_loc = 0;
     const uint8_t *data = nullptr;
     const uint8_t *current_ptr = nullptr;
-    
+
     std::optional<SeekTable> seek_table;
 };
