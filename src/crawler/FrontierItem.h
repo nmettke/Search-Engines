@@ -9,6 +9,9 @@ class FrontierItem {
     explicit FrontierItem(const string &url);
     FrontierItem(const string &url, const FrontierItem &parent);
 
+    string serializeToLine() const;
+    static FrontierItem deserializeFromLine(const string& line);
+
     void markBroken();
     void markFailed();
     void markNonEnglish();
@@ -18,6 +21,10 @@ class FrontierItem {
     string link;
 
   private:
+    FrontierItem(const string &link, Suffix suffix, size_t baseLength,
+                 size_t seedDistance, size_t pathDepth, bool failed,
+                 bool broken, bool english);
+  
     Suffix suffix = Suffix::OTHER;
     size_t baseLength = 0;
     size_t seedDistance = 0;

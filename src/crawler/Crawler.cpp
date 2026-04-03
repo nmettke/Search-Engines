@@ -1,18 +1,30 @@
-// File stub for crawler orchestrator file
 #include "Crawler.h"
+#include "checkpoint.h"
 #include "url_dedup.h"
+#include <csignal>
+#include <iostream>
 #include <thread>
 
-Frontier f("src/crawler/seedList.txt");
+static volatile bool shouldStop = false;
+static void signalHandler(int) { shouldStop = true; }
+
+CheckpointConfig cpConfig;
+Checkpoint *checkpoint;
+size_t urlsCrawled = 0;
+
+Frontier *f;
 UrlBloomFilter bloom(1000000, 0.0001);
 unsigned int cores = std::thread::hardware_concurrency();
 
 void *WorkerThread(void *arg) {
-    while (std::optional<FrontierItem> item = f.pop()) {
+    while (std::optional<FrontierItem> item = f->pop()) {
+        if (shouldStop)
+            break;
+
         struct TaskCompletionGuard {
             Frontier &frontier;
             ~TaskCompletionGuard() { frontier.taskDone(); }
-        } taskCompletionGuard{f};
+        } taskCompletionGuard{*f};
 
         string page = readURL(item->link);
         HtmlParser parsed(page.cstr(), page.size());
@@ -27,22 +39,54 @@ void *WorkerThread(void *arg) {
             }
         }
 
-        f.pushMany(discoveredLinks);
-        std::cout << "Crawled " << item->link << '\n';
+        f->pushMany(discoveredLinks);
+        ++urlsCrawled;
+        std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
+
+        if (checkpoint->shouldCheckpoint(urlsCrawled)) {
+            checkpoint->save(*f, bloom, urlsCrawled);
+        }
     }
 
     return nullptr;
 }
 
 int main() {
+    signal(SIGINT, signalHandler);
+    signal(SIGTERM, signalHandler);
+
+    cpConfig.directory = "src/crawler";
+    cpConfig.interval = 500;
+    checkpoint = new Checkpoint(cpConfig);
+
+    std::vector<FrontierItem> recoveredItems;
+    urlsCrawled = 0;
+
+    if (checkpoint->load(recoveredItems, bloom, urlsCrawled)) {
+        f = new Frontier(std::move(recoveredItems));
+        std::cerr << "Recovered from checkpoint at " << urlsCrawled << " URLs\n";
+    } else {
+        f = new Frontier("src/crawler/seedList.txt");
+        std::cerr << "Starting fresh from seed list\n";
+    }
+
     size_t ThreadCount = cores * 3;
     vector<pthread_t> threads(ThreadCount);
 
-    for (int i = 0; i < ThreadCount; i++) {
+    for (size_t i = 0; i < ThreadCount; i++) {
         pthread_create(&threads[i], nullptr, WorkerThread, nullptr);
     }
 
-    for (int i = 0; i < ThreadCount; i++) {
+    for (size_t i = 0; i < ThreadCount; i++) {
         pthread_join(threads[i], nullptr);
     }
+
+    checkpoint->save(*f, bloom, urlsCrawled);
+
+    if (shouldStop)
+        std::cerr << "Graceful shutdown after SIGINT\n";
+
+    delete f;
+    delete checkpoint;
+    return 0;
 }

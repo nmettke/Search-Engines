@@ -20,6 +20,8 @@ class Frontier {
   public:
     Frontier(const std::string seed_list_str);
 
+    Frontier(std::vector<FrontierItem> items);
+
     ~Frontier() = default;
 
     void push(const string &url);
@@ -34,6 +36,8 @@ class Frontier {
     std::size_t size() const;
 
     bool empty() const;
+
+    std::vector<FrontierItem> snapshot() const;
 
   private:
     std::priority_queue<FrontierItem, std::vector<FrontierItem>, FrontierItemCompare> pq;

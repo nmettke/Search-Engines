@@ -20,6 +20,23 @@ Frontier::Frontier(const std::string seed_list_str) {
     }
 }
 
+Frontier::Frontier(std::vector<FrontierItem> items) {
+    for (auto &item : items) {
+        pq.push(std::move(item));
+    }
+}
+
+std::vector<FrontierItem> Frontier::snapshot() const {
+    lock_guard guard(m);
+    auto pq_copy = pq;
+    std::vector<FrontierItem> result;
+    while (!pq_copy.empty()) {
+        result.push_back(pq_copy.top());
+        pq_copy.pop();
+    }
+    return result;
+}
+
 void Frontier::push(const string &url) {
     lock_guard guard(m);
     if (closed) {
