@@ -23,8 +23,11 @@ class Frontier {
     ~Frontier() = default;
 
     void push(const string &url);
+    void pushMany(const vector<string> &urls);
 
     std::optional<FrontierItem> pop();
+
+    void taskDone();
 
     bool contains(const string &url) const;
 
@@ -35,4 +38,7 @@ class Frontier {
   private:
     std::priority_queue<FrontierItem, std::vector<FrontierItem>, FrontierItemCompare> pq;
     mutable mutex m;
+    condition_variable cv;
+    bool closed;
+    std::size_t pending;
 };

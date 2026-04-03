@@ -65,8 +65,13 @@ target_link_libraries(crawler_lib
         utils
 )
 
+set(CRAWLER_MAIN_SOURCE crawler/Crawler.cpp)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/crawler/crawler.cpp)
+    set(CRAWLER_MAIN_SOURCE crawler/crawler.cpp)
+endif()
+
 add_executable(crawler
-    crawler/Crawler.cpp
+    ${CRAWLER_MAIN_SOURCE}
 )
 
 target_link_libraries(crawler
@@ -76,17 +81,5 @@ target_link_libraries(crawler
         utils
 )
 
-add_executable(crawler_basic
-    crawler/basic.cpp
-)
-
-target_link_libraries(crawler_basic
-    PRIVATE
-        crawler_lib
-        parser
-        utils
-)
-
 target_compile_features(crawler_lib PUBLIC cxx_std_17)
 target_compile_features(crawler PUBLIC cxx_std_17)
-target_compile_features(crawler_basic PUBLIC cxx_std_17)
