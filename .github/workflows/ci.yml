@@ -19,6 +19,8 @@ jobs:
             regex: "^string::"
           - suite: FrontierItemHelper
             regex: "^FrontierItemHelper::"
+          - suite: PriorityQueue
+            regex: "^PriorityQueue::"
 
     steps:
       - uses: actions/checkout@v4

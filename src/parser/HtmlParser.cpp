@@ -32,7 +32,7 @@ static bool isNonLatinAlpha(Unicode cp) {
 static void countAlpha(const std::vector<string> &wordList, size_t &latinCount,
                        size_t &totalAlpha) {
     for (const auto &word : wordList) {
-        const Utf8 *p = reinterpret_cast<const Utf8 *>(word.data());
+        const Utf8 *p = reinterpret_cast<const Utf8 *>(word.cstr());
         const Utf8 *bound = p + word.size();
 
         while (p < bound) {
