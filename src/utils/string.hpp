@@ -92,8 +92,8 @@ class string {
     const char *cstr() const { return _buffer; }
     const char *c_str() const { return _buffer; }
 
-    const char* data() const {return _buffer; }
-    char* data() { return _buffer; }
+    const char *data() const { return _buffer; }
+    char *data() { return _buffer; }
 
     // Iterator Begin
     // REQUIRES: Nothing

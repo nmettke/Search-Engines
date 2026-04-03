@@ -44,8 +44,8 @@ int main() {
         }
 
         // readURL already returns your string
-        string page = readURL(links[i]); //Need to fix conversion between string and std::string
-        //string page = "";
+        string page = readURL(links[i]); // Need to fix conversion between string and std::string
+        // string page = "";
 
         HtmlParser parsed(page.cstr(), page.size());
 

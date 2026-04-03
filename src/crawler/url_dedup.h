@@ -1,12 +1,11 @@
 #pragma once
 
+#include "utils/string.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
-#include "utils/string.hpp"
-
 
 string normalizeUrl(const string &rawUrl);
 

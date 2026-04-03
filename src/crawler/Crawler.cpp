@@ -24,7 +24,8 @@ int main() {
             string page = readURL(item->link);
             HtmlParser parsed(page.cstr(), page.size());
             for (const Link &link : parsed.links) {
-                if (link.URL.find("http") != std::string::npos && searching.find(link.URL) == searching.end()) {
+                if (link.URL.find("http") != std::string::npos &&
+                    searching.find(link.URL) == searching.end()) {
                     f.push(link.URL);
                     searching.insert(link.URL);
                 }
