@@ -1,27 +1,37 @@
+#include <fstream>
+#include <iostream>
+
 #include "../parser/HtmlParser.h"
 #include "../utils/SSL/LinuxSSL_Crawler.hpp"
 #include "../utils/string.hpp"
 #include "../utils/vector.hpp"
+#include "url_dedup.h"
 #include <fstream>
 #include <iostream>
 #include <vector>
 
-std::vector<std::string> links;
+vector<string> links;
 
 const bool debug = false;
 
 int main() {
-    // Debug Config
-    std::ifstream seedList("seedList.txt");
+    std::ifstream seedList("src/crawler/seedList.txt");
     if (!seedList.is_open()) {
         std::cerr << "Failed to open file\n";
         return 1;
     }
+
+    // std::string allowed here only for getline
     std::string line;
+    UrlBloomFilter bloom(1000000, 0.0001);
     while (std::getline(seedList, line)) {
-        links.emplace_back(line);
+        std::string canonical;
+        if (shouldEnqueueUrl(line, bloom, canonical)) {
+            links.emplace_back(canonical);
+        }
     }
-    for (const std::string &link : links) {
+
+    for (const string &link : links) {
         std::cout << link << '\n';
     }
 
@@ -31,8 +41,12 @@ int main() {
         if (debug) {
             std::cout << "Searching " << links[i] << std::endl;
         }
-        std::string buffer = readURL(links[i]);
-        HtmlParser parsed(buffer.c_str(), buffer.size());
+
+        // readURL already returns your string
+        string page = readURL(links[i]); //Need to fix conversion between string and std::string
+        //string page = "";
+
+        HtmlParser parsed(page.cstr(), page.size());
 
         if (debug) {
             std::cout << "Searched " << links[i] << std::endl;
@@ -40,7 +54,10 @@ int main() {
 
         for (const Link &link : parsed.links) {
             if (link.URL.find("http") != link.URL.npos) {
-                links.push_back(link.URL);
+                std::string canonical;
+                if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
+                    links.push_back(canonical);
+                }
                 if (debug) {
                     std::cout << "Found " << link.URL << std::endl;
                 }
@@ -48,7 +65,7 @@ int main() {
         }
     }
 
-    for (const std::string &link : links) {
+    for (const string &link : links) {
         std::cout << link << std::endl;
     }
 }

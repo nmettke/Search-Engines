@@ -3,8 +3,8 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-
 #include <iostream>
+#include "../string.hpp"
 
 const int buffLength = 10240;
 
@@ -21,4 +21,4 @@ class ParsedUrl {
     char *pathBuffer;
 };
 
-std::string readURL(std::string target_url);
+string readURL(string target_url);

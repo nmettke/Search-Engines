@@ -8,8 +8,8 @@
 #include <cctype>
 #include <cstring>
 #include <stack>
-#include <string>
 #include <vector>
+#include "utils/string.hpp"
 
 // This is a simple HTML parser class.  Given a text buffer containing
 // a presumed HTML page, the constructor will parse the text to create
@@ -75,21 +75,21 @@
 
 class Link {
   public:
-    std::string URL;
-    std::vector<std::string> anchorText;
+    ::string URL;
+    std::vector<::string> anchorText;
 
-    Link(std::string URL) : URL(URL) {}
+    Link(::string URL) : URL(URL) {}
 };
 
 class HtmlParser {
   public:
-    std::vector<std::string> words, titleWords;
+    std::vector<::string> words, titleWords;
     std::vector<Link> links;
-    std::string base;
+    ::string base;
 
   private:
     // discard section tags
-    std::stack<std::string> openSections;
+    std::stack<::string> openSections;
     bool inTitle = false;
     bool inAnchor = false;
     // current link being built
@@ -104,7 +104,7 @@ class HtmlParser {
 
     // if the current position matches a specific closing tag -> return nullptr if not closing tag +
     // not the correct tag if not reutnr pointer to > + 1
-    const char *matchClosingTag(const char *p, const char *end, const std::string &tagName) {
+    const char *matchClosingTag(const char *p, const char *end, const ::string &tagName) {
 
         // dont go past end this will fix it
         if (p + 2 + tagName.length() >= end) {
@@ -116,7 +116,7 @@ class HtmlParser {
         }
 
         // tag name shud match maybe do strncasecmp not sure
-        if (strncasecmp(p + 2, tagName.c_str(), tagName.length()) != 0) {
+        if (strncasecmp(p + 2, tagName.cstr(), tagName.length()) != 0) {
             return nullptr;
         }
 
@@ -141,7 +141,7 @@ class HtmlParser {
 
         // make the word
 
-        std::string word(start, end);
+        ::string word(start, end);
 
         if (inTitle) {
             titleWords.push_back(word);
@@ -214,7 +214,7 @@ class HtmlParser {
             }
         } else {
             // store tag name -. changed to lowercase for all
-            std::string tagName;
+            ::string tagName;
             for (const char *p = tagStart; p < tagEnd; p++) {
                 tagName += tolower(*p);
             }
@@ -232,7 +232,7 @@ class HtmlParser {
             return;
         }
 
-        std::string href = extractAttribute(attrStart, attrEnd, "href");
+        ::string href = extractAttribute(attrStart, attrEnd, "href");
         if (!href.empty()) {
             // anchor with valid href closes prev anchor
             if (inAnchor) {
@@ -254,20 +254,20 @@ class HtmlParser {
         if (!base.empty())
             return;
 
-        std::string href = extractAttribute(attrStart, attrEnd, "href");
+        ::string href = extractAttribute(attrStart, attrEnd, "href");
         if (!href.empty()) {
             base = href;
         }
     }
 
     void handleEmbed(const char *attrStart, const char *attrEnd) {
-        std::string src = extractAttribute(attrStart, attrEnd, "src");
+        ::string src = extractAttribute(attrStart, attrEnd, "src");
         if (!src.empty()) {
             links.push_back(Link(src));
         }
     }
 
-    std::string extractAttribute(const char *start, const char *end, const char *attrName) {
+    ::string extractAttribute(const char *start, const char *end, const char *attrName) {
         size_t nameLen = strlen(attrName);
 
         for (const char *p = start; p + nameLen < end; p++) {
@@ -303,7 +303,7 @@ class HtmlParser {
                            *afterName != '<') {
                         afterName++;
                     }
-                    return std::string(valStart, afterName);
+                    return ::string(valStart, afterName);
                 }
 
                 afterName++;
@@ -314,7 +314,7 @@ class HtmlParser {
                     afterName++;
                 }
                 if (afterName < end) {
-                    return std::string(valStart, afterName);
+                    return ::string(valStart, afterName);
                 }
             }
         }
