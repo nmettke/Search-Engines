@@ -4,12 +4,12 @@
 #pragma once
 
 #include "HtmlTags.h"
-#include "Utf8.h"
+#include "utils/Utf8.h"
+#include "utils/string.hpp"
 #include <cctype>
 #include <cstring>
 #include <stack>
 #include <vector>
-#include "utils/string.hpp"
 
 // This is a simple HTML parser class.  Given a text buffer containing
 // a presumed HTML page, the constructor will parse the text to create

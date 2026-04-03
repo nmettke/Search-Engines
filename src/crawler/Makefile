@@ -13,9 +13,10 @@ TEST_TARGET := url_dedup_test
 
 SRCS := basic.cpp \
         url_dedup.cpp \
-        ../parser/HtmlParser.cpp \
         ../utils/SSL/LinuxSSL_Crawler.cpp \
-        ../parser/HtmlTags.cpp
+        ../parser/HtmlTags.cpp \
+        ../utils/Utf8.cpp \
+        ../parser/HtmlParser.cpp
 
 OBJS := $(SRCS:.cpp=.o)
 TEST_SRCS := url_dedup_test.cpp url_dedup.cpp
