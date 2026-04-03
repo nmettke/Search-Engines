@@ -51,6 +51,7 @@ add_library(crawler_lib
     crawler/FrontierItemHelper.cpp
     crawler/FrontierItem.cpp
     crawler/frontier.cpp
+    crawler/url_dedup.cpp
 )
 
 target_include_directories(crawler_lib

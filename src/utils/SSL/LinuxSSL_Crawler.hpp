@@ -1,10 +1,10 @@
+#include "../string.hpp"
+#include <iostream>
 #include <netdb.h>
 #include <openssl/ssl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <iostream>
-#include "../string.hpp"
 
 const int buffLength = 10240;
 

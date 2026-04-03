@@ -1,8 +1,8 @@
 #include "url_dedup.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 #include <openssl/md5.h>
 #include <stdexcept>
@@ -30,7 +30,7 @@ std::string toLower(std::string value) {
     return value;
 }
 
-}
+} // namespace
 
 std::string normalizeUrl(const std::string &rawUrl) {
     std::string cleaned = trim(rawUrl);
@@ -106,13 +106,9 @@ std::pair<std::uint64_t, std::uint64_t> UrlBloomFilter::hashKey(const std::strin
     return {h1, h2};
 }
 
-bool UrlBloomFilter::getBit(std::size_t index) const {
-    return bits[index];
-}
+bool UrlBloomFilter::getBit(std::size_t index) const { return bits[index]; }
 
-void UrlBloomFilter::setBit(std::size_t index) {
-    bits[index] = true;
-}
+void UrlBloomFilter::setBit(std::size_t index) { bits[index] = true; }
 
 bool UrlBloomFilter::probablyContains(const std::string &key) const {
     if (key.empty()) {

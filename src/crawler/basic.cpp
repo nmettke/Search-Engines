@@ -27,7 +27,7 @@ int main() {
     while (std::getline(seedList, line)) {
         std::string canonical;
         if (shouldEnqueueUrl(line, bloom, canonical)) {
-            links.emplace_back(canonical);
+            links.emplaceBack(canonical.c_str());
         }
     }
 
@@ -43,8 +43,8 @@ int main() {
         }
 
         // readURL already returns your string
-        string page = readURL(links[i]); //Need to fix conversion between string and std::string
-        //string page = "";
+        string page = readURL(links[i]); // Need to fix conversion between string and std::string
+        // string page = "";
 
         HtmlParser parsed(page.cstr(), page.size());
 
@@ -55,8 +55,8 @@ int main() {
         for (const Link &link : parsed.links) {
             if (link.URL.find("http") != link.URL.npos) {
                 std::string canonical;
-                if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
-                    links.push_back(canonical);
+                if (shouldEnqueueUrl(link.URL.cstr(), bloom, canonical)) {
+                    links.pushBack(canonical.c_str());
                 }
                 if (debug) {
                     std::cout << "Found " << link.URL << std::endl;

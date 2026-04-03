@@ -1,7 +1,7 @@
 // HtmlParser.cpp
 
 #include "HtmlParser.h"
-#include "Utf8.h"
+#include "utils/Utf8.h"
 
 static bool isLatinAlpha(Unicode cp) {
     if ((cp >= 0x41 && cp <= 0x5A)     // A-Z
@@ -29,10 +29,10 @@ static bool isNonLatinAlpha(Unicode cp) {
            || (cp >= 0xAC00 && cp <= 0xD7AF); // Hangul Syllables
 }
 
-static void countAlpha(const std::vector<std::string> &wordList, size_t &latinCount,
+static void countAlpha(const std::vector<::string> &wordList, size_t &latinCount,
                        size_t &totalAlpha) {
     for (const auto &word : wordList) {
-        const Utf8 *p = reinterpret_cast<const Utf8 *>(word.data());
+        const Utf8 *p = reinterpret_cast<const Utf8 *>(word.cstr());
         const Utf8 *bound = p + word.size();
 
         while (p < bound) {
