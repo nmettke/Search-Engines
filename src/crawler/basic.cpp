@@ -5,6 +5,10 @@
 #include "../utils/SSL/LinuxSSL_Crawler.hpp"
 #include "../utils/string.hpp"
 #include "../utils/vector.hpp"
+#include "url_dedup.h"
+#include <fstream>
+#include <iostream>
+#include <vector>
 
 vector<string> links;
 
@@ -19,9 +23,12 @@ int main() {
 
     // std::string allowed here only for getline
     std::string line;
-
+    UrlBloomFilter bloom(1000000, 0.0001);
     while (std::getline(seedList, line)) {
-        links.emplaceBack(string(line.c_str()));
+        std::string canonical;
+        if (shouldEnqueueUrl(line, bloom, canonical)) {
+            links.emplace_back(canonical);
+        }
     }
 
     for (const string &link : links) {
@@ -46,10 +53,11 @@ int main() {
         }
 
         for (const Link &link : parsed.links) {
-            // parser still uses std::string
-            if (link.URL.find("http") != std::string::npos) {
-                links.pushBack(string(link.URL.c_str()));
-
+            if (link.URL.find("http") != link.URL.npos) {
+                std::string canonical;
+                if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
+                    links.push_back(canonical);
+                }
                 if (debug) {
                     std::cout << "Found " << link.URL << std::endl;
                 }

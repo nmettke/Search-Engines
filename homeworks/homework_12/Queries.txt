@@ -1,0 +1,33 @@
+LinuxGet http://x.y/foo
+LinuxGet http://x.y/foo/bar
+Linux http://x.y/foo
+LinuxGetUrl http://s.y/foo
+Linu http://s.y/foo
+linuxGET http://x.y/foo
+
+zebra http://x.y/foo/zebrak
+zebra http://x.y/foo/zebrark
+
+hello http://x.y/zoork
+zebra http://z.y/zork
+
+xx http://x.y/fubar
+xx http://x.y/fuzzbar
+
+ZZ http://x.y/tmp
+ZZ http://x.y/tmp/
+ZZ http://x.y/tmp.html
+ZZ http://x.y/tmp/a.html
+
+YY http://x.y/tmp
+YY http://x.y/tmp/
+YY http://x.y/tmp.html
+YY http://x.y/tmp/a.html
+
+xx http://x.y/z/.html
+xx http://x.y/a%2fb.html
+xx http://x.y/a/.html
+xx http://x.y/a..bx
+xx http://x.y/a%2e.bx
+xx http://x.y/%61%2e.bx
+xx http://x.y/ffadsfasd
