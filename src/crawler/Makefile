@@ -9,7 +9,6 @@ LDFLAGS := -L$(OPENSSL_PREFIX)/lib
 LIBS := -lssl -lcrypto
 
 TARGET := basic
-TEST_TARGET := url_dedup_test
 
 SRCS := basic.cpp \
         url_dedup.cpp \
@@ -19,12 +18,10 @@ SRCS := basic.cpp \
         ../parser/HtmlParser.cpp
 
 OBJS := $(SRCS:.cpp=.o)
-TEST_SRCS := url_dedup_test.cpp url_dedup.cpp
-TEST_OBJS := $(TEST_SRCS:.cpp=.o)
 
 .PHONY: all clean test
 
-all: $(TARGET) $(TEST_TARGET)
+all: $(TARGET)
 
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
@@ -32,11 +29,8 @@ $(TARGET): $(OBJS)
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(TEST_TARGET): $(TEST_OBJS)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
-
-test: $(TEST_TARGET)
-	./$(TEST_TARGET)
+test:
+	@echo "Use the top-level CMake/CTest test targets for url_dedup tests."
 
 clean:
-	rm -f $(OBJS) $(TEST_OBJS) $(TARGET) $(TEST_TARGET)
+	rm -f $(OBJS) $(TARGET)
