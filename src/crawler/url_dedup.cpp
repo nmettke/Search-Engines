@@ -147,6 +147,7 @@ bool shouldEnqueueUrl(const string &rawUrl, UrlBloomFilter &bloom, string &canon
     if (bloom.probablyContains(normalizeOut)) {
         return false;
     }
+    canonicalOut = normalizeOut;
     bloom.insert(normalizeOut);
     return true;
 }

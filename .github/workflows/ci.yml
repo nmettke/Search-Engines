@@ -19,6 +19,8 @@ jobs:
             regex: "^string::"
           - suite: FrontierItemHelper
             regex: "^FrontierItemHelper::"
+          - suite: url_dedup
+            regex: "^url_dedup::"
           - suite: PriorityQueue
             regex: "^PriorityQueue::"
 
