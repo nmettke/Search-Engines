@@ -50,3 +50,6 @@ src/crawler/url_dedup_test
 # For CMake
 build*/
 .DS_Store
+
+# For Vasu
+vasuBuild.sh

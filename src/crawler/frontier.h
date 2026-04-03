@@ -1,14 +1,21 @@
 #pragma once
-#include "condition_variable.hpp"
-#include "lock_guard.hpp"
-#include "mutex.hpp"
-#include "string.hpp"
-#include "vector.hpp"
+
+#include "FrontierItem.h"
+#include "utils/string.hpp"
+#include "utils/threads/condition_variable.hpp"
+#include "utils/threads/lock_guard.hpp"
+#include "utils/threads/mutex.hpp"
+#include "utils/vector.hpp"
+
+#include <cstddef>
 #include <fstream>
 #include <iostream>
 #include <optional>
 #include <queue>
 #include <stdexcept>
+#include <string>
+#include <vector>
+
 class Frontier {
   public:
     Frontier(const std::string seed_list_str);
@@ -17,7 +24,7 @@ class Frontier {
 
     void push(const string &url);
 
-    std::optional<string> pop();
+    std::optional<FrontierItem> pop();
 
     bool contains(const string &url) const;
 
@@ -26,6 +33,6 @@ class Frontier {
     bool empty() const;
 
   private:
-    std::priority_queue<string> pq;
-    mutex m;
+    std::priority_queue<FrontierItem, std::vector<FrontierItem>, FrontierItemCompare> pq;
+    mutable mutex m;
 };

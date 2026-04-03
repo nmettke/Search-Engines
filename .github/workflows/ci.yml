@@ -17,6 +17,8 @@ jobs:
             regex: "^vector::"
           - suite: string
             regex: "^string::"
+          - suite: FrontierItemHelper
+            regex: "^FrontierItemHelper::"
 
     steps:
       - uses: actions/checkout@v4

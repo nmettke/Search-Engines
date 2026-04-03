@@ -1,18 +1,23 @@
 # -------------------------
 # Utils Library
 # -------------------------
-
 add_library(utils
     utils/SSL/LinuxSSL_Crawler.cpp
 )
 
 target_include_directories(utils
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/utils
+        ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_compile_features(utils PUBLIC cxx_std_17)
 
+find_package(OpenSSL REQUIRED)
+target_link_libraries(utils
+    PUBLIC
+        OpenSSL::SSL
+        OpenSSL::Crypto
+)
 
 # -------------------------
 # Parser Library
@@ -26,7 +31,7 @@ add_library(parser
 
 target_include_directories(parser
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/parser
+        ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(parser
@@ -41,19 +46,45 @@ target_compile_features(parser PUBLIC cxx_std_17)
 # Crawler Library
 # -------------------------
 
-add_library(crawler
-    crawler/basic.cpp
+add_library(crawler_lib
+    crawler/FrontierItemHelper.cpp
+    crawler/FrontierItem.cpp
+    crawler/frontier.cpp
 )
 
-target_include_directories(crawler
+target_include_directories(crawler_lib
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/crawler
+        ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(crawler
+target_link_libraries(crawler_lib
     PUBLIC
         parser
         utils
 )
 
+add_executable(crawler
+    crawler/Crawler.cpp
+)
+
+target_link_libraries(crawler
+    PRIVATE
+        crawler_lib
+        parser
+        utils
+)
+
+add_executable(crawler_basic
+    crawler/basic.cpp
+)
+
+target_link_libraries(crawler_basic
+    PRIVATE
+        crawler_lib
+        parser
+        utils
+)
+
+target_compile_features(crawler_lib PUBLIC cxx_std_17)
 target_compile_features(crawler PUBLIC cxx_std_17)
+target_compile_features(crawler_basic PUBLIC cxx_std_17)

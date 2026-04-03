@@ -1,3 +1,6 @@
+#include <fstream>
+#include <iostream>
+
 #include "../parser/HtmlParser.h"
 #include "../utils/SSL/LinuxSSL_Crawler.hpp"
 #include "../utils/string.hpp"
@@ -7,17 +10,18 @@
 #include <iostream>
 #include <vector>
 
-std::vector<std::string> links;
+vector<string> links;
 
 const bool debug = false;
 
 int main() {
-    // Debug Config
-    std::ifstream seedList("seedList.txt");
+    std::ifstream seedList("src/crawler/seedList.txt");
     if (!seedList.is_open()) {
         std::cerr << "Failed to open file\n";
         return 1;
     }
+
+    // std::string allowed here only for getline
     std::string line;
     UrlBloomFilter bloom(1000000, 0.0001);
     while (std::getline(seedList, line)) {
@@ -26,7 +30,8 @@ int main() {
             links.emplace_back(canonical);
         }
     }
-    for (const std::string &link : links) {
+
+    for (const string &link : links) {
         std::cout << link << '\n';
     }
 
@@ -36,8 +41,12 @@ int main() {
         if (debug) {
             std::cout << "Searching " << links[i] << std::endl;
         }
-        std::string buffer = readURL(links[i]);
-        HtmlParser parsed(buffer.c_str(), buffer.size());
+
+        // readURL already returns your string
+        string page = readURL(links[i]); //Need to fix conversion between string and std::string
+        //string page = "";
+
+        HtmlParser parsed(page.cstr(), page.size());
 
         if (debug) {
             std::cout << "Searched " << links[i] << std::endl;
@@ -56,7 +65,7 @@ int main() {
         }
     }
 
-    for (const std::string &link : links) {
+    for (const string &link : links) {
         std::cout << link << std::endl;
     }
 }
