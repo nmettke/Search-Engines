@@ -1,6 +1,7 @@
 // src/lib/disk_chunk_writer.cpp
 #include "disk_chunk_writer.h"
 #include "binary_writer.h"
+#include "seek_table.h"
 #include "vbyte.h"
 #include <fcntl.h>
 #include <system_error>
@@ -33,10 +34,23 @@ uint64_t DiskChunkWriter::writePostingList(const std::vector<uint32_t> &location
 
     PostingListHeader pl_header;
     pl_header.num_postings = locations.size();
-    pl_header.has_seek_table = 0; // 0 for MVP
     pl_header.data_size = compressed_data.size();
 
+    std::vector<uint8_t> seek_table_bytes;
+    if (SeekTable::shouldBuild(locations.size())) {
+        pl_header.has_seek_table = 1;
+        SeekTable table = SeekTable::build(compressed_data, locations.size());
+        seek_table_bytes = table.serialize();
+    } else {
+        pl_header.has_seek_table = 0;
+    }
+
     writer.writePOD(pl_header);
+
+    if (pl_header.has_seek_table) {
+        writer.writeBuffer(seek_table_bytes.data(), seek_table_bytes.size());
+    }
+
     writer.writeBuffer(compressed_data.data(), compressed_data.size());
 
     return current_offset;

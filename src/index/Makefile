@@ -14,10 +14,12 @@ DISK_WRITER := $(LIB_DIR)/disk_chunk_writer.cpp
 DISK_READER := $(LIB_DIR)/disk_chunk_reader.cpp
 FLUSHER     := $(LIB_DIR)/chunk_flusher.cpp
 ISR         := $(LIB_DIR)/isr.cpp
+SEEK_TABLE  := $(LIB_DIR)/seek_table.cpp
 
 # All library sources (for main)
 ALL_LIB_SRCS := $(DISK_WRITER) $(VBYTE) $(IN_MEM_IDX) $(COMMON) \
-                $(FLUSHER) $(DISK_READER) $(ISR) $(TOKENIZER)
+                $(FLUSHER) $(DISK_READER) $(ISR) $(TOKENIZER) \
+				$(SEEK_TABLE)
 
 # Test binaries
 TEST_BINS := test_vbyte test_tokenizer test_chunk_writer test_integration test_chunk_reader
@@ -43,13 +45,13 @@ test_vbyte: $(TEST_DIR)/test_vbyte.cpp $(VBYTE)
 test_tokenizer: $(TEST_DIR)/test_tokenizer.cpp $(TOKENIZER)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-test_chunk_writer: $(TEST_DIR)/test_chunk_writer.cpp $(DISK_WRITER) $(VBYTE)
+test_chunk_writer: $(TEST_DIR)/test_chunk_writer.cpp $(DISK_WRITER) $(VBYTE) $(SEEK_TABLE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-test_integration: $(TEST_DIR)/test_integration.cpp $(IN_MEM_IDX) $(DISK_WRITER) $(VBYTE) $(COMMON) $(FLUSHER)
+test_integration: $(TEST_DIR)/test_integration.cpp $(IN_MEM_IDX) $(DISK_WRITER) $(VBYTE) $(COMMON) $(FLUSHER) $(SEEK_TABLE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-test_chunk_reader: $(TEST_DIR)/test_chunk_reader.cpp $(DISK_READER) $(FLUSHER) $(DISK_WRITER) $(VBYTE) $(COMMON) $(IN_MEM_IDX) $(ISR)
+test_chunk_reader: $(TEST_DIR)/test_chunk_reader.cpp $(DISK_READER) $(FLUSHER) $(DISK_WRITER) $(VBYTE) $(COMMON) $(IN_MEM_IDX) $(ISR) $(SEEK_TABLE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 # ─── Run tests ─────────────────────────────────────────────

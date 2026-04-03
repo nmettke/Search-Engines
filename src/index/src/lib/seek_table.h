@@ -42,4 +42,4 @@ class SeekTable {
     void addPostingIndexes(const uint8_t *encoded_deltas, size_t data_size, uint32_t num_postings);
 
     std::array<SeekTableEntry, EntryCount> _entries;
-}
+};

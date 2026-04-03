@@ -16,6 +16,10 @@ int main() {
         // Initialization: {words}, {titleWords}, {links}, base_url
         {{"The", "CAT", "sat."}, {}, {}, "http://example.com/cats"},
         {{"A", "Dog", "Running", "after", "the", "cat!"}, {}, {}, "http://example.com/dogs"},
+        {{"Cat", "and", "Dog", "are", "friends."}, {}, {}, "http://example.com/friends"},
+        {{"No", "cats", "here."}, {}, {}, "http://example.com/nocats"},
+        {{"Just", "a", "cat."}, {}, {}, "http://example.com/justacat"},
+        {{"I", "love", "my", "cat."}, {}, {}, "http://example.com/lovecat"},
     };
 
     // 2. Tokenize and build the In-Memory Index

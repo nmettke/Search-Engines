@@ -100,10 +100,25 @@ ISR DiskChunkReader::createISR(const std::string &term) const {
             // read PostingListHeader
             const PostingListHeader *p_header = p_reader.readPOD<PostingListHeader>();
 
-            // read the compressed VByte data
-            const uint8_t *compressed_data = p_reader.current();
+            std::optional<SeekTable> table = std::nullopt;
 
-            return ISR(compressed_data, p_header->num_postings);
+            if (p_header->has_seek_table) {
+                const uint8_t* table_data = p_reader.current();
+                p_reader.skip(SeekTable::SerializedSize);
+                
+                const uint8_t* compressed_data = p_reader.current();
+
+                table = SeekTable::deserialize(
+                    table_data, 
+                    compressed_data, 
+                    p_header->data_size, 
+                    p_header->num_postings
+                );
+                return ISR(compressed_data, p_header->num_postings, table);
+            } else {
+                const uint8_t* compressed_data = p_reader.current();
+                return ISR(compressed_data, p_header->num_postings);
+            }
         }
     }
 

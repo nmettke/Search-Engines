@@ -1,12 +1,13 @@
-// src/lib/isr.h
 #pragma once
 
 #include "types.h"
+#include "seek_table.h"
+#include <optional>
 
 class ISR {
   public:
     ISR();
-    ISR(const uint8_t *data, uint32_t num_postings);
+    ISR(const uint8_t *data, uint32_t num_postings, std::optional<SeekTable> table = std::nullopt);
 
     uint32_t next();
     uint32_t seek(uint32_t target);
@@ -21,4 +22,6 @@ class ISR {
     uint32_t current_loc = 0;
     const uint8_t *data = nullptr;
     const uint8_t *current_ptr = nullptr;
+    
+    std::optional<SeekTable> seek_table;
 };
