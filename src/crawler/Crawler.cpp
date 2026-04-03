@@ -1,36 +1,63 @@
-// File stub for crawler orchestrator file
 #include "Crawler.h"
-#include <unordered_set>
+#include "checkpoint.h"
+#include "url_dedup.h"
+#include <csignal>
+#include <iostream>
 
-struct StringHash {
-    std::size_t operator()(const string &s) const noexcept {
-        // 64-bit FNV-1a hash over custom string bytes
-        std::size_t hash = 1469598103934665603ull;
-        for (std::size_t i = 0; i < s.size(); ++i) {
-            hash ^= static_cast<unsigned char>(s[i]);
-            hash *= 1099511628211ull;
-        }
-        return hash;
-    }
-};
+static volatile bool shouldStop = false;
+
+static void signalHandler(int) { shouldStop = true; }
 
 int main() {
+    signal(SIGINT, signalHandler);
+    signal(SIGTERM, signalHandler);
 
-    Frontier f("src/crawler/seedList.txt");
-    std::unordered_set<string, StringHash> searching;
-    while (!f.empty()) {
-        std::optional<FrontierItem> item = f.pop();
-        if (item) {
-            string page = readURL(item->link);
-            HtmlParser parsed(page.cstr(), page.size());
-            for (const Link &link : parsed.links) {
-                if (link.URL.find("http") != std::string::npos &&
-                    searching.find(link.URL) == searching.end()) {
-                    f.push(link.URL);
-                    searching.insert(link.URL);
-                }
+    CheckpointConfig cpConfig;
+    cpConfig.directory = "src/crawler";
+    cpConfig.interval = 500;
+    Checkpoint checkpoint(cpConfig);
+
+    std::vector<FrontierItem> recoveredItems;
+    UrlBloomFilter bloom(1000000, 0.0001);
+    std::size_t urlsCrawled = 0;
+
+    Frontier *f;
+    if (checkpoint.load(recoveredItems, bloom, urlsCrawled)) {
+        f = new Frontier(std::move(recoveredItems));
+        std::cerr << "Recovered from checkpoint at " << urlsCrawled << " URLs\n";
+    } else {
+        f = new Frontier("src/crawler/seedList.txt");
+        std::cerr << "Starting fresh from seed list\n";
+    }
+
+    while (!f->empty() && !shouldStop) {
+        std::optional<FrontierItem> item = f->pop();
+        if (!item)
+            continue;
+
+        string page = readURL(item->link);
+        HtmlParser parsed(page.cstr(), page.size());
+
+        for (const Link &link : parsed.links) {
+            string canonical;
+            if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
+                f->push(canonical);
             }
-            std::cout << "Crawled " << item->link << std::endl;
+        }
+
+        ++urlsCrawled;
+        std::cout << "Crawled [" << urlsCrawled << "] " << item->link << std::endl;
+
+        if (checkpoint.shouldCheckpoint(urlsCrawled)) {
+            checkpoint.save(*f, bloom, urlsCrawled);
         }
     }
+
+    checkpoint.save(*f, bloom, urlsCrawled);
+
+    if (shouldStop)
+        std::cerr << "Graceful shutdown after SIGINT\n";
+
+    delete f;
+    return 0;
 }
