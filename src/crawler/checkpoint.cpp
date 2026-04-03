@@ -49,8 +49,8 @@ bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom,
     }
 
     lastCheckpointAt_ = urlsCrawled;
-    std::cerr << "Checkpoint saved at " << urlsCrawled << " URLs ("
-              << items.size() << " frontier items)\n";
+    std::cerr << "Checkpoint saved at " << urlsCrawled << " URLs (" << items.size()
+              << " frontier items)\n";
     return true;
 }
 
