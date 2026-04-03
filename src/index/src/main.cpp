@@ -98,7 +98,8 @@ int main() {
 
     // iterate through every location
     while (!cat_isr.done()) {
-        uint32_t loc = cat_isr.next();
+        uint32_t loc = cat_isr.currentLocation();
+        cat_isr.next();
 
         std::cout << "Looking up location: " << loc << "\n";
         // map the location to the actual Document Record
@@ -112,6 +113,7 @@ int main() {
     QueryEngine engine(reader);
 
     // Search for a multi-word phrase!
+    // TODO: tokenize the query
     std::vector<std::string> query = {"cat", "dog"};
 
     auto results = engine.search(query);
