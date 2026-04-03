@@ -19,5 +19,9 @@ class mutex {
 
     bool try_lock() { return pthread_mutex_trylock(&m_) == 0; }
 
+    pthread_mutex_t *nativeHandle() { return &m_; }
+
+    const pthread_mutex_t *nativeHandle() const { return &m_; }
+
     ~mutex() { pthread_mutex_destroy(&m_); }
 };
