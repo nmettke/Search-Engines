@@ -48,6 +48,7 @@ add_executable(FrontierItemHelper_tests
 target_link_libraries(FrontierItemHelper_tests
     PRIVATE
         crawler_lib
+        crawler
         GTest::gtest_main
 )
 

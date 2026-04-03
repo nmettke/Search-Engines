@@ -6,10 +6,25 @@ add_library(utils
     utils/Utf8.cpp
 )
 
+# target_include_directories(utils
+#     PUBLIC
+#         ${CMAKE_CURRENT_SOURCE_DIR}
+# )
+
+# target_compile_features(utils PUBLIC cxx_std_17)
+
+##### HOT FIX: COULDN'T BUILD WITH OPENSSL #####
+
+# 1. Locate OpenSSL on the system
+find_package(OpenSSL REQUIRED)
+
 target_include_directories(utils
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# 3. Tell the linker to include the OpenSSL binary code
+target_link_libraries(utils PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 
 target_compile_features(utils PUBLIC cxx_std_17)
 
