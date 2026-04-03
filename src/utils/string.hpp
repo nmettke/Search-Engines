@@ -1,6 +1,7 @@
 #pragma once
-#include <cstddef>  // for size_t
-#include <iostream> // for ostream
+#include <cstddef>   // for size_t
+#include <iostream>  // for ostream
+#include <stdexcept> // for out_of_range (substr)
 
 // IMPORTANT: I did not count '\0' in size or capacity
 class string {
@@ -91,16 +92,21 @@ class string {
     const char *cstr() const { return _buffer; }
     const char *c_str() const { return _buffer; }
 
+    const char* data() const {return _buffer; }
+    char* data() { return _buffer; }
+
     // Iterator Begin
     // REQUIRES: Nothing
     // MODIFIES: Nothing
     // EFFECTS: Returns a random access iterator to the start of the string
+    char *begin() { return _buffer; }
     const char *begin() const { return _buffer; }
 
     // Iterator End
     // REQUIRES: Nothing
     // MODIFIES: Nothing
     // EFFECTS: Returns a random access iterator to the end of the string
+    char *end() { return _buffer + _size; }
     const char *end() const { return _buffer + _size; }
 
     // Element Access
@@ -158,6 +164,43 @@ class string {
         }
 
         return npos;
+    }
+
+    size_t find(char c) const {
+        for (size_t i = 0; i < _size; ++i) {
+            if (_buffer[i] == c) {
+                return i;
+            }
+        }
+        return npos;
+    }
+
+    // Finds the first character in *this that matches any character in set (NUL-terminated).
+    size_t find_first_of(const char *set) const {
+        if (set == nullptr || set[0] == '\0' || _size == 0) {
+            return npos;
+        }
+        for (size_t i = 0; i < _size; ++i) {
+            for (size_t j = 0; set[j] != '\0'; ++j) {
+                if (_buffer[i] == set[j]) {
+                    return i;
+                }
+            }
+        }
+        return npos;
+    }
+
+    // Returns the substring [pos, pos + count). If count == npos, extends to end of string.
+    string substr(size_t pos, size_t count = npos) const {
+        if (pos > _size) {
+            throw std::out_of_range("string::substr");
+        }
+        size_t avail = _size - pos;
+        size_t len = (count == npos) ? avail : count;
+        if (len > avail) {
+            len = avail;
+        }
+        return string(_buffer + pos, _buffer + pos + len);
     }
 
     // Push Back

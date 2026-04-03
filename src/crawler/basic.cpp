@@ -25,9 +25,10 @@ int main() {
     std::string line;
     UrlBloomFilter bloom(1000000, 0.0001);
     while (std::getline(seedList, line)) {
-        std::string canonical;
-        if (shouldEnqueueUrl(line, bloom, canonical)) {
-            links.emplace_back(canonical);
+        string tempLine(line.c_str());
+        string canonical;
+        if (shouldEnqueueUrl(tempLine, bloom, canonical)) {
+            links.emplaceBack(canonical);
         }
     }
 
@@ -54,9 +55,9 @@ int main() {
 
         for (const Link &link : parsed.links) {
             if (link.URL.find("http") != link.URL.npos) {
-                std::string canonical;
+                string canonical;
                 if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
-                    links.push_back(canonical);
+                    links.pushBack(canonical);
                 }
                 if (debug) {
                     std::cout << "Found " << link.URL << std::endl;
