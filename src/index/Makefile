@@ -13,15 +13,20 @@ IN_MEM_IDX  := $(LIB_DIR)/in_memory_index.cpp
 DISK_WRITER := $(LIB_DIR)/disk_chunk_writer.cpp
 DISK_READER := $(LIB_DIR)/disk_chunk_reader.cpp
 FLUSHER     := $(LIB_DIR)/chunk_flusher.cpp
-ISR         := $(LIB_DIR)/isr.cpp
-ISR_AND     := $(LIB_DIR)/isr_and.cpp
 SEEK_TABLE  := $(LIB_DIR)/seek_table.cpp
 QUERY_ENGINE := $(LIB_DIR)/query_engine.cpp
 
+ISR         := $(LIB_DIR)/isr.cpp
+ISR_AND     := $(LIB_DIR)/isr_and.cpp
+ISR_OR	  := $(LIB_DIR)/isr_or.cpp
+ISR_PHRASE   := $(LIB_DIR)/isr_phrase.cpp
+ISR_CONTAINER  := $(LIB_DIR)/isr_container.cpp
+
 # All library sources (for main)
 ALL_LIB_SRCS := $(DISK_WRITER) $(VBYTE) $(IN_MEM_IDX) $(COMMON) \
-                $(FLUSHER) $(DISK_READER) $(ISR) $(ISR_AND) \
-				$(TOKENIZER) $(SEEK_TABLE) $(QUERY_ENGINE)
+                $(FLUSHER) $(DISK_READER) \
+				$(TOKENIZER) $(SEEK_TABLE) $(QUERY_ENGINE) \
+				$(ISR) $(ISR_AND) $(ISR_OR) $(ISR_PHRASE) $(ISR_CONTAINER)
 
 # Test binaries
 TEST_BINS := test_vbyte test_tokenizer test_chunk_writer test_chunk_flusher test_chunk_reader
