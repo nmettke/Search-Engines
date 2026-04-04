@@ -21,10 +21,17 @@ struct WireDocument {
 
 bool wireEncodeDocument(const WireDocument &doc, std::vector<std::uint8_t> &out);
 bool wireDecodeDocument(const std::uint8_t *data, std::size_t len, WireDocument &out);
+bool wireEncodeDocumentBatch(const std::vector<WireDocument> &docs, std::vector<std::uint8_t> &out);
+bool wireDecodeDocumentBatch(const std::uint8_t *data, std::size_t len,
+                             std::vector<WireDocument> &out);
+bool wireDecodePayloadDocuments(const std::uint8_t *data, std::size_t len,
+                                std::vector<WireDocument> &out);
 
 constexpr std::uint32_t kWireFrameMagic = 0x444F4350; // 'DOCP'
 constexpr std::uint32_t kWireFrameVersion = 1;
 constexpr std::size_t kWireMaxPayload = 64 * 1024 * 1024;
+constexpr std::uint32_t kWireBatchMagic = 0x48435442; // 'BTCH'
+constexpr std::uint32_t kWireBatchVersion = 1;
 
 // Frame: magic(4) | version(4) | payload_len(4) | payload
 bool wireSendFramedMessage(int fd, const std::vector<std::uint8_t> &payload);

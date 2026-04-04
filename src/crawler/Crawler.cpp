@@ -8,9 +8,9 @@
 #include <cstring>
 #include <iostream>
 #include <mutex>
+#include <pthread.h>
 #include <string>
 #include <thread>
-#include <pthread.h>
 #include <unistd.h>
 #include <vector>
 
@@ -21,9 +21,7 @@ unsigned int cores = std::thread::hardware_concurrency();
 static std::mutex g_index_send_mutex;
 static int g_index_socket_fd = -1;
 
-static std::string toStdString(const string &s) {
-    return std::string(s.cstr(), s.size());
-}
+static std::string toStdString(const string &s) { return std::string(s.cstr(), s.size()); }
 
 static void tryConnectIndexerSocket() {
     const char *path = std::getenv("SEARCH_ENGINE_INDEX_SOCKET");

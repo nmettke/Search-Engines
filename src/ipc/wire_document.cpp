@@ -136,6 +136,70 @@ bool wireDecodeDocument(const std::uint8_t *data, std::size_t len, WireDocument 
     return p == end;
 }
 
+bool wireEncodeDocumentBatch(const std::vector<WireDocument> &docs,
+                             std::vector<std::uint8_t> &out) {
+    out.clear();
+    appendU32(out, kWireBatchMagic);
+    appendU32(out, kWireBatchVersion);
+    appendU32(out, static_cast<std::uint32_t>(docs.size()));
+
+    std::vector<std::uint8_t> encoded_doc;
+    for (const auto &doc : docs) {
+        if (!wireEncodeDocument(doc, encoded_doc))
+            return false;
+        appendU32(out, static_cast<std::uint32_t>(encoded_doc.size()));
+        out.insert(out.end(), encoded_doc.begin(), encoded_doc.end());
+    }
+
+    return true;
+}
+
+bool wireDecodeDocumentBatch(const std::uint8_t *data, std::size_t len,
+                             std::vector<WireDocument> &out) {
+    out.clear();
+    const std::uint8_t *p = data;
+    const std::uint8_t *end = data + len;
+
+    std::uint32_t magic = 0;
+    std::uint32_t version = 0;
+    std::uint32_t doc_count = 0;
+    if (!readU32(p, end, magic) || !readU32(p, end, version) || !readU32(p, end, doc_count))
+        return false;
+    if (magic != kWireBatchMagic || version != kWireBatchVersion)
+        return false;
+
+    out.reserve(doc_count);
+    for (std::uint32_t i = 0; i < doc_count; ++i) {
+        std::uint32_t doc_len = 0;
+        if (!readU32(p, end, doc_len))
+            return false;
+        if (static_cast<std::size_t>(end - p) < doc_len)
+            return false;
+
+        WireDocument doc;
+        if (!wireDecodeDocument(p, doc_len, doc))
+            return false;
+        p += doc_len;
+        out.push_back(std::move(doc));
+    }
+
+    return p == end;
+}
+
+bool wireDecodePayloadDocuments(const std::uint8_t *data, std::size_t len,
+                                std::vector<WireDocument> &out) {
+    if (wireDecodeDocumentBatch(data, len, out))
+        return true;
+
+    WireDocument doc;
+    if (!wireDecodeDocument(data, len, doc))
+        return false;
+
+    out.clear();
+    out.push_back(std::move(doc));
+    return true;
+}
+
 bool wireSendFramedMessage(int fd, const std::vector<std::uint8_t> &payload) {
     std::uint8_t header[12];
     std::uint32_t magic = kWireFrameMagic;

@@ -139,6 +139,14 @@ target_include_directories(indexer PRIVATE
 target_link_libraries(indexer PRIVATE index_core ipc)
 target_compile_features(indexer PUBLIC cxx_std_17)
 
+add_executable(index_master index/src/master_main.cpp)
+target_include_directories(index_master PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/index/src
+)
+target_link_libraries(index_master PRIVATE index_core ipc)
+target_compile_features(index_master PUBLIC cxx_std_17)
+
 add_executable(index_demo index/src/main.cpp)
 target_link_libraries(index_demo PRIVATE index_core)
 target_compile_features(index_demo PUBLIC cxx_std_17)
