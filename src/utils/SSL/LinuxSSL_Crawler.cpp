@@ -16,9 +16,7 @@ void initSSL() {
     sslCtx = SSL_CTX_new(SSLv23_method());
 }
 
-void cleanupSSL() {
-    SSL_CTX_free(sslCtx);
-}
+void cleanupSSL() { SSL_CTX_free(sslCtx); }
 
 ParsedUrl::ParsedUrl(const char *url) {
     // Assumes url points to static text but
