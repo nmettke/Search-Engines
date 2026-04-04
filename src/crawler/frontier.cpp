@@ -1,7 +1,7 @@
 #include "frontier.h"
 
-Frontier::Frontier(const std::string seed_list_str) {
-    std::ifstream seedList(seed_list_str);
+Frontier::Frontier(const string &seed_list_str) {
+    std::ifstream seedList(seed_list_str.c_str());
     if (!seedList.is_open()) {
         throw std::runtime_error("seedList could not be opened");
     }
@@ -20,18 +20,19 @@ Frontier::Frontier(const std::string seed_list_str) {
     }
 }
 
-Frontier::Frontier(std::vector<FrontierItem> items) {
-    for (auto &item : items) {
-        pq.push(std::move(item));
+Frontier::Frontier(vector<FrontierItem> items) {
+    for (size_t i = 0; i < items.size(); ++i) {
+        pq.push(items[i]);
     }
 }
 
-std::vector<FrontierItem> Frontier::snapshot() const {
+vector<FrontierItem> Frontier::snapshot() const {
     lock_guard guard(m);
-    auto pq_copy = pq;
-    std::vector<FrontierItem> result;
-    while (!pq_copy.empty()) {
-        result.push_back(pq_copy.top());
+    vector<FrontierItem> result;
+    size_t n = pq.size();
+    PriorityQueue<FrontierItem, FrontierItemCompare> pq_copy = pq;
+    for (size_t i = 0; i < n; ++i) {
+        result.pushBack(pq_copy.top());
         pq_copy.pop();
     }
     return result;
@@ -93,7 +94,7 @@ void Frontier::taskDone() {
 
 bool Frontier::contains(const string &url) const { return true; }
 
-std::size_t Frontier::size() const {
+size_t Frontier::size() const {
     lock_guard guard(m);
     return pq.size();
 }

@@ -2,27 +2,26 @@
 
 #include "frontier.h"
 #include "url_dedup.h"
+#include "utils/string.hpp"
 #include <cstddef>
-#include <string>
-#include <vector>
 
 struct CheckpointConfig {
-    std::string directory = ".";
-    std::size_t interval = 500;
+    string directory = ".";
+    size_t interval = 500;
 };
 
 class Checkpoint {
   public:
     explicit Checkpoint(const CheckpointConfig &config);
 
-    bool save(const Frontier &frontier, const UrlBloomFilter &bloom, std::size_t urlsCrawled);
-    bool load(std::vector<FrontierItem> &items, UrlBloomFilter &bloom, std::size_t &urlsCrawled);
-    bool shouldCheckpoint(std::size_t urlsCrawled) const;
+    bool save(const Frontier &frontier, const UrlBloomFilter &bloom, size_t urlsCrawled);
+    bool load(vector<FrontierItem> &items, UrlBloomFilter &bloom, size_t &urlsCrawled);
+    bool shouldCheckpoint(size_t urlsCrawled) const;
 
   private:
     CheckpointConfig config_;
-    std::size_t lastCheckpointAt_ = 0;
+    size_t lastCheckpointAt_ = 0;
 
-    std::string filePath() const;
-    std::string tmpPath() const;
+    string filePath() const;
+    string tmpPath() const;
 };

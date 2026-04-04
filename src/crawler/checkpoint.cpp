@@ -7,17 +7,17 @@
 
 Checkpoint::Checkpoint(const CheckpointConfig &config) : config_(config) {}
 
-std::string Checkpoint::filePath() const { return config_.directory + "/checkpoint.dat"; }
+string Checkpoint::filePath() const { return config_.directory + "/checkpoint.dat"; }
 
-std::string Checkpoint::tmpPath() const { return config_.directory + "/checkpoint.dat.tmp"; }
+string Checkpoint::tmpPath() const { return config_.directory + "/checkpoint.dat.tmp"; }
 
-bool Checkpoint::shouldCheckpoint(std::size_t urlsCrawled) const {
+bool Checkpoint::shouldCheckpoint(size_t urlsCrawled) const {
     return (urlsCrawled - lastCheckpointAt_) >= config_.interval;
 }
 
 bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom,
-                      std::size_t urlsCrawled) {
-    std::vector<FrontierItem> items = frontier.snapshot();
+                      size_t urlsCrawled) {
+    vector<FrontierItem> items = frontier.snapshot();
 
     FILE *f = fopen(tmpPath().c_str(), "wb");
     if (!f) {
@@ -54,20 +54,20 @@ bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom,
     return true;
 }
 
-bool Checkpoint::load(std::vector<FrontierItem> &items, UrlBloomFilter &bloom,
-                      std::size_t &urlsCrawled) {
+bool Checkpoint::load(vector<FrontierItem> &items, UrlBloomFilter &bloom,
+                      size_t &urlsCrawled) {
     FILE *f = fopen(filePath().c_str(), "rb");
     if (!f)
         return false;
 
     char lineBuf[8192];
-    std::size_t frontierCount = 0;
+    size_t frontierCount = 0;
     urlsCrawled = 0;
 
     fgets(lineBuf, sizeof(lineBuf), f);
 
     while (fgets(lineBuf, sizeof(lineBuf), f)) {
-        std::size_t len = strlen(lineBuf);
+        size_t len = strlen(lineBuf);
         if (len > 0 && lineBuf[len - 1] == '\n')
             lineBuf[len - 1] = '\0';
 
@@ -80,15 +80,14 @@ bool Checkpoint::load(std::vector<FrontierItem> &items, UrlBloomFilter &bloom,
             frontierCount = atol(lineBuf + 15);
     }
 
-    items.clear();
     items.reserve(frontierCount);
-    for (std::size_t i = 0; i < frontierCount; ++i) {
+    for (size_t i = 0; i < frontierCount; ++i) {
         if (!fgets(lineBuf, sizeof(lineBuf), f))
             break;
-        std::size_t len = strlen(lineBuf);
+        size_t len = strlen(lineBuf);
         if (len > 0 && lineBuf[len - 1] == '\n')
             lineBuf[len - 1] = '\0';
-        items.push_back(FrontierItem::deserializeFromLine(string(lineBuf)));
+        items.pushBack(FrontierItem::deserializeFromLine(string(lineBuf)));
     }
 
     fgets(lineBuf, sizeof(lineBuf), f);
