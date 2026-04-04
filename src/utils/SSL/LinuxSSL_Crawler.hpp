@@ -21,4 +21,6 @@ class ParsedUrl {
     char *pathBuffer;
 };
 
+void initSSL();
+void cleanupSSL();
 string readURL(string target_url);

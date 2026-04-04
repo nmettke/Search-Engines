@@ -9,6 +9,15 @@
 // #include "../string.hpp"
 #include "LinuxSSL_Crawler.hpp"
 
+static SSL_CTX *sslCtx = nullptr;
+
+void initSSL() {
+    SSL_library_init();
+    sslCtx = SSL_CTX_new(SSLv23_method());
+}
+
+void cleanupSSL() { SSL_CTX_free(sslCtx); }
+
 ParsedUrl::ParsedUrl(const char *url) {
     // Assumes url points to static text but
     // does not check.
@@ -85,9 +94,7 @@ string readURL(string target_url) {
     // Build an SSL layer and set it to read/write
     // to the socket we've connected.
 
-    SSL_library_init();
-    SSL_CTX *ctx = SSL_CTX_new(SSLv23_method());
-    SSL *ssl = SSL_new(ctx);
+    SSL *ssl = SSL_new(sslCtx);
     SSL_set_tlsext_host_name(ssl, url.Host);
     SSL_set_fd(ssl, socketFD);
     SSL_connect(ssl);
@@ -132,6 +139,5 @@ string readURL(string target_url) {
     SSL_shutdown(ssl);
     SSL_free(ssl);
     close(socketFD);
-    SSL_CTX_free(ctx);
     return returnVal;
 }
