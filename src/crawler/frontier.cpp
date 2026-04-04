@@ -92,6 +92,12 @@ void Frontier::taskDone() {
     }
 }
 
+void Frontier::shutdown() {
+    lock_guard guard(m);
+    closed = true;
+    cv.notify_all();
+}
+
 bool Frontier::contains(const string &url) const { return true; }
 
 size_t Frontier::size() const {

@@ -28,6 +28,7 @@ class Frontier {
     std::optional<FrontierItem> pop();
 
     void taskDone();
+    void shutdown();
 
     bool contains(const string &url) const;
 

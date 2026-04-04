@@ -3,6 +3,7 @@
 #include "frontier.h"
 #include "url_dedup.h"
 #include "utils/string.hpp"
+#include "utils/threads/mutex.hpp"
 #include <cstddef>
 
 struct CheckpointConfig {
@@ -21,6 +22,7 @@ class Checkpoint {
   private:
     CheckpointConfig config_;
     size_t lastCheckpointAt_ = 0;
+    mutable mutex saveMutex_;
 
     string filePath() const;
     string tmpPath() const;

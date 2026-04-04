@@ -26,7 +26,13 @@ FrontierItem::FrontierItem(const string &link, Suffix suffix, size_t baseLength,
 
 string FrontierItem::serializeToLine() const {
     char buf[32];
-    string res = link;
+    // Strip \r and \n from link to prevent line breaks in checkpoint file
+    string cleanLink;
+    for (size_t i = 0; i < link.size(); ++i) {
+        if (link[i] != '\r' && link[i] != '\n')
+            cleanLink.pushBack(link[i]);
+    }
+    string res = cleanLink;
     res += '|';
     snprintf(buf, sizeof(buf), "%d", static_cast<int>(suffix));
     res += buf;

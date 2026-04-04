@@ -1,4 +1,5 @@
 #include "checkpoint.h"
+#include "utils/threads/lock_guard.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -16,6 +17,7 @@ bool Checkpoint::shouldCheckpoint(size_t urlsCrawled) const {
 }
 
 bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom, size_t urlsCrawled) {
+    lock_guard guard(saveMutex_);
     vector<FrontierItem> items = frontier.snapshot();
 
     FILE *f = fopen(tmpPath().c_str(), "wb");

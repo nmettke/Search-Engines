@@ -6,13 +6,17 @@
 #include <thread>
 
 static volatile bool shouldStop = false;
-static void signalHandler(int) { shouldStop = true; }
+Frontier *f = nullptr;
+
+static void signalHandler(int) {
+    shouldStop = true;
+    if (f)
+        f->shutdown();
+}
 
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint;
 size_t urlsCrawled = 0;
-
-Frontier *f;
 UrlBloomFilter bloom(1000000, 0.0001);
 unsigned int cores = std::thread::hardware_concurrency();
 
@@ -27,6 +31,9 @@ void *WorkerThread(void *arg) {
         } taskCompletionGuard{*f};
 
         string page = readURL(item->link);
+        if (shouldStop)
+            break;
+
         HtmlParser parsed(page.cstr(), page.size());
         vector<string> discoveredLinks;
 
@@ -43,7 +50,7 @@ void *WorkerThread(void *arg) {
         ++urlsCrawled;
         std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
 
-        if (checkpoint->shouldCheckpoint(urlsCrawled)) {
+        if (!shouldStop && checkpoint->shouldCheckpoint(urlsCrawled)) {
             checkpoint->save(*f, bloom, urlsCrawled);
         }
     }
@@ -59,11 +66,11 @@ int main() {
     cpConfig.interval = 500;
     checkpoint = new Checkpoint(cpConfig);
 
-    std::vector<FrontierItem> recoveredItems;
+    vector<FrontierItem> recoveredItems;
     urlsCrawled = 0;
 
     if (checkpoint->load(recoveredItems, bloom, urlsCrawled)) {
-        f = new Frontier(std::move(recoveredItems));
+        f = new Frontier(recoveredItems);
         std::cerr << "Recovered from checkpoint at " << urlsCrawled << " URLs\n";
     } else {
         f = new Frontier("src/crawler/seedList.txt");
