@@ -35,6 +35,8 @@ void *WorkerThread(void *arg) {
 }
 
 int main() {
+    initSSL();
+
     size_t ThreadCount = cores * 3;
     vector<pthread_t> threads(ThreadCount);
 
@@ -45,4 +47,6 @@ int main() {
     for (int i = 0; i < ThreadCount; i++) {
         pthread_join(threads[i], nullptr);
     }
+
+    cleanupSSL();
 }
