@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FrontierItem.h"
+#include "utils/PriorityQueue.hpp"
 #include "utils/string.hpp"
 #include "utils/threads/condition_variable.hpp"
 #include "utils/threads/lock_guard.hpp"
@@ -11,7 +12,6 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
-#include <queue>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -36,7 +36,7 @@ class Frontier {
     bool empty() const;
 
   private:
-    std::priority_queue<FrontierItem, std::vector<FrontierItem>, FrontierItemCompare> pq;
+    PriorityQueue<FrontierItem, FrontierItemCompare> pq;
     mutable mutex m;
     condition_variable cv;
     bool closed;
