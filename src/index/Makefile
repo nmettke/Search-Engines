@@ -15,6 +15,7 @@ DISK_READER := $(LIB_DIR)/disk_chunk_reader.cpp
 FLUSHER     := $(LIB_DIR)/chunk_flusher.cpp
 SEEK_TABLE  := $(LIB_DIR)/seek_table.cpp
 QUERY_ENGINE := $(LIB_DIR)/query_engine.cpp
+QUERY_TOKENIZER := $(LIB_DIR)/query_tokenizer.cpp
 
 ISR         := $(LIB_DIR)/isr.cpp
 ISR_AND     := $(LIB_DIR)/isr_and.cpp
@@ -25,11 +26,12 @@ ISR_CONTAINER  := $(LIB_DIR)/isr_container.cpp
 # All library sources (for main)
 ALL_LIB_SRCS := $(DISK_WRITER) $(VBYTE) $(IN_MEM_IDX) $(COMMON) \
                 $(FLUSHER) $(DISK_READER) \
-				$(TOKENIZER) $(SEEK_TABLE) $(QUERY_ENGINE) \
+				$(TOKENIZER) $(SEEK_TABLE) $(QUERY_ENGINE) $(QUERY_TOKENIZER) \
 				$(ISR) $(ISR_AND) $(ISR_OR) $(ISR_PHRASE) $(ISR_CONTAINER)
 
 # Test binaries
-TEST_BINS := test_vbyte test_tokenizer test_chunk_writer test_chunk_flusher test_chunk_reader
+TEST_BINS := test_vbyte test_tokenizer test_chunk_writer test_chunk_flusher test_chunk_reader \
+			 test_query_tokenizer test_query_isrs
 
 # ─── Targets ───────────────────────────────────────────────
 
@@ -61,6 +63,13 @@ test_chunk_flusher: $(TEST_DIR)/test_chunk_flusher.cpp $(IN_MEM_IDX) $(DISK_WRIT
 test_chunk_reader: $(TEST_DIR)/test_chunk_reader.cpp $(DISK_READER) $(FLUSHER) $(DISK_WRITER) $(VBYTE) $(COMMON) $(IN_MEM_IDX) $(ISR) $(SEEK_TABLE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+test_query_tokenizer: $(TEST_DIR)/test_query_tokenizer.cpp $(QUERY_TOKENIZER) $(TOKENIZER)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+test_query_isrs: $(TEST_DIR)/test_query_isrs.cpp $(DISK_WRITER) $(VBYTE) $(IN_MEM_IDX) $(COMMON) $(FLUSHER) $(DISK_READER) $(TOKENIZER) $(SEEK_TABLE) \
+					$(ISR) $(ISR_AND) $(ISR_OR) $(ISR_PHRASE) $(ISR_CONTAINER)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 # ─── Run tests ─────────────────────────────────────────────
 
 test: tests
@@ -68,6 +77,8 @@ test: tests
 		echo "\n=== Running $$t ==="; \
 		./$$t || exit 1; \
 	done
+
+	echo "\nAll tests passed!"
 
 # ─── Lint / Format ─────────────────────────────────────────
 
