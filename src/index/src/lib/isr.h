@@ -1,22 +1,37 @@
+// src/lib/isr.h
 #pragma once
 
 #include "seek_table.h"
 #include "types.h"
+#include <memory>
 #include <optional>
 
 class ISR {
   public:
-    ISR();
-    ISR(const uint8_t *data, uint32_t num_postings, std::optional<SeekTable> table = std::nullopt);
+    virtual ~ISR() = default;
 
-    uint32_t next();
-    uint32_t seek(uint32_t target);
+    virtual uint32_t next() = 0;
+    virtual uint32_t seek(uint32_t target) = 0;
 
-    uint32_t currentLocation() const { return current_loc; }
+    virtual uint32_t currentLocation() const = 0;
+    virtual bool done() const = 0;
+};
+
+class ISRWord : public ISR {
+  public:
+    ISRWord();
+    ISRWord(const uint8_t *data, uint32_t num_postings,
+            std::optional<SeekTable> table = std::nullopt);
+
+    uint32_t next() override;
+    uint32_t seek(uint32_t target) override;
+
+    uint32_t currentLocation() const override { return current_loc; }
+    bool done() const override { return is_exhausted; }
+
+    // Specific to disk readers
     uint32_t currentIndex() const { return current_index; }
     uint32_t remaining() const { return num_postings - current_index; }
-
-    bool done() const { return is_exhausted; }
 
   private:
     uint32_t num_postings = 0;
@@ -26,6 +41,5 @@ class ISR {
     const uint8_t *current_ptr = nullptr;
 
     std::optional<SeekTable> seek_table;
-
     bool is_exhausted = true;
 };

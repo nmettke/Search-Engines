@@ -22,9 +22,8 @@ class DiskChunkReader {
     // expose the parsed header
     const FileHeader &header() const { return header_; }
 
-    // looks up a term in the dictionary and returns an initialized ISR.
-    // if the term is not found, returns an empty ISR (done() == true).
-    ISR createISR(const std::string &term) const;
+    // returns a unique_ptr to an ISRWord. Returns nullptr if term is not found.
+    std::unique_ptr<ISRWord> createISR(const std::string &term) const;
 
     // retrieves a document by its integer ID (0 to num_documents - 1).
     // returns std::nullopt if the ID is out of bounds.

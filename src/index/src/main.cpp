@@ -56,27 +56,27 @@ int main() {
               << ", terms=" << reader.header().num_unique_terms
               << ", total_locations=" << reader.header().total_locations << "\n";
 
-    ISR cat_isr = reader.createISR("cat");
+    auto cat_isr = reader.createISR("cat");
     std::cout << "Posting list for 'cat': ";
-    while (!cat_isr.done()) {
-        std::cout << cat_isr.currentLocation() << ", ";
-        cat_isr.next();
+    while (!cat_isr || !cat_isr->done()) {
+        std::cout << cat_isr->currentLocation() << ", ";
+        cat_isr->next();
     }
     std::cout << "\n";
 
-    ISR dog_isr = reader.createISR("dog");
+    auto dog_isr = reader.createISR("dog");
     std::cout << "Posting list for 'dog': ";
-    while (!dog_isr.done()) {
-        std::cout << dog_isr.currentLocation() << ", ";
-        dog_isr.next();
+    while (!dog_isr || !dog_isr->done()) {
+        std::cout << dog_isr->currentLocation() << ", ";
+        dog_isr->next();
     }
     std::cout << "\n";
 
-    ISR doc_end_isr = reader.createISR(docEndToken);
+    auto doc_end_isr = reader.createISR(docEndToken);
     std::cout << "Posting list for docEndToken: ";
-    while (!doc_end_isr.done()) {
-        std::cout << doc_end_isr.currentLocation() << ", ";
-        doc_end_isr.next();
+    while (!doc_end_isr || !doc_end_isr->done()) {
+        std::cout << doc_end_isr->currentLocation() << ", ";
+        doc_end_isr->next();
     }
     std::cout << "\n";
 
@@ -97,9 +97,9 @@ int main() {
     std::string last_printed_url = "";
 
     // iterate through every location
-    while (!cat_isr.done()) {
-        uint32_t loc = cat_isr.currentLocation();
-        cat_isr.next();
+    while (!cat_isr || !cat_isr->done()) {
+        uint32_t loc = cat_isr->currentLocation();
+        cat_isr->next();
 
         std::cout << "Looking up location: " << loc << "\n";
         // map the location to the actual Document Record

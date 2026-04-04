@@ -9,18 +9,18 @@ std::vector<DocumentRecord> QueryEngine::search(const std::vector<std::string> &
         return results;
 
     // Initialize Term ISRs
-    std::vector<ISR> term_isrs;
+    std::vector<std::unique_ptr<ISRWord>> term_isrs;
     for (const auto &term : terms) {
-        ISR isr = reader_.createISR(term);
-        if (isr.done()) {
+        auto isr = reader_.createISR(term);
+        if (!isr || isr->done()) {
             return results;
         }
-        term_isrs.push_back(isr);
+        term_isrs.push_back(std::move(isr));
     }
 
     // Initialize #DocEnd ISR
-    ISR doc_end_isr = reader_.createISR(docEndToken);
-    if (doc_end_isr.done())
+    auto doc_end_isr = reader_.createISR(docEndToken);
+    if (!doc_end_isr || doc_end_isr->done())
         return results;
 
     // DAAT Leapfrog Loop
@@ -28,18 +28,18 @@ std::vector<DocumentRecord> QueryEngine::search(const std::vector<std::string> &
         // Find the maximum location among all terms
         uint32_t max_loc = 0;
         for (auto &isr : term_isrs) {
-            if (isr.done())
+            if (!isr || isr->done())
                 return results;
 
-            max_loc = std::max(max_loc, isr.currentLocation());
+            max_loc = std::max(max_loc, isr->currentLocation());
         }
 
         // Find the END of the document containing max_loc
-        uint32_t doc_end_loc = doc_end_isr.seek(max_loc);
+        uint32_t doc_end_loc = doc_end_isr->seek(max_loc);
         if (doc_end_loc == ISRSentinel)
             break;
 
-        uint32_t doc_id = doc_end_isr.currentIndex() - 1;
+        uint32_t doc_id = doc_end_isr->currentIndex() - 1;
         auto target_doc = reader_.getDocument(doc_id);
         if (!target_doc.has_value())
             break;
@@ -47,7 +47,7 @@ std::vector<DocumentRecord> QueryEngine::search(const std::vector<std::string> &
 
         bool all_in_doc = true;
         for (auto &isr : term_isrs) {
-            uint32_t loc = isr.seek(doc_start_loc);
+            uint32_t loc = isr->seek(doc_start_loc);
 
             if (loc == ISRSentinel)
                 return results;
@@ -63,7 +63,7 @@ std::vector<DocumentRecord> QueryEngine::search(const std::vector<std::string> &
         }
 
         for (auto &isr : term_isrs) {
-            isr.seek(doc_end_loc);
+            isr->seek(doc_end_loc);
         }
     }
 

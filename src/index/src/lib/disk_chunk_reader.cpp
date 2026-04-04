@@ -61,26 +61,21 @@ bool DiskChunkReader::open(const std::string &filename) {
     return true;
 }
 
-ISR DiskChunkReader::createISR(const std::string &term) const {
+std::unique_ptr<ISRWord> DiskChunkReader::createISR(const std::string &term) const {
     if (!data_)
-        return ISR();
+        return nullptr;
 
-    // hash the term
     uint64_t hash_val = hashString(term.c_str());
-
-    // jump to Dictionary Header
     const uint8_t *dict_ptr = data_ + header_.dict_offset;
     size_t num_buckets = *reinterpret_cast<const size_t *>(dict_ptr);
     if (num_buckets == 0)
-        return ISR();
+        return nullptr;
 
-    // look up the Bucket Offset
     const size_t *buckets_array = reinterpret_cast<const size_t *>(dict_ptr + sizeof(size_t));
     size_t chain_offset = buckets_array[hash_val % num_buckets];
     if (chain_offset == 0)
-        return ISR();
+        return nullptr;
 
-    // walk the chain
     BufferReader reader(dict_ptr + chain_offset);
 
     while (true) {
@@ -88,37 +83,31 @@ ISR DiskChunkReader::createISR(const std::string &term) const {
         if (b_disk->occupied == 0)
             break;
 
-        // read the string immediately following the struct
         std::string_view current_term(reinterpret_cast<const char *>(reader.current()),
                                       b_disk->string_length);
         reader.skip(b_disk->string_length);
 
         if (std::string(current_term) == term) {
-            // jump to the posting list offset
             BufferReader p_reader(data_ + header_.postings_offset + b_disk->posting_offset);
-
-            // read PostingListHeader
             const PostingListHeader *p_header = p_reader.readPOD<PostingListHeader>();
-
             std::optional<SeekTable> table = std::nullopt;
 
             if (p_header->has_seek_table) {
                 const uint8_t *table_data = p_reader.current();
                 p_reader.skip(SeekTable::SerializedSize);
-
                 const uint8_t *compressed_data = p_reader.current();
-
                 table = SeekTable::deserialize(table_data, compressed_data, p_header->data_size,
                                                p_header->num_postings);
-                return ISR(compressed_data, p_header->num_postings, table);
+
+                return std::make_unique<ISRWord>(compressed_data, p_header->num_postings, table);
             } else {
                 const uint8_t *compressed_data = p_reader.current();
-                return ISR(compressed_data, p_header->num_postings);
+                return std::make_unique<ISRWord>(compressed_data, p_header->num_postings);
             }
         }
     }
 
-    return ISR();
+    return nullptr;
 }
 
 std::optional<DocumentRecord> DiskChunkReader::getDocument(uint32_t doc_id) const {

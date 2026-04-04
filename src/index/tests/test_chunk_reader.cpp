@@ -62,16 +62,16 @@ void test_create_isr() {
     TEST_ASSERT(reader.open(test_file), "Should open chunk");
 
     // 3. Test successful lookup
-    ISR isr_cat = reader.createISR("cat");
-    TEST_ASSERT(!isr_cat.done(), "ISR for 'cat' should not be empty");
-    TEST_ASSERT(isr_cat.currentLocation() == 5, "First location should be 5");
-    TEST_ASSERT(isr_cat.next() == 10, "Second location should be 10");
-    isr_cat.next(); // Move past the last posting
-    TEST_ASSERT(isr_cat.done(), "ISR should be exhausted");
+    auto isr_cat = reader.createISR("cat");
+    TEST_ASSERT(!isr_cat || !isr_cat->done(), "ISR for 'cat' should not be empty");
+    TEST_ASSERT(isr_cat->currentLocation() == 5, "First location should be 5");
+    TEST_ASSERT(isr_cat->next() == 10, "Second location should be 10");
+    isr_cat->next(); // Move past the last posting
+    TEST_ASSERT(isr_cat->done(), "ISR should be exhausted");
 
     // 4. Test missing lookup
-    ISR isr_dog = reader.createISR("dog");
-    TEST_ASSERT(isr_dog.done(), "ISR for missing term should be instantly done");
+    auto isr_dog = reader.createISR("dog");
+    TEST_ASSERT(!isr_dog || isr_dog->done(), "ISR for missing term should be instantly done");
 
     std::cout << "test_create_isr PASSED.\n";
     unlink(test_file);
