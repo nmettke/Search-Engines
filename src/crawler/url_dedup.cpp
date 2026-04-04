@@ -1,5 +1,6 @@
 #include "url_dedup.h"
 
+#include "utils/threads/lock_guard.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -145,6 +146,7 @@ bool UrlBloomFilter::getBit(std::size_t index) const { return bits[index]; }
 void UrlBloomFilter::setBit(std::size_t index) { bits[index] = true; }
 
 bool UrlBloomFilter::probablyContains(const string &key) const {
+    lock_guard guard(m_);
     if (key.empty()) {
         return false;
     }
@@ -161,6 +163,7 @@ bool UrlBloomFilter::probablyContains(const string &key) const {
 }
 
 void UrlBloomFilter::insert(const string &key) {
+    lock_guard guard(m_);
     if (key.empty()) {
         return;
     }
@@ -173,15 +176,40 @@ void UrlBloomFilter::insert(const string &key) {
     }
 }
 
+bool UrlBloomFilter::checkAndInsert(const string &key) {
+    lock_guard guard(m_);
+    if (key.empty()) {
+        return false;
+    }
+
+    auto [h1, h2] = hashKey(key);
+    for (std::uint32_t i = 0; i < hashCount; i++) {
+        std::size_t index = static_cast<std::size_t>((h1 + static_cast<std::uint64_t>(i + 1) * h2) %
+                                                     static_cast<std::uint64_t>(bitCount));
+        if (!getBit(index)) {
+            // Found a bit that's not set, so key is not in filter
+            // Now we need to set all bits for this key
+            auto [h1_inner, h2_inner] = hashKey(key);
+            for (std::uint32_t j = 0; j < hashCount; j++) {
+                std::size_t idx = static_cast<std::size_t>(
+                    (h1_inner + static_cast<std::uint64_t>(j + 1) * h2_inner) %
+                    static_cast<std::uint64_t>(bitCount));
+                setBit(idx);
+            }
+            return true; // Key was not present, we inserted it
+        }
+    }
+    return false; // Key was already present
+}
+
 bool shouldEnqueueUrl(const string &rawUrl, UrlBloomFilter &bloom, string &canonicalOut) {
     string normalizeOut = normalizeUrl(rawUrl);
     if (normalizeOut.empty()) {
         return false;
     }
-    if (bloom.probablyContains(normalizeOut)) {
-        return false;
-    }
     canonicalOut = normalizeOut;
-    bloom.insert(normalizeOut);
-    return true;
+    // Atomically check if URL is in bloom filter and insert it if not
+    // This avoids TOCTOU race condition where two threads could both think
+    // the URL is new and both add it to the frontier
+    return bloom.checkAndInsert(normalizeOut);
 }
