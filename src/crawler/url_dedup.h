@@ -1,6 +1,7 @@
 #pragma once
 
 #include "utils/string.hpp"
+#include "utils/threads/mutex.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -18,11 +19,13 @@ class UrlBloomFilter {
 
     bool probablyContains(const string &key) const;
     void insert(const string &key);
+    bool checkAndInsert(const string &key);
 
   private:
     std::size_t bitCount;
     std::uint32_t hashCount;
     std::vector<bool> bits;
+    mutable mutex m_;
 
     UrlBloomFilter(std::size_t bitCount, std::uint32_t hashCount, std::vector<bool> bits);
 
