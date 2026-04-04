@@ -13,12 +13,12 @@
 #include <iostream>
 #include <optional>
 #include <stdexcept>
-#include <string>
-#include <vector>
 
 class Frontier {
   public:
-    Frontier(const std::string seed_list_str);
+    Frontier(const string &seed_list_str);
+
+    Frontier(vector<FrontierItem> items);
 
     ~Frontier() = default;
 
@@ -28,12 +28,15 @@ class Frontier {
     std::optional<FrontierItem> pop();
 
     void taskDone();
+    void shutdown();
 
     bool contains(const string &url) const;
 
-    std::size_t size() const;
+    size_t size() const;
 
     bool empty() const;
+
+    vector<FrontierItem> snapshot() const;
 
   private:
     PriorityQueue<FrontierItem, FrontierItemCompare> pq;
