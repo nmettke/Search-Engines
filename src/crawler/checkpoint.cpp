@@ -15,8 +15,7 @@ bool Checkpoint::shouldCheckpoint(size_t urlsCrawled) const {
     return (urlsCrawled - lastCheckpointAt_) >= config_.interval;
 }
 
-bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom,
-                      size_t urlsCrawled) {
+bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom, size_t urlsCrawled) {
     vector<FrontierItem> items = frontier.snapshot();
 
     FILE *f = fopen(tmpPath().c_str(), "wb");
@@ -54,8 +53,7 @@ bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom,
     return true;
 }
 
-bool Checkpoint::load(vector<FrontierItem> &items, UrlBloomFilter &bloom,
-                      size_t &urlsCrawled) {
+bool Checkpoint::load(vector<FrontierItem> &items, UrlBloomFilter &bloom, size_t &urlsCrawled) {
     FILE *f = fopen(filePath().c_str(), "rb");
     if (!f)
         return false;
