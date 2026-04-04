@@ -59,6 +59,7 @@ void *WorkerThread(void *arg) {
 }
 
 int main() {
+    initSSL();
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
