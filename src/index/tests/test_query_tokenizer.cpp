@@ -58,10 +58,35 @@ void test_text_operators() {
     std::cout << "test_text_operators PASSED.\n";
 }
 
+void test_hyphens_vs_nots() {
+    std::cout << "Running test_hyphens_vs_nots...\n";
+    auto tokens = QueryTokenizer::tokenize("real-time -fake");
+
+    TEST_ASSERT(tokens.size() == 3, "Should have 3 tokens");
+    TEST_ASSERT(tokens[0].type == QueryTokenType::WORD && tokens[0].text == "real-tim",
+                "Hyphenated word preserved & stemmed");
+    TEST_ASSERT(tokens[1].type == QueryTokenType::NOT, "Standalone minus is NOT");
+    TEST_ASSERT(tokens[2].type == QueryTokenType::WORD && tokens[2].text == "fake",
+                "Target of NOT is a word");
+
+    auto tokens2 = QueryTokenizer::tokenize("-real-time OR hello-world");
+
+    TEST_ASSERT(tokens2.size() == 4, "Should have 4 tokens");
+    TEST_ASSERT(tokens2[0].type == QueryTokenType::NOT, "First token is NOT");
+    TEST_ASSERT(tokens2[1].type == QueryTokenType::WORD && tokens2[1].text == "real-tim",
+                "Second token is real-tim (hyphen preserved, stemmed)");
+    TEST_ASSERT(tokens2[2].type == QueryTokenType::OR, "Third token is OR");
+    TEST_ASSERT(tokens2[3].type == QueryTokenType::WORD && tokens2[3].text == "hello-world",
+                "Fourth token is hello-world");
+
+    std::cout << "test_hyphens_vs_nots PASSED.\n";
+}
+
 int main() {
     test_simple_words();
     test_complex_syntax();
     test_text_operators();
+    test_hyphens_vs_nots();
     std::cout << "All Query Tokenizer tests passed!\n";
     return 0;
 }
