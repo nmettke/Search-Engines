@@ -98,3 +98,47 @@ target_link_libraries(crawler
 
 target_compile_features(crawler_lib PUBLIC cxx_std_17)
 target_compile_features(crawler PUBLIC cxx_std_17)
+
+# -------------------------
+# IPC (Unix socket wire format for crawler -> indexer)
+# -------------------------
+add_library(ipc
+    ipc/wire_document.cpp
+    ipc/unix_socket.cpp
+)
+target_include_directories(ipc PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(ipc PUBLIC cxx_std_17)
+
+target_link_libraries(crawler PRIVATE ipc)
+
+# -------------------------
+# Search index (library + indexer daemon + demo)
+# -------------------------
+set(INDEX_LIB_SRCS
+    index/src/lib/vbyte.cpp
+    index/src/lib/tokenizer.cpp
+    index/src/lib/seek_table.cpp
+    index/src/lib/query_engine.cpp
+    index/src/lib/isr.cpp
+    index/src/lib/in_memory_index.cpp
+    index/src/lib/disk_chunk_writer.cpp
+    index/src/lib/disk_chunk_reader.cpp
+    index/src/lib/chunk_flusher.cpp
+    index/src/lib/Common.cpp
+)
+
+add_library(index_core STATIC ${INDEX_LIB_SRCS})
+target_include_directories(index_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/index/src)
+target_compile_features(index_core PUBLIC cxx_std_17)
+
+add_executable(indexer index/src/indexer_main.cpp)
+target_include_directories(indexer PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/index/src
+)
+target_link_libraries(indexer PRIVATE index_core ipc)
+target_compile_features(indexer PUBLIC cxx_std_17)
+
+add_executable(index_demo index/src/main.cpp)
+target_link_libraries(index_demo PRIVATE index_core)
+target_compile_features(index_demo PUBLIC cxx_std_17)
