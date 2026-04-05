@@ -1,4 +1,5 @@
 #include "Crawler.h"
+#include "UrlFilter.h"
 #include "checkpoint.h"
 #include "url_dedup.h"
 #include <atomic>
@@ -20,6 +21,7 @@ Checkpoint *checkpoint;
 std::atomic<size_t> urlsCrawled{0};
 UrlBloomFilter bloom(1000000, 0.0001);
 RobotsCache *robotsCache = nullptr;
+UrlFilter urlFilter;
 unsigned int cores = std::thread::hardware_concurrency();
 
 void *WorkerThread(void *arg) {
@@ -47,7 +49,7 @@ void *WorkerThread(void *arg) {
         for (const Link &link : parsed.links) {
             if (link.URL.find("http") != link.URL.npos) {
                 string canonical;
-                if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
+                if (shouldEnqueueUrl(link.URL, bloom, canonical, &urlFilter)) {
                     discoveredLinks.pushBack(canonical);
                 }
             }
@@ -79,6 +81,8 @@ int main() {
     initSSL();
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
+
+    urlFilter.loadBlacklist("src/crawler/blackList.txt");
 
     CheckpointConfig cpConfig;
     cpConfig.directory = "src/crawler";
