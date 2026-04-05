@@ -48,6 +48,16 @@ void Frontier::push(const string &url) {
     cv.notify_one();
 }
 
+void Frontier::push(const string &url, const FrontierItem &parent) {
+    lock_guard guard(m);
+    if (closed) {
+        return;
+    }
+    pq.emplace(url, parent);
+    ++pending;
+    cv.notify_one();
+}
+
 void Frontier::pushMany(const vector<string> &urls) {
     lock_guard guard(m);
     if (closed || urls.size() == 0) {
@@ -95,6 +105,20 @@ void Frontier::taskDone() {
 void Frontier::shutdown() {
     lock_guard guard(m);
     closed = true;
+    cv.notify_all();
+}
+
+void Frontier::pushMany(const vector<string> &urls, const FrontierItem &parent) {
+    lock_guard guard(m);
+    if (closed || urls.size() == 0) {
+        return;
+    }
+
+    for (const string &url : urls) {
+        pq.emplace(url, parent);
+        ++pending;
+    }
+
     cv.notify_all();
 }
 

@@ -55,7 +55,7 @@ void *WorkerThread(void *arg) {
             }
         }
 
-        f->pushMany(discoveredLinks);
+        f->pushMany(discoveredLinks, *item);
         ++urlsCrawled;
         std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
     }
