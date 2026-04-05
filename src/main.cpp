@@ -1,27 +1,51 @@
 // Main file, should combine Crawler and Index for the new distributed design
 // Taken from Crawler.cpp
 
-#include "./crawler/Crawler.h"
+#include "./crawler/RobotsCache.h"
 #include "./crawler/checkpoint.h"
+#include "./crawler/frontier.h"
 #include "./crawler/url_dedup.h"
+#include "./index/src/lib/Common.h"
 #include "./index/src/lib/chunk_flusher.h"
 #include "./index/src/lib/disk_chunk_reader.h"
 #include "./index/src/lib/in_memory_index.h"
 #include "./index/src/lib/indexQueue.h"
 #include "./index/src/lib/tokenizer.h"
+#include "./parser/HtmlParser.h"
+#include "./utils/SSL/LinuxSSL_Crawler.hpp"
+#include "./utils/string.hpp"
+#include "./utils/threads/condition_variable.hpp"
+#include "./utils/vector.hpp"
 
+#include <cerrno>
 #include <csignal>
+#include <cstring>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <thread>
+
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 static volatile bool shouldStop = false;
 Frontier *f = nullptr;
 IndexQueue *q = nullptr;
 InMemoryIndex index;
+// Distributed args
+std::atomic<size_t> numLinkThreshold = 128; // how much is in batch before we push
+vector<vector<Link>> batches;
+mutex batch_lock;
+std::atomic<size_t> machine_id; // machine id for this machine
+vector<string> peer_address;    // address to send to
+mutex addr_lock;
+condition_variable batch_cv;
 
 static void signalHandler(int) {
     shouldStop = true;
+    batch_cv.notify_all();
     if (f)
         f->shutdown();
     if (q)
@@ -35,6 +59,13 @@ UrlBloomFilter bloom(1000000, 0.0001);
 unsigned int cores = std::thread::hardware_concurrency();
 
 void *CrawlerWorkerThread(void *arg) {
+    addr_lock.lock();
+    size_t num_machine = peer_address.size();
+    addr_lock.unlock();
+    if (num_machine == 0) {
+        num_machine = 1;
+    }
+
     while (std::optional<FrontierItem> item = f->pop()) {
         if (shouldStop)
             break;
@@ -56,6 +87,18 @@ void *CrawlerWorkerThread(void *arg) {
 
         for (const Link &link : parsed.links) {
             if (link.URL.find("http") != link.URL.npos) {
+                size_t hashto = hashString(link.URL) % num_machine;
+                if (hashto != machine_id.load()) {
+                    batch_lock.lock();
+                    batches[hashto].pushBack(link);
+
+                    if (batches[hashto].size() >= numLinkThreshold.load()) {
+                        batch_cv.notify_one();
+                    }
+
+                    batch_lock.unlock();
+                    continue;
+                }
                 string canonical;
                 if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
                     discoveredLinks.pushBack(canonical);
@@ -110,6 +153,156 @@ void *IndexWorkerThread(void *arg) {
     return nullptr;
 }
 
+static bool hasReadyBatch() {
+    // assumes batch locked
+    for (const auto &batch : batches) {
+        if (batch.size() >= numLinkThreshold.load() || (shouldStop && batch.size() > 0)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
+    if (batch.size() == 0) {
+        return true;
+    }
+
+    string host;
+    string port;
+
+    bool valid_addr = false;
+
+    size_t colon = peer.find(':');
+    if (colon == string::npos) {
+        valid_addr = false;
+    } else {
+        host = string(peer.cstr(), colon);
+        port = string(peer.cstr() + colon + 1);
+        valid_addr = !host.empty() && !port.empty();
+    }
+
+    if (!valid_addr) {
+        std::cerr << "Invalid peer address: " << peer << '\n';
+        return false;
+    }
+
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    addrinfo *result = nullptr;
+    if (getaddrinfo(host.c_str(), port.c_str(), &hints, &result) != 0) {
+        std::cerr << "Failed to resolve peer " << peer << '\n';
+        return false;
+    }
+
+    int socket_fd = -1;
+    for (addrinfo *rp = result; rp != nullptr; rp = rp->ai_next) {
+        socket_fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (socket_fd < 0) {
+            continue;
+        }
+
+        if (connect(socket_fd, rp->ai_addr, rp->ai_addrlen) == 0) {
+            break;
+        }
+
+        close(socket_fd);
+        socket_fd = -1;
+    }
+
+    freeaddrinfo(result);
+
+    if (socket_fd < 0) {
+        std::cerr << "Failed to connect to peer " << peer << '\n';
+        return false;
+    }
+
+    std::string payload;
+    payload.reserve(batch.size() * 64);
+    for (const Link &link : batch) {
+        payload += link.URL.cstr();
+        payload.push_back('\n');
+    }
+
+    const char *data = payload.data();
+    size_t remaining = payload.size();
+    while (remaining > 0) {
+        ssize_t sent = send(socket_fd, data, remaining, 0);
+        if (sent < 0) {
+            std::cerr << "Failed while sending to peer " << peer << ": " << std::strerror(errno)
+                      << '\n';
+            close(socket_fd);
+            return false;
+        }
+
+        data += sent;
+        remaining -= static_cast<size_t>(sent);
+    }
+
+    close(socket_fd);
+    return true;
+}
+
+void *SendToMachineThread(void *arg) {
+    while (true) {
+        vector<vector<Link>> ready_batches;
+
+        batch_lock.lock();
+
+        while (!shouldStop && !hasReadyBatch()) {
+            batch_cv.wait(batch_lock);
+        }
+
+        if (shouldStop && !hasReadyBatch()) {
+            batch_lock.unlock();
+            break;
+        }
+
+        ready_batches = vector<vector<Link>>(batches.size());
+        for (size_t i = 0; i < batches.size(); ++i) {
+            if (batches[i].size() >= numLinkThreshold.load() ||
+                (shouldStop && batches[i].size() > 0)) {
+                ready_batches[i] = std::move(batches[i]);
+            }
+        }
+
+        batch_lock.unlock();
+
+        for (size_t i = 0; i < ready_batches.size(); ++i) {
+            if (ready_batches[i].size() == 0) {
+                continue;
+            }
+
+            if (i == machine_id.load()) {
+                // this should never happen but we add just in case
+                // batches[machine_id] should always be empty
+                vector<string> local_urls;
+                for (const Link &link : ready_batches[i]) {
+                    string canonical;
+                    if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
+                        local_urls.pushBack(canonical);
+                    }
+                }
+                f->pushMany(local_urls);
+                continue;
+            }
+
+            if (!sendBatchToPeer(peer_address[i], ready_batches[i])) {
+                batch_lock.lock();
+                for (const Link &link : ready_batches[i]) {
+                    batches[i].pushBack(link);
+                }
+                batch_lock.unlock();
+                batch_cv.notify_one();
+            }
+        }
+    }
+
+    return nullptr;
+}
+
 int main() {
     initSSL();
     signal(SIGINT, signalHandler);
@@ -118,6 +311,14 @@ int main() {
     cpConfig.directory = "src/crawler";
     cpConfig.interval = 500;
     checkpoint = new Checkpoint(cpConfig);
+
+    // Set up distribution, placeholder for now
+    machine_id = 0;
+    addr_lock.lock();
+    peer_address = vector<string>(1);
+    peer_address[0] = "";
+    addr_lock.unlock();
+    batches = vector<vector<Link>>(peer_address.size());
 
     vector<FrontierItem> recoveredItems;
     urlsCrawled = 0;
@@ -134,6 +335,7 @@ int main() {
     size_t IndexThreadCount = 1;
     vector<pthread_t> crawlerThreads(CrawlerThreadCount);
     vector<pthread_t> indexThreads(IndexThreadCount);
+    pthread_t senderThread; // singular sender thread for now
 
     for (size_t i = 0; i < CrawlerThreadCount; i++) {
         pthread_create(&crawlerThreads[i], nullptr, CrawlerWorkerThread, nullptr);
@@ -143,6 +345,8 @@ int main() {
         pthread_create(&indexThreads[i], nullptr, IndexWorkerThread, nullptr);
     }
 
+    pthread_create(&senderThread, nullptr, SendToMachineThread, nullptr);
+
     for (size_t i = 0; i < CrawlerThreadCount; i++) {
         pthread_join(crawlerThreads[i], nullptr);
     }
@@ -150,6 +354,10 @@ int main() {
     for (size_t i = 0; i < IndexThreadCount; i++) {
         pthread_join(indexThreads[i], nullptr);
     }
+
+    shouldStop = true;
+    batch_cv.notify_all();
+    pthread_join(senderThread, nullptr);
 
     checkpoint->save(*f, bloom, urlsCrawled);
 
