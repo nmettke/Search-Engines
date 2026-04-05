@@ -1,28 +1,14 @@
 # -------------------------
 # Utils Library
 # -------------------------
-
 add_library(utils
     utils/SSL/LinuxSSL_Crawler.cpp
+    utils/Utf8.cpp
 )
-
-# target_include_directories(utils
-#     PUBLIC
-#         ${CMAKE_CURRENT_SOURCE_DIR}
-# )
-
-# target_compile_features(utils PUBLIC cxx_std_17)
-
-##### HOT FIX: COULDN'T BUILD WITH OPENSSL #####
-
-# 1. Locate OpenSSL on the system
-find_package(OpenSSL REQUIRED)
 
 target_include_directories(utils
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
-    PRIVATE
-        ${OPENSSL_INCLUDE_DIR}  # 2. Tell the compiler where ssl.h lives
 )
 
 # 3. Tell the linker to include the OpenSSL binary code
@@ -30,7 +16,12 @@ target_link_libraries(utils PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 
 target_compile_features(utils PUBLIC cxx_std_17)
 
-#### HOT FIX END ####
+find_package(OpenSSL REQUIRED)
+target_link_libraries(utils
+    PUBLIC
+        OpenSSL::SSL
+        OpenSSL::Crypto
+)
 
 # -------------------------
 # Parser Library
@@ -59,21 +50,40 @@ target_compile_features(parser PUBLIC cxx_std_17)
 # Crawler Library
 # -------------------------
 
-add_library(crawler
+add_library(crawler_lib
     crawler/FrontierItemHelper.cpp
     crawler/FrontierItem.cpp
     crawler/frontier.cpp
+    crawler/url_dedup.cpp
+    crawler/checkpoint.cpp
 )
 
-target_include_directories(crawler
+target_include_directories(crawler_lib
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(crawler
+target_link_libraries(crawler_lib
     PUBLIC
         parser
         utils
 )
 
+set(CRAWLER_MAIN_SOURCE crawler/Crawler.cpp)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/crawler/crawler.cpp)
+    set(CRAWLER_MAIN_SOURCE crawler/crawler.cpp)
+endif()
+
+add_executable(crawler
+    ${CRAWLER_MAIN_SOURCE}
+)
+
+target_link_libraries(crawler
+    PRIVATE
+        crawler_lib
+        parser
+        utils
+)
+
+target_compile_features(crawler_lib PUBLIC cxx_std_17)
 target_compile_features(crawler PUBLIC cxx_std_17)

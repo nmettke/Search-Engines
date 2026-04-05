@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mutex.hpp"
 #include <pthread.h>
 
 class condition_variable {
@@ -9,7 +10,7 @@ class condition_variable {
   public:
     condition_variable() { pthread_cond_init(&cond_, nullptr); }
 
-    void wait(pthread_mutex_t *m) { pthread_cond_wait(&cond_, m); }
+    void wait(mutex &m) { pthread_cond_wait(&cond_, m.nativeHandle()); }
 
     void notify_one() { pthread_cond_signal(&cond_); }
 

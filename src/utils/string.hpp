@@ -1,6 +1,7 @@
 #pragma once
-#include <cstddef>  // for size_t
-#include <iostream> // for ostream
+#include <cstddef>   // for size_t
+#include <iostream>  // for ostream
+#include <stdexcept> // for out_of_range (substr)
 
 // IMPORTANT: I did not count '\0' in size or capacity
 class string {
@@ -24,6 +25,24 @@ class string {
     string(const char *cstr) : _buffer(nullptr), _size(getLength(cstr)), _capacity(_size) {
         _buffer = new char[_capacity + 1];
         copyData(_buffer, cstr, _size);
+        _buffer[_size] = '\0';
+    }
+
+    // Range constructor [begin, end)
+    // REQUIRES: begin/end define a valid range or both are null
+    // MODIFIES: *this
+    // EFFECTS: Creates a string containing characters from begin up to (not including) end
+    string(const char *begin, const char *end) : _buffer(nullptr), _size(0), _capacity(0) {
+        if (begin == nullptr || end == nullptr || end <= begin) {
+            _buffer = new char[1];
+            _buffer[0] = '\0';
+            return;
+        }
+
+        _size = static_cast<size_t>(end - begin);
+        _capacity = _size;
+        _buffer = new char[_capacity + 1];
+        copyData(_buffer, begin, _size);
         _buffer[_size] = '\0';
     }
 
@@ -63,23 +82,31 @@ class string {
     // MODIFIES: Nothing
     // EFFECTS: Returns the number of characters in the string
     size_t size() const { return _size; }
+    size_t length() const { return _size; }
+    bool empty() const { return _size == 0; }
 
     // C string Conversion
     // REQUIRES: Nothing
     // MODIFIES: Nothing
     // EFFECTS: Returns a pointer to a null terminated C string of *this
     const char *cstr() const { return _buffer; }
+    const char *c_str() const { return _buffer; }
+
+    const char *data() const { return _buffer; }
+    char *data() { return _buffer; }
 
     // Iterator Begin
     // REQUIRES: Nothing
     // MODIFIES: Nothing
     // EFFECTS: Returns a random access iterator to the start of the string
+    char *begin() { return _buffer; }
     const char *begin() const { return _buffer; }
 
     // Iterator End
     // REQUIRES: Nothing
     // MODIFIES: Nothing
     // EFFECTS: Returns a random access iterator to the end of the string
+    char *end() { return _buffer + _size; }
     const char *end() const { return _buffer + _size; }
 
     // Element Access
@@ -104,6 +131,8 @@ class string {
         _size += other_size;
         _buffer[_size] = '\0';
     }
+
+    void operator+=(char c) { pushBack(c); }
 
     void append(const char *data, size_t count) {
         growCapacity(_size + count);
@@ -135,6 +164,43 @@ class string {
         }
 
         return npos;
+    }
+
+    size_t find(char c) const {
+        for (size_t i = 0; i < _size; ++i) {
+            if (_buffer[i] == c) {
+                return i;
+            }
+        }
+        return npos;
+    }
+
+    // Finds the first character in *this that matches any character in set (NUL-terminated).
+    size_t find_first_of(const char *set) const {
+        if (set == nullptr || set[0] == '\0' || _size == 0) {
+            return npos;
+        }
+        for (size_t i = 0; i < _size; ++i) {
+            for (size_t j = 0; set[j] != '\0'; ++j) {
+                if (_buffer[i] == set[j]) {
+                    return i;
+                }
+            }
+        }
+        return npos;
+    }
+
+    // Returns the substring [pos, pos + count). If count == npos, extends to end of string.
+    string substr(size_t pos, size_t count = npos) const {
+        if (pos > _size) {
+            throw std::out_of_range("string::substr");
+        }
+        size_t avail = _size - pos;
+        size_t len = (count == npos) ? avail : count;
+        if (len > avail) {
+            len = avail;
+        }
+        return string(_buffer + pos, _buffer + pos + len);
     }
 
     // Push Back
@@ -256,8 +322,9 @@ class string {
             newCapacity *= 2;
         }
 
-        char *newBuffer = new char[newCapacity];
+        char *newBuffer = new char[newCapacity + 1];
         copyData(newBuffer, _buffer, _size);
+        newBuffer[_size] = '\0';
         delete[] _buffer;
 
         _buffer = newBuffer;

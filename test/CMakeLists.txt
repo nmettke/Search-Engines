@@ -47,10 +47,45 @@ add_executable(FrontierItemHelper_tests
 
 target_link_libraries(FrontierItemHelper_tests
     PRIVATE
-        crawler
+        crawler_lib
         GTest::gtest_main
 )
 
 gtest_discover_tests(FrontierItemHelper_tests
     TEST_PREFIX "FrontierItemHelper::"
+)
+
+# -------------------------
+# Url Dedup Tests
+# -------------------------
+
+add_executable(url_dedup_tests
+    crawler/url_dedup_test.cpp
+)
+
+target_link_libraries(url_dedup_tests
+    PRIVATE
+        crawler_lib
+        GTest::gtest_main
+)
+
+gtest_discover_tests(url_dedup_tests
+    TEST_PREFIX "url_dedup::"
+)
+
+# -------------------------
+# PriorityQueue Tests
+# -------------------------
+add_executable(PriorityQueue_tests
+    utils/PriorityQueue_test.cpp
+)
+
+target_link_libraries(PriorityQueue_tests
+    PRIVATE
+        utils
+        GTest::gtest_main
+)
+
+gtest_discover_tests(PriorityQueue_tests
+    TEST_PREFIX "PriorityQueue::"
 )

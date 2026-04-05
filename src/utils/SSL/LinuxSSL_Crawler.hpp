@@ -1,10 +1,10 @@
+#include "../string.hpp"
+#include <iostream>
 #include <netdb.h>
 #include <openssl/ssl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#include <iostream>
 
 const int buffLength = 10240;
 
@@ -21,4 +21,6 @@ class ParsedUrl {
     char *pathBuffer;
 };
 
-std::string readURL(std::string target_url);
+void initSSL();
+void cleanupSSL();
+string readURL(string target_url);
