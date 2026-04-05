@@ -80,19 +80,18 @@ bool RobotsCache::isAllowed(const string &url, int *crawlDelay) {
 
     {
         lock_guard<mutex> guard(cacheMutex);
-        // Use a heap-allocated key so it outlives this scope.
+        // ase a heap alloced key so it outlives scope.
         char *heapKey = dupCString(originKey);
         Tuple<const char *, RobotsTxt *> *entry = cache.Find(heapKey, nullptr);
 
         if (entry->key != heapKey) {
-            // Another thread already inserted this origin while we were fetching.
+            // another thread already inserted this origin while we were trying to fetch
             delete[] heapKey;
             if (robots) {
                 delete robots;
                 robots = entry->value;
             }
         } else {
-            // We inserted the new entry; store the robots result.
             entry->value = robots;
         }
     }

@@ -19,7 +19,6 @@
 #include <cstdlib>
 #include <cstring>
 
-
 //
 // Utilities
 //

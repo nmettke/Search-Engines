@@ -23,8 +23,8 @@ class RobotsCache {
     static string extractOrigin(const string &url);
     RobotsTxt *fetchRobotsTxt(const string &origin);
 
-    // Keys are heap-allocated C strings owned by the cache.
-    // Values are RobotsTxt* (nullptr means fetch failed / no rules).
+    // keys are heap alloced c strings owned by cache
+    // values are RobotsTxt* (nullptr means fetch failed or no rules)
     HashTable<const char *, RobotsTxt *> cache;
     mutex cacheMutex;
 };
