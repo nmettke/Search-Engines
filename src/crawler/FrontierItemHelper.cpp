@@ -1,5 +1,7 @@
 #include "FrontierItemHelper.h"
 
+#include <cstring>
+
 Suffix stringToSuffix(const string &tld) {
     if (tld == "com")
         return Suffix::COM;
@@ -15,6 +17,15 @@ Suffix stringToSuffix(const string &tld) {
         return Suffix::MIL;
     if (tld == "int")
         return Suffix::INT;
+    if (tld == "io")
+        return Suffix::IO;
+    if (tld == "dev")
+        return Suffix::DEV;
+    if (tld == "app")
+        return Suffix::APP;
+    // uk, de, fr, jp, ru, br, cn, au, ca, in, kr
+    if (tld.size() == 2)
+        return Suffix::CCTLD;
     return Suffix::OTHER;
 }
 
@@ -29,15 +40,35 @@ double suffixScore(Suffix suffix) {
     case Suffix::COM:
         return 3.0;
     case Suffix::NET:
-        return 2.0;
+        return 2.5;
     case Suffix::MIL:
-        return 2.0;
+        return 2.5;
     case Suffix::INT:
+        return 2.5;
+    case Suffix::IO:
+        return 2.0;
+    case Suffix::DEV:
+        return 2.0;
+    case Suffix::APP:
+        return 2.0;
+    case Suffix::CCTLD:
         return 2.0;
     case Suffix::OTHER:
-        return 0.0;
+        return 1.0;
     }
-    return 0.0;
+    return 1.0;
+}
+
+double baseLengthScore(size_t len) {
+    if (len < 3)
+        return -1.0; // g.co, a.com
+    if (len < 5)
+        return -0.3; // short
+    if (len <= 15)
+        return 0.5; // google, stackoverflow, wikipedia
+    if (len <= 25)
+        return 0.0; // neutral
+    return -0.5;    // auto generated, likely junk
 }
 
 void extractRest(const string &url, string &rest) {
@@ -116,7 +147,8 @@ size_t computePathDepth(const string &path) {
     }
 
     size_t effectiveLen = path.size();
-    if (effectiveLen > 1 && path[effectiveLen - 1] == '/') {
+    // root path "/" and no path "" are equivalent
+    if (effectiveLen >= 1 && path[effectiveLen - 1] == '/') {
         --effectiveLen;
     }
 
@@ -128,4 +160,32 @@ size_t computePathDepth(const string &path) {
     }
 
     return depth;
+}
+
+size_t countQueryParams(const string &path) {
+    size_t qPos = path.find('?');
+    if (qPos == string::npos) {
+        return 0;
+    }
+    size_t count = 1;
+    for (size_t i = qPos + 1; i < path.size(); ++i) {
+        if (path[i] == '&') {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool isLowValuePath(const string &path) {
+    static const char *const patterns[] = {
+        "login",    "logout",      "signup", "register", "signin",      "signout",
+        "rss",      "feed",        "/api/",  "print",    "cgi-bin",     "wp-admin",
+        "wp-login", "wp-includes", "cart",   "checkout", "unsubscribe", nullptr};
+
+    for (size_t i = 0; patterns[i] != nullptr; ++i) {
+        if (path.find(patterns[i]) != string::npos) {
+            return true;
+        }
+    }
+    return false;
 }
