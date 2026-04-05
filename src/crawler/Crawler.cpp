@@ -1,6 +1,7 @@
 #include "Crawler.h"
 #include "checkpoint.h"
 #include "url_dedup.h"
+#include <atomic>
 #include <csignal>
 #include <iostream>
 #include <thread>
@@ -16,7 +17,7 @@ static void signalHandler(int) {
 
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint;
-size_t urlsCrawled = 0;
+std::atomic<size_t> urlsCrawled{0};
 UrlBloomFilter bloom(1000000, 0.0001);
 RobotsCache *robotsCache = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
@@ -75,11 +76,12 @@ int main() {
     robotsCache = new RobotsCache();
 
     vector<FrontierItem> recoveredItems;
-    urlsCrawled = 0;
+    size_t loadedCount = 0;
 
-    if (checkpoint->load(recoveredItems, bloom, urlsCrawled)) {
+    if (checkpoint->load(recoveredItems, bloom, loadedCount)) {
+        urlsCrawled = loadedCount;
         f = new Frontier(recoveredItems);
-        std::cerr << "Recovered from checkpoint at " << urlsCrawled << " URLs\n";
+        std::cerr << "Recovered from checkpoint at " << loadedCount << " URLs\n";
     } else {
         f = new Frontier("src/crawler/seedList.txt");
         std::cerr << "Starting fresh from seed list\n";
