@@ -1,6 +1,6 @@
 #include "indexQueue.h"
 
-IndexQueue::IndexQueue(){};
+IndexQueue::IndexQueue() {};
 
 IndexQueue::IndexQueue(vector<HtmlParser> items) {
     for (size_t i = 0; i < items.size(); ++i) {
