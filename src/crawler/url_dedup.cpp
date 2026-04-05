@@ -202,11 +202,17 @@ bool UrlBloomFilter::checkAndInsert(const string &key) {
     return false; // Key was already present
 }
 
-bool shouldEnqueueUrl(const string &rawUrl, UrlBloomFilter &bloom, string &canonicalOut) {
+bool shouldEnqueueUrl(const string &rawUrl, UrlBloomFilter &bloom, string &canonicalOut,
+                      const UrlFilter *filter) {
     string normalizeOut = normalizeUrl(rawUrl);
     if (normalizeOut.empty()) {
         return false;
     }
+
+    if (filter && !filter->isAllowed(normalizeOut)) {
+        return false;
+    }
+
     canonicalOut = normalizeOut;
     // Atomically check if URL is in bloom filter and insert it if not
     // This avoids TOCTOU race condition where two threads could both think

@@ -152,7 +152,6 @@ https://ui.com/
 https://mozilla.org/
 https://sentry.io/
 https://root-servers.net/
-https://reddit.com/
 https://okcdn.ru/
 https://a2z.com/
 https://intuit.com/
@@ -195,7 +194,6 @@ https://forms.gle/
 https://trbcdn.net/
 https://nih.gov/
 https://azurefd.net/
-https://archive.org/
 https://dnsowl.com/
 https://msftconnecttest.com/
 https://ax-msedge.net/

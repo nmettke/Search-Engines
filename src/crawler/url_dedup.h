@@ -1,5 +1,6 @@
 #pragma once
 
+#include "UrlFilter.h"
 #include "utils/string.hpp"
 #include "utils/threads/mutex.hpp"
 #include <cstddef>
@@ -34,4 +35,5 @@ class UrlBloomFilter {
     void setBit(std::size_t index);
 };
 
-bool shouldEnqueueUrl(const string &rawUrl, UrlBloomFilter &bloom, string &canonicalOut);
+bool shouldEnqueueUrl(const string &rawUrl, UrlBloomFilter &bloom, string &canonicalOut,
+                      const UrlFilter *filter = nullptr);
