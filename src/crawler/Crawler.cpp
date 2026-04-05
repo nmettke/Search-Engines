@@ -5,6 +5,7 @@
 #include <csignal>
 #include <iostream>
 #include <thread>
+#include <unistd.h>
 
 static volatile bool shouldStop = false;
 Frontier *f = nullptr;
@@ -15,7 +16,6 @@ static void signalHandler(int) {
         f->shutdown();
 }
 
-CheckpointConfig cpConfig;
 Checkpoint *checkpoint;
 std::atomic<size_t> urlsCrawled{0};
 UrlBloomFilter bloom(1000000, 0.0001);
@@ -56,12 +56,22 @@ void *WorkerThread(void *arg) {
         f->pushMany(discoveredLinks);
         ++urlsCrawled;
         std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
+    }
 
-        if (!shouldStop && checkpoint->shouldCheckpoint(urlsCrawled)) {
+    return nullptr;
+}
+
+// Runs on its own thread, saves checkpoint every 10 minutes
+void *CheckpointThread(void *arg) {
+    const int intervalSeconds = 600;
+    while (!shouldStop) {
+        for (int i = 0; i < intervalSeconds && !shouldStop; ++i) {
+            sleep(1);
+        }
+        if (!shouldStop) {
             checkpoint->save(*f, bloom, urlsCrawled);
         }
     }
-
     return nullptr;
 }
 
@@ -70,8 +80,8 @@ int main() {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
+    CheckpointConfig cpConfig;
     cpConfig.directory = "src/crawler";
-    cpConfig.interval = 500;
     checkpoint = new Checkpoint(cpConfig);
     robotsCache = new RobotsCache();
 
@@ -87,6 +97,10 @@ int main() {
         std::cerr << "Starting fresh from seed list\n";
     }
 
+    // Start checkpoint thread
+    pthread_t cpThread;
+    pthread_create(&cpThread, nullptr, CheckpointThread, nullptr);
+
     size_t ThreadCount = cores * 3;
     vector<pthread_t> threads(ThreadCount);
 
@@ -98,6 +112,10 @@ int main() {
         pthread_join(threads[i], nullptr);
     }
 
+    // Stop checkpoint thread
+    pthread_join(cpThread, nullptr);
+
+    // Final save on exit
     checkpoint->save(*f, bloom, urlsCrawled);
 
     if (shouldStop)

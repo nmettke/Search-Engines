@@ -12,10 +12,6 @@ string Checkpoint::filePath() const { return config_.directory + "/checkpoint.da
 
 string Checkpoint::tmpPath() const { return config_.directory + "/checkpoint.dat.tmp"; }
 
-bool Checkpoint::shouldCheckpoint(size_t urlsCrawled) const {
-    return (urlsCrawled - lastCheckpointAt_) >= config_.interval;
-}
-
 bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom, size_t urlsCrawled) {
     lock_guard guard(saveMutex_);
     vector<FrontierItem> items = frontier.snapshot();
@@ -49,7 +45,6 @@ bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom, siz
         return false;
     }
 
-    lastCheckpointAt_ = urlsCrawled;
     std::cerr << "Checkpoint saved at " << urlsCrawled << " URLs (" << items.size()
               << " frontier items)\n";
     return true;
@@ -94,7 +89,5 @@ bool Checkpoint::load(vector<FrontierItem> &items, UrlBloomFilter &bloom, size_t
     bloom = UrlBloomFilter::deserializeFromStream(f);
 
     fclose(f);
-
-    lastCheckpointAt_ = urlsCrawled;
     return true;
 }

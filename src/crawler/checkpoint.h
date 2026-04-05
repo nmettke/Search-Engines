@@ -8,7 +8,6 @@
 
 struct CheckpointConfig {
     string directory = ".";
-    size_t interval = 500;
 };
 
 class Checkpoint {
@@ -17,11 +16,9 @@ class Checkpoint {
 
     bool save(const Frontier &frontier, const UrlBloomFilter &bloom, size_t urlsCrawled);
     bool load(vector<FrontierItem> &items, UrlBloomFilter &bloom, size_t &urlsCrawled);
-    bool shouldCheckpoint(size_t urlsCrawled) const;
 
   private:
     CheckpointConfig config_;
-    size_t lastCheckpointAt_ = 0;
     mutable mutex saveMutex_;
 
     string filePath() const;
