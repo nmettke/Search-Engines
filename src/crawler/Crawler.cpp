@@ -1,90 +1,39 @@
-// File stub for crawler orchestrator file
 #include "Crawler.h"
-#include "ipc/unix_socket.h"
-#include "ipc/wire_document.h"
+#include "checkpoint.h"
 #include "url_dedup.h"
-
-#include <cstdlib>
-#include <cstring>
+#include <csignal>
 #include <iostream>
-#include <mutex>
-#include <pthread.h>
-#include <string>
 #include <thread>
-#include <unistd.h>
-#include <vector>
 
-Frontier f("src/crawler/seedList.txt");
+static volatile bool shouldStop = false;
+Frontier *f = nullptr;
+
+static void signalHandler(int) {
+    shouldStop = true;
+    if (f)
+        f->shutdown();
+}
+
+CheckpointConfig cpConfig;
+Checkpoint *checkpoint;
+size_t urlsCrawled = 0;
 UrlBloomFilter bloom(1000000, 0.0001);
 unsigned int cores = std::thread::hardware_concurrency();
 
-static std::mutex g_index_send_mutex;
-static int g_index_socket_fd = -1;
-
-static std::string toStdString(const string &s) { return std::string(s.cstr(), s.size()); }
-
-static void tryConnectIndexerSocket() {
-    const char *path = std::getenv("SEARCH_ENGINE_INDEX_SOCKET");
-    if (path && std::strcmp(path, "-") == 0) {
-        std::cerr << "Indexer IPC disabled (SEARCH_ENGINE_INDEX_SOCKET=-).\n";
-        return;
-    }
-    if (!path || path[0] == '\0')
-        path = "/tmp/search_engine_index.sock";
-
-    int fd = ipcUnixConnect(path);
-    if (fd >= 0) {
-        g_index_socket_fd = fd;
-        std::cerr << "Connected to indexer at " << path << "\n";
-        return;
-    }
-    std::cerr << "Warning: could not connect to indexer at " << path
-              << " (start indexer first, or set SEARCH_ENGINE_INDEX_SOCKET=- to skip)\n";
-}
-
-static void sendParsedToIndexer(const string &page_url, const HtmlParser &parsed) {
-    if (g_index_socket_fd < 0)
-        return;
-
-    WireDocument wd;
-    wd.base = toStdString(page_url);
-    wd.words.reserve(parsed.words.size());
-    for (const auto &w : parsed.words)
-        wd.words.push_back(toStdString(w));
-    wd.titleWords.reserve(parsed.titleWords.size());
-    for (const auto &w : parsed.titleWords)
-        wd.titleWords.push_back(toStdString(w));
-    wd.links.reserve(parsed.links.size());
-    for (const auto &link : parsed.links) {
-        WireLink wl;
-        wl.url = toStdString(link.URL);
-        wl.anchorText.reserve(link.anchorText.size());
-        for (const auto &a : link.anchorText)
-            wl.anchorText.push_back(toStdString(a));
-        wd.links.push_back(std::move(wl));
-    }
-
-    std::vector<std::uint8_t> payload;
-    wireEncodeDocument(wd, payload);
-
-    std::lock_guard<std::mutex> lock(g_index_send_mutex);
-    if (g_index_socket_fd < 0)
-        return;
-    if (!wireSendFramedMessage(g_index_socket_fd, payload)) {
-        std::cerr << "Indexer send failed; closing indexer connection.\n";
-        ::close(g_index_socket_fd);
-        g_index_socket_fd = -1;
-    }
-}
-
 void *WorkerThread(void *arg) {
-    while (std::optional<FrontierItem> item = f.pop()) {
+    while (std::optional<FrontierItem> item = f->pop()) {
+        if (shouldStop)
+            break;
+
         struct TaskCompletionGuard {
             Frontier &frontier;
             ~TaskCompletionGuard() { frontier.taskDone(); }
-        } taskCompletionGuard{f};
+        } taskCompletionGuard{*f};
 
         string page = readURL(item->link);
+        if (shouldStop)
+            break;
+
         HtmlParser parsed(page.cstr(), page.size());
         vector<string> discoveredLinks;
 
@@ -97,32 +46,55 @@ void *WorkerThread(void *arg) {
             }
         }
 
-        sendParsedToIndexer(item->link, parsed);
+        f->pushMany(discoveredLinks);
+        ++urlsCrawled;
+        std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
 
-        f.pushMany(discoveredLinks);
-        std::cout << "Crawled " << item->link << '\n';
+        if (!shouldStop && checkpoint->shouldCheckpoint(urlsCrawled)) {
+            checkpoint->save(*f, bloom, urlsCrawled);
+        }
     }
-    std::cout << "No more Frontier!" << '\n';
 
     return nullptr;
 }
 
 int main() {
-    tryConnectIndexerSocket();
+    initSSL();
+    signal(SIGINT, signalHandler);
+    signal(SIGTERM, signalHandler);
+
+    cpConfig.directory = "src/crawler";
+    cpConfig.interval = 500;
+    checkpoint = new Checkpoint(cpConfig);
+
+    vector<FrontierItem> recoveredItems;
+    urlsCrawled = 0;
+
+    if (checkpoint->load(recoveredItems, bloom, urlsCrawled)) {
+        f = new Frontier(recoveredItems);
+        std::cerr << "Recovered from checkpoint at " << urlsCrawled << " URLs\n";
+    } else {
+        f = new Frontier("src/crawler/seedList.txt");
+        std::cerr << "Starting fresh from seed list\n";
+    }
 
     size_t ThreadCount = cores * 3;
     vector<pthread_t> threads(ThreadCount);
 
-    for (int i = 0; i < ThreadCount; i++) {
+    for (size_t i = 0; i < ThreadCount; i++) {
         pthread_create(&threads[i], nullptr, WorkerThread, nullptr);
     }
 
-    for (int i = 0; i < ThreadCount; i++) {
+    for (size_t i = 0; i < ThreadCount; i++) {
         pthread_join(threads[i], nullptr);
     }
 
-    if (g_index_socket_fd >= 0) {
-        ::close(g_index_socket_fd);
-        g_index_socket_fd = -1;
-    }
+    checkpoint->save(*f, bloom, urlsCrawled);
+
+    if (shouldStop)
+        std::cerr << "Graceful shutdown after SIGINT\n";
+
+    delete f;
+    delete checkpoint;
+    return 0;
 }
