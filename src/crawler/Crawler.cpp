@@ -18,6 +18,7 @@ CheckpointConfig cpConfig;
 Checkpoint *checkpoint;
 size_t urlsCrawled = 0;
 UrlBloomFilter bloom(1000000, 0.0001);
+RobotsCache *robotsCache = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
 
 void *WorkerThread(void *arg) {
@@ -29,6 +30,11 @@ void *WorkerThread(void *arg) {
             Frontier &frontier;
             ~TaskCompletionGuard() { frontier.taskDone(); }
         } taskCompletionGuard{*f};
+
+        if (!robotsCache->isAllowed(item->link)) {
+            std::cerr << "Blocked by robots.txt: " << item->link << '\n';
+            continue;
+        }
 
         string page = readURL(item->link);
         if (shouldStop)
@@ -66,6 +72,7 @@ int main() {
     cpConfig.directory = "src/crawler";
     cpConfig.interval = 500;
     checkpoint = new Checkpoint(cpConfig);
+    robotsCache = new RobotsCache();
 
     vector<FrontierItem> recoveredItems;
     urlsCrawled = 0;
@@ -94,6 +101,7 @@ int main() {
     if (shouldStop)
         std::cerr << "Graceful shutdown after SIGINT\n";
 
+    delete robotsCache;
     delete f;
     delete checkpoint;
     return 0;

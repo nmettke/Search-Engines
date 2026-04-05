@@ -53,6 +53,8 @@ add_library(crawler_lib
     crawler/frontier.cpp
     crawler/url_dedup.cpp
     crawler/checkpoint.cpp
+    crawler/RobotsTxt.cpp
+    crawler/RobotsCache.cpp
 )
 
 target_include_directories(crawler_lib
