@@ -17,7 +17,7 @@ int main() {
     std::vector<HtmlParser> docs = {
         // Initialization: {words}, {titleWords}, {links}, base_url
         {{"The", "CAT", "sat."}, {}, {}, "doc1"},
-        {{"A", "Dog", "Running", "after", "the", "cat!"}, {}, {}, "doc2"},
+        {{"A", "Dog", "Running", "after", "my", "cat!"}, {}, {}, "doc2"},
         {{"My", "cat", "and", "my", "dog", "are", "friends."}, {}, {}, "doc3"},
         {{"No", "cats", "here."}, {}, {}, "doc4"},
         {{"Just", "a", "cat."}, {}, {}, "doc5"},
@@ -62,10 +62,12 @@ int main() {
     std::string query1 = "cat AND dog";
     std::string query2 = "cat OR dog";
     std::string query3 = "\"my cat\" -dog";
+    std::string query4 = "\"my dog\"";
 
     auto results1 = engine.search(query1);
     auto results2 = engine.search(query2);
     auto results3 = engine.search(query3);
+    auto results4 = engine.search(query4);
 
     std::cout << "\nResults for '" << query1 << "':\n";
     for (const auto &doc : results1) {
@@ -79,6 +81,11 @@ int main() {
 
     std::cout << "\nResults for '" << query3 << "':\n";
     for (const auto &doc : results3) {
+        std::cout << "- " << doc.url << "\n";
+    }
+
+    std::cout << "\nResults for '" << query4 << "':\n";
+    for (const auto &doc : results4) {
         std::cout << "- " << doc.url << "\n";
     }
 
