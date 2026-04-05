@@ -21,8 +21,16 @@ Frontier::Frontier(const string &seed_list_str) {
 }
 
 Frontier::Frontier(vector<FrontierItem> items) {
+    closed = false;
+    pending = 0;
+
     for (size_t i = 0; i < items.size(); ++i) {
         pq.push(items[i]);
+        ++pending;
+    }
+
+    if (pending == 0) {
+        closed = true;
     }
 }
 

@@ -290,6 +290,11 @@ TEST(FrontierItemHelperCountQueryParamsTest, QueryStringOnlyNoPath) {
     EXPECT_EQ(countQueryParams("?key=value"), 1);
 }
 
+TEST(FrontierItemHelperCountQueryParamsTest, EmptyQueryStringReturnsZero) {
+    EXPECT_EQ(countQueryParams("/path?"), 0);
+    EXPECT_EQ(countQueryParams("?"), 0);
+}
+
 // -------------------------
 // isLowValuePath tests
 // -------------------------
@@ -330,6 +335,11 @@ TEST(FrontierItemHelperIsLowValuePathTest, TransactionalPathsReturnTrue) {
     EXPECT_TRUE(isLowValuePath("/checkout"));
     EXPECT_TRUE(isLowValuePath("/unsubscribe"));
     EXPECT_TRUE(isLowValuePath("/print"));
+}
+
+TEST(FrontierItemHelperIsLowValuePathTest, QueryStringContainingPatternDoesNotFlag) {
+    EXPECT_FALSE(isLowValuePath("/page?next=login"));
+    EXPECT_FALSE(isLowValuePath("/search?redirect=signup&ref=home"));
 }
 
 // -------------------------

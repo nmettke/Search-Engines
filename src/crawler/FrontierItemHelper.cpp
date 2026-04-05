@@ -1,7 +1,5 @@
 #include "FrontierItemHelper.h"
 
-#include <cstring>
-
 Suffix stringToSuffix(const string &tld) {
     if (tld == "com")
         return Suffix::COM;
@@ -167,6 +165,9 @@ size_t countQueryParams(const string &path) {
     if (qPos == string::npos) {
         return 0;
     }
+    if (qPos + 1 >= path.size()) {
+        return 0;
+    }
     size_t count = 1;
     for (size_t i = qPos + 1; i < path.size(); ++i) {
         if (path[i] == '&') {
@@ -177,13 +178,19 @@ size_t countQueryParams(const string &path) {
 }
 
 bool isLowValuePath(const string &path) {
+    string pathOnly = path;
+    size_t qPos = path.find('?');
+    if (qPos != string::npos) {
+        pathOnly = string(path.c_str(), path.c_str() + qPos);
+    }
+
     static const char *const patterns[] = {
         "login",    "logout",      "signup", "register", "signin",      "signout",
         "rss",      "feed",        "/api/",  "print",    "cgi-bin",     "wp-admin",
         "wp-login", "wp-includes", "cart",   "checkout", "unsubscribe", nullptr};
 
     for (size_t i = 0; patterns[i] != nullptr; ++i) {
-        if (path.find(patterns[i]) != string::npos) {
+        if (pathOnly.find(patterns[i]) != string::npos) {
             return true;
         }
     }
