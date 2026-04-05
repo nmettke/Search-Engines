@@ -104,5 +104,6 @@ int main() {
     delete robotsCache;
     delete f;
     delete checkpoint;
+    cleanupSSL();
     return 0;
 }
