@@ -30,7 +30,7 @@ static void signalHandler(int) {
 
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint;
-size_t urlsCrawled = 0;
+std::atomic<size_t> urlsCrawled{0};
 UrlBloomFilter bloom(1000000, 0.0001);
 unsigned int cores = std::thread::hardware_concurrency();
 
@@ -79,9 +79,8 @@ void *IndexWorkerThread(void *arg) {
     // index worker thread to take from queue and process
     // should only be one worker thread
     Tokenizer tokenizer;
-
-    bool should_write_chunk = false;
     size_t doc_processed = 0;
+    size_t chunks_written = 0;
 
     // Tokenize and build the In-Memory Index
     while (std::optional<HtmlParser> doc = q->pop()) {
@@ -92,17 +91,20 @@ void *IndexWorkerThread(void *arg) {
         index.finishDocument(tokenized.doc_end);
         ++doc_processed;
 
-        if (should_write_chunk) {
+        if (doc_processed >= 512) {
+            // flush every 512 docs
             // Flush the chunk to disk using OUR flusher interface
-            const std::string path = "chunk_0001.idx";
+            const std::string path = "chunk_" << chunks_written << ".idx";
             try {
                 flushIndexChunk(index, path);
                 std::cout << "Successfully wrote chunk with " << doc_processed
-                          << "docs to: " << path << "\n";
+                          << "docs to: " << path << "\n"
+                          << "total chuncks: " << chunks_written;
             } catch (const std::exception &e) {
                 std::cerr << "Failed to write chunk: " << e.what() << "\n";
                 return 1;
             }
+            ++chunks_written;
         }
     }
     return nullptr;
