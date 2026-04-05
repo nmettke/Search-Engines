@@ -52,5 +52,6 @@ build*/
 .DS_Store
 
 # For Vasu
-vasuBuild.shsrc/crawler/checkpoint.dat
+vasuBuild.sh
+src/crawler/checkpoint.dat
 src/crawler/checkpoint.dat.tmp

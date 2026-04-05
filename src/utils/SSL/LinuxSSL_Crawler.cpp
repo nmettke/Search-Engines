@@ -9,15 +9,6 @@
 // #include "../string.hpp"
 #include "LinuxSSL_Crawler.hpp"
 
-static SSL_CTX *sslCtx = nullptr;
-
-void initSSL() {
-    SSL_library_init();
-    sslCtx = SSL_CTX_new(SSLv23_method());
-}
-
-void cleanupSSL() { SSL_CTX_free(sslCtx); }
-
 ParsedUrl::ParsedUrl(const char *url) {
     // Assumes url points to static text but
     // does not check.
@@ -77,27 +68,51 @@ string readURL(string target_url) {
     // Parse the URL
     ParsedUrl url(target_url.cstr());
 
-    // Get the host address.
-    struct addrinfo *address, hints;
+    struct addrinfo hints {};
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
-    getaddrinfo(url.Host, "443", &hints, &address);
 
-    // Create a TCP/IP socket.
-    int socketFD = socket(hints.ai_family, hints.ai_socktype, hints.ai_protocol);
+    struct addrinfo *address = nullptr;
+    if (getaddrinfo(url.Host, "443", &hints, &address) != 0 || address == nullptr) {
+        return string("");
+    }
 
-    // Connect the socket to the host address.
-    int connectResult = connect(socketFD, address->ai_addr, address->ai_addrlen);
+    int socketFD = socket(address->ai_family, address->ai_socktype, address->ai_protocol);
+    if (socketFD < 0) {
+        freeaddrinfo(address);
+        return string("");
+    }
 
-    // Build an SSL layer and set it to read/write
-    // to the socket we've connected.
+    if (connect(socketFD, address->ai_addr, address->ai_addrlen) != 0) {
+        close(socketFD);
+        freeaddrinfo(address);
+        return string("");
+    }
 
-    SSL *ssl = SSL_new(sslCtx);
+    freeaddrinfo(address);
+
+    SSL_library_init();
+    SSL_CTX *ctx = SSL_CTX_new(SSLv23_method());
+    if (!ctx) {
+        close(socketFD);
+        return string("");
+    }
+    SSL *ssl = SSL_new(ctx);
+    if (!ssl) {
+        SSL_CTX_free(ctx);
+        close(socketFD);
+        return string("");
+    }
     SSL_set_tlsext_host_name(ssl, url.Host);
     SSL_set_fd(ssl, socketFD);
-    SSL_connect(ssl);
+    if (SSL_connect(ssl) != 1) {
+        SSL_free(ssl);
+        SSL_CTX_free(ctx);
+        close(socketFD);
+        return string("");
+    }
 
     // Send a GET message.
 
@@ -110,34 +125,31 @@ string readURL(string target_url) {
                         "\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n";
     SSL_write(ssl, getMessage.cstr(), getMessage.size());
 
-    // Read from the socket until there's no more data, copying it to
-    // stdout.
+    // Read from the socket until there's no more data.
+    // IMPORTANT: SSL_read does not null-terminate. Never use string(buffer) — that scans for '\0'
+    // and is undefined behavior / can segfault past the end of the stack buffer.
     char buffer[buffLength];
-    // char* buffer = (char*)(malloc(sizeof(char) * buffLength));
-    int bytes;
+    int bytes = 0;
     bool content = false;
 
     string returnVal = "";
 
     while ((bytes = SSL_read(ssl, buffer, sizeof(buffer))) > 0) {
         if (!content) {
-            size_t end = string(buffer).find("\r\n\r\n");
+            string chunk(buffer, buffer + bytes);
+            size_t end = chunk.find("\r\n\r\n");
             if (end != string::npos) {
                 content = true;
-                // end + 4 is the location of the first char in content
-                // write(1, buffer + end + 4, bytes - end - 4);
-                returnVal.append(buffer + end + 4, bytes - end - 4);
+                returnVal.append(chunk.cstr() + end + 4, chunk.size() - end - 4);
             }
         } else {
-            // write(1, buffer, bytes);
-            returnVal.append(buffer, bytes);
+            returnVal.append(buffer, static_cast<size_t>(bytes));
         }
     }
-
-    // Close the socket and free the address info structure.
 
     SSL_shutdown(ssl);
     SSL_free(ssl);
     close(socketFD);
+    SSL_CTX_free(ctx);
     return returnVal;
 }
