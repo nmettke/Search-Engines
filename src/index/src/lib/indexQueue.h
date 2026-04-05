@@ -10,15 +10,18 @@
 #include "utils/threads/condition_variable.hpp"
 #include "utils/threads/lock_guard.hpp"
 #include "utils/threads/mutex.hpp"
+#include "utils/vector.hpp"
 
 class IndexQueue {
   public:
     IndexQueue();
-    ~IndexQueue();
+    IndexQueue(vector<HtmlParser> items);
+    ~IndexQueue() = default;
 
-    void push(const HtmlParser &parsed);
+    void push(HtmlParser &parsed);
 
     std::optional<HtmlParser> pop();
+    void shutdown();
 
   private:
     std::deque<HtmlParser> queue;

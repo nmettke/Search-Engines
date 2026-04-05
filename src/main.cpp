@@ -24,6 +24,8 @@ static void signalHandler(int) {
     shouldStop = true;
     if (f)
         f->shutdown();
+    if (q)
+        q->shutdown();
 }
 
 CheckpointConfig cpConfig;
