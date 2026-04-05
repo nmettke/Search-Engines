@@ -6,4 +6,5 @@
 #include "../utils/SSL/LinuxSSL_Crawler.hpp"
 #include "../utils/string.hpp"
 #include "../utils/vector.hpp"
+#include "RobotsCache.h"
 #include "frontier.h"
