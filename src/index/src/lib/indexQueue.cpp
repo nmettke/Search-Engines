@@ -41,3 +41,12 @@ void IndexQueue::shutdown() {
     cv.notify_all();
     m.unlock();
 }
+
+vector<HtmlParser> IndexQueue::snapshot() const {
+    lock_guard guard(m);
+    vector<HtmlParser> result;
+    for (const auto &item : queue) {
+        result.pushBack(item);
+    }
+    return result;
+}

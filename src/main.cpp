@@ -66,10 +66,6 @@ void *CrawlerWorkerThread(void *arg) {
         f->pushMany(discoveredLinks);
         ++urlsCrawled;
         std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
-
-        if (!shouldStop && checkpoint->shouldCheckpoint(urlsCrawled)) {
-            checkpoint->save(*f, bloom, urlsCrawled);
-        }
     }
 
     return nullptr;
@@ -116,19 +112,35 @@ int main() {
     signal(SIGTERM, signalHandler);
 
     cpConfig.directory = "src/crawler";
-    cpConfig.interval = 500;
     checkpoint = new Checkpoint(cpConfig);
 
     vector<FrontierItem> recoveredItems;
-    urlsCrawled = 0;
+    size_t loadedCount = 0;
+    q = new IndexQueue();
 
-    if (checkpoint->load(recoveredItems, bloom, urlsCrawled)) {
+    if (checkpoint->load(recoveredItems, bloom, loadedCount, q)) {
+        urlsCrawled = loadedCount;
         f = new Frontier(recoveredItems);
-        std::cerr << "Recovered from checkpoint at " << urlsCrawled << " URLs\n";
+        std::cerr << "Recovered from checkpoint at " << loadedCount << " URLs\n";
     } else {
         f = new Frontier("src/crawler/seedList.txt");
         std::cerr << "Starting fresh from seed list\n";
     }
+
+    // Background checkpoint thread — saves every 10 minutes
+    auto CheckpointThread = [](void *) -> void * {
+        const int intervalSeconds = 600;
+        while (!shouldStop) {
+            for (int i = 0; i < intervalSeconds && !shouldStop; ++i)
+                sleep(1);
+            if (!shouldStop)
+                checkpoint->save(*f, bloom, urlsCrawled, q);
+        }
+        return nullptr;
+    };
+
+    pthread_t cpThread;
+    pthread_create(&cpThread, nullptr, CheckpointThread, nullptr);
 
     size_t CrawlerThreadCount = cores * 3;
     size_t IndexThreadCount = 1;
@@ -151,11 +163,13 @@ int main() {
         pthread_join(indexThreads[i], nullptr);
     }
 
-    checkpoint->save(*f, bloom, urlsCrawled);
+    pthread_join(cpThread, nullptr);
+    checkpoint->save(*f, bloom, urlsCrawled, q);
 
     if (shouldStop)
         std::cerr << "Graceful shutdown after SIGINT\n";
 
+    delete q;
     delete f;
     delete checkpoint;
     return 0;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -18,4 +19,7 @@ class HtmlParser {
     std::string base;
 
     HtmlParser() = default;
+
+    void serializeToStream(FILE *f) const;
+    static HtmlParser deserializeFromStream(FILE *f);
 };

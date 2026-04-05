@@ -23,6 +23,8 @@ class IndexQueue {
     std::optional<HtmlParser> pop();
     void shutdown();
 
+    vector<HtmlParser> snapshot() const;
+
   private:
     std::deque<HtmlParser> queue;
     mutable mutex m;

@@ -1,4 +1,5 @@
 #include "checkpoint.h"
+#include "index/src/lib/indexQueue.h"
 #include "utils/threads/lock_guard.hpp"
 #include <cstdio>
 #include <cstdlib>
@@ -12,7 +13,8 @@ string Checkpoint::filePath() const { return config_.directory + "/checkpoint.da
 
 string Checkpoint::tmpPath() const { return config_.directory + "/checkpoint.dat.tmp"; }
 
-bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom, size_t urlsCrawled) {
+bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom, size_t urlsCrawled,
+                      const IndexQueue *indexQueue) {
     lock_guard guard(saveMutex_);
     vector<FrontierItem> items = frontier.snapshot();
 
@@ -23,7 +25,7 @@ bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom, siz
     }
 
     fprintf(f, "[HEADER]\n");
-    fprintf(f, "version=1\n");
+    fprintf(f, "version=2\n");
     fprintf(f, "urls_crawled=%zu\n", urlsCrawled);
     fprintf(f, "frontier_count=%zu\n", items.size());
 
@@ -35,6 +37,15 @@ bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom, siz
 
     fprintf(f, "[BLOOM]\n");
     bloom.serializeToStream(f);
+
+    if (indexQueue) {
+        vector<HtmlParser> queueItems = indexQueue->snapshot();
+        fprintf(f, "[INDEX_QUEUE]\n");
+        fprintf(f, "%zu\n", queueItems.size());
+        for (size_t i = 0; i < queueItems.size(); ++i) {
+            queueItems[i].serializeToStream(f);
+        }
+    }
 
     fflush(f);
     fsync(fileno(f));
@@ -50,7 +61,8 @@ bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom, siz
     return true;
 }
 
-bool Checkpoint::load(vector<FrontierItem> &items, UrlBloomFilter &bloom, size_t &urlsCrawled) {
+bool Checkpoint::load(vector<FrontierItem> &items, UrlBloomFilter &bloom, size_t &urlsCrawled,
+                      IndexQueue *indexQueue) {
     FILE *f = fopen(filePath().c_str(), "rb");
     if (!f)
         return false;
@@ -87,6 +99,21 @@ bool Checkpoint::load(vector<FrontierItem> &items, UrlBloomFilter &bloom, size_t
 
     fgets(lineBuf, sizeof(lineBuf), f);
     bloom = UrlBloomFilter::deserializeFromStream(f);
+
+    // Try to read index queue section (may not exist in older checkpoints)
+    if (indexQueue && fgets(lineBuf, sizeof(lineBuf), f)) {
+        size_t len = strlen(lineBuf);
+        if (len > 0 && lineBuf[len - 1] == '\n')
+            lineBuf[len - 1] = '\0';
+        if (strcmp(lineBuf, "[INDEX_QUEUE]") == 0) {
+            fgets(lineBuf, sizeof(lineBuf), f);
+            size_t queueCount = atol(lineBuf);
+            for (size_t i = 0; i < queueCount; ++i) {
+                HtmlParser hp = HtmlParser::deserializeFromStream(f);
+                indexQueue->push(hp);
+            }
+        }
+    }
 
     fclose(f);
     return true;
