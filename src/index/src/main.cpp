@@ -16,13 +16,14 @@ int main() {
     // 1. Mock the crawler output using the HtmlParser interface
     std::vector<HtmlParser> docs = {
         // Initialization: {words}, {titleWords}, {links}, base_url
-        {{"The", "CAT", "sat."}, {}, {}, "http://example.com/cats"},
-        {{"A", "Dog", "Running", "after", "the", "cat!"}, {}, {}, "http://example.com/dogs"},
-        {{"Cat", "and", "Dog", "are", "friends."}, {}, {}, "http://example.com/friends"},
-        {{"No", "cats", "here."}, {}, {}, "http://example.com/nocats"},
-        {{"Just", "a", "cat."}, {}, {}, "http://example.com/justacat"},
-        {{"I", "love", "my", "cat."}, {}, {}, "http://example.com/lovecat"},
-    };
+        {{"The", "CAT", "sat."}, {}, {}, "doc1"},
+        {{"A", "Dog", "Running", "after", "the", "cat!"}, {}, {}, "doc2"},
+        {{"My", "cat", "and", "my", "dog", "are", "friends."}, {}, {}, "doc3"},
+        {{"No", "cats", "here."}, {}, {}, "doc4"},
+        {{"Just", "a", "cat."}, {}, {}, "doc5"},
+        {{"I", "love", "my", "cat.", "and", "my", "dog."}, {}, {}, "doc6"},
+        {{"My", "cat", "hates", "dogs."}, {}, {}, "doc7"},
+        {{"My", "cat", "loves", "ice", "cream."}, {}, {}, "doc8"}};
 
     // 2. Tokenize and build the In-Memory Index
     Tokenizer tokenizer;
@@ -56,70 +57,28 @@ int main() {
               << ", terms=" << reader.header().num_unique_terms
               << ", total_locations=" << reader.header().total_locations << "\n";
 
-    auto cat_isr = reader.createISR("cat");
-    std::cout << "Posting list for 'cat': ";
-    while (!cat_isr || !cat_isr->done()) {
-        std::cout << cat_isr->currentLocation() << ", ";
-        cat_isr->next();
-    }
-    std::cout << "\n";
-
-    auto dog_isr = reader.createISR("dog");
-    std::cout << "Posting list for 'dog': ";
-    while (!dog_isr || !dog_isr->done()) {
-        std::cout << dog_isr->currentLocation() << ", ";
-        dog_isr->next();
-    }
-    std::cout << "\n";
-
-    auto doc_end_isr = reader.createISR(docEndToken);
-    std::cout << "Posting list for docEndToken: ";
-    while (!doc_end_isr || !doc_end_isr->done()) {
-        std::cout << doc_end_isr->currentLocation() << ", ";
-        doc_end_isr->next();
-    }
-    std::cout << "\n";
-
-    for (uint32_t i = 0; i < reader.header().num_documents; i++) {
-        auto doc = reader.getDocument(i);
-        if (doc) {
-            std::cout << "Document " << i << ": url=" << doc->url << ", range=["
-                      << doc->start_location << ", " << doc->end_location << "]\n";
-        }
-    }
-
-    // get all documents containing "cat" by iterating through
-    // the ISR and mapping locations to documents
-    cat_isr = reader.createISR("cat");
-
-    std::cout << "Pages containing 'cat':\n";
-
-    std::string last_printed_url = "";
-
-    // iterate through every location
-    while (!cat_isr || !cat_isr->done()) {
-        uint32_t loc = cat_isr->currentLocation();
-        cat_isr->next();
-
-        std::cout << "Looking up location: " << loc << "\n";
-        // map the location to the actual Document Record
-        auto doc = reader.getDocumentByLocation(loc);
-
-        // if (doc.has_value() && doc->url != last_printed_url) {
-        std::cout << "- " << doc->url << " (Found at location: " << loc << ")\n";
-        last_printed_url = doc->url;
-    }
-
     QueryEngine engine(reader);
 
-    // Search for a multi-word phrase!
-    // TODO: tokenize the query
-    std::vector<std::string> query = {"cat", "dog"};
+    std::string query1 = "cat AND dog";
+    std::string query2 = "cat OR dog";
+    std::string query3 = "\"my cat\" -dog";
 
-    auto results = engine.search(query);
+    auto results1 = engine.search(query1);
+    auto results2 = engine.search(query2);
+    auto results3 = engine.search(query3);
 
-    std::cout << "\nResults for 'cat dog':\n";
-    for (const auto &doc : results) {
+    std::cout << "\nResults for '" << query1 << "':\n";
+    for (const auto &doc : results1) {
+        std::cout << "- " << doc.url << "\n";
+    }
+
+    std::cout << "\nResults for '" << query2 << "':\n";
+    for (const auto &doc : results2) {
+        std::cout << "- " << doc.url << "\n";
+    }
+
+    std::cout << "\nResults for '" << query3 << "':\n";
+    for (const auto &doc : results3) {
         std::cout << "- " << doc.url << "\n";
     }
 

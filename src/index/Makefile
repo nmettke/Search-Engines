@@ -16,6 +16,7 @@ FLUSHER     := $(LIB_DIR)/chunk_flusher.cpp
 SEEK_TABLE  := $(LIB_DIR)/seek_table.cpp
 QUERY_ENGINE := $(LIB_DIR)/query_engine.cpp
 QUERY_TOKENIZER := $(LIB_DIR)/query_tokenizer.cpp
+QUERY_COMPILER := $(LIB_DIR)/query_compiler.cpp
 
 ISR         := $(LIB_DIR)/isr.cpp
 ISR_AND     := $(LIB_DIR)/isr_and.cpp
@@ -25,8 +26,8 @@ ISR_CONTAINER  := $(LIB_DIR)/isr_container.cpp
 
 # All library sources (for main)
 ALL_LIB_SRCS := $(DISK_WRITER) $(VBYTE) $(IN_MEM_IDX) $(COMMON) \
-                $(FLUSHER) $(DISK_READER) \
-				$(TOKENIZER) $(SEEK_TABLE) $(QUERY_ENGINE) $(QUERY_TOKENIZER) \
+                $(FLUSHER) $(DISK_READER) $(TOKENIZER) $(SEEK_TABLE) \
+				$(QUERY_ENGINE) $(QUERY_TOKENIZER) $(QUERY_COMPILER) \
 				$(ISR) $(ISR_AND) $(ISR_OR) $(ISR_PHRASE) $(ISR_CONTAINER)
 
 # Test binaries
