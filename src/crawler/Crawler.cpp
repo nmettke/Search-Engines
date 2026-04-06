@@ -44,6 +44,13 @@ void *WorkerThread(void *arg) {
             break;
 
         HtmlParser parsed(page.cstr(), page.size());
+
+        // Skip non-English pages: check language tag and text analysis
+        if (!parsed.isEnglishPage()) {
+            std::cerr << "Skipped [non-English]: " << item->link << '\n';
+            continue;
+        }
+
         vector<string> discoveredLinks;
 
         for (const Link &link : parsed.links) {

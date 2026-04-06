@@ -6,6 +6,7 @@
 #include "HtmlTags.h"
 #include "utils/Utf8.h"
 #include "utils/string.hpp"
+#include "utils/vector.hpp"
 #include <cctype>
 #include <cstring>
 #include <stack>
@@ -76,15 +77,15 @@
 class Link {
   public:
     ::string URL;
-    std::vector<::string> anchorText;
+    vector<::string> anchorText;
 
     Link(::string URL) : URL(URL) {}
 };
 
 class HtmlParser {
   public:
-    std::vector<::string> words, titleWords;
-    std::vector<Link> links;
+    vector<::string> words, titleWords;
+    vector<Link> links;
     ::string base;
 
   private:
@@ -98,6 +99,10 @@ class HtmlParser {
     // Structural integrity signals for isBroken()
     bool sawBodyTag = false;
     bool sawCloseHtml = false;
+
+    // Language detection
+    ::string langAttribute;
+    bool isEnglishLanguage = true; // Default to true if no lang attribute
     bool truncated = false;
 
     bool inDiscardSection() const { return !openSections.empty(); }
@@ -144,13 +149,13 @@ class HtmlParser {
         ::string word(start, end);
 
         if (inTitle) {
-            titleWords.push_back(word);
+            titleWords.pushBack(word);
         } else {
-            words.push_back(word);
+            words.pushBack(word);
         }
 
         if (inAnchor && currentLink) {
-            currentLink->anchorText.push_back(word);
+            currentLink->anchorText.pushBack(word);
         }
     }
 
@@ -240,11 +245,11 @@ class HtmlParser {
                 currentLink = nullptr;
             }
 
-            links.push_back(Link(href));
+            links.pushBack(Link(href));
 
             if (!isSelfClosing) {
                 inAnchor = true;
-                currentLink = &links.back();
+                currentLink = &links[links.size() - 1];
             }
         }
     }
@@ -263,7 +268,7 @@ class HtmlParser {
     void handleEmbed(const char *attrStart, const char *attrEnd) {
         ::string src = extractAttribute(attrStart, attrEnd, "src");
         if (!src.empty()) {
-            links.push_back(Link(src));
+            links.pushBack(Link(src));
         }
     }
 
@@ -408,6 +413,10 @@ class HtmlParser {
                 sawBodyTag = true;
             if (tagLen == 4 && strncasecmp(tagStart, "html", 4) == 0 && isClosing)
                 sawCloseHtml = true;
+            // Extract lang attribute from opening html tag
+            if (tagLen == 4 && strncasecmp(tagStart, "html", 4) == 0 && !isClosing) {
+                langAttribute = extractAttribute(tagEnd, close, "lang");
+            }
             break;
         }
         default:
@@ -520,4 +529,9 @@ class HtmlParser {
     // Uses ReadUtf8 from Utf8.h to decode words into Unicode codepoints,
     // then checks ratio of Latin alphabetic chars to total alphabetic chars.
     bool isEnglish(double threshold = 0.6) const;
+
+    // Returns true if page is determined to be in English based on lang attribute and text
+    // analysis. First checks explicit lang attribute, then falls back to text analysis. Returns
+    // false if lang attribute indicates non-English language.
+    bool isEnglishPage(double threshold = 0.6) const;
 };
