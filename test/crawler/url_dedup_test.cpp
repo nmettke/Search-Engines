@@ -43,7 +43,7 @@ TEST(UrlDedupBloomFilterTest, ContainsAfterInsert) {
     UrlBloomFilter bloom(1000, 0.01);
     string canonical;
 
-    EXPECT_TRUE(shouldEnqueueUrl("http://example.com/other", bloom, canonical));
-    EXPECT_TRUE(bloom.probablyContains("http://example.com/other"));
+    EXPECT_TRUE(shouldEnqueueUrl("https://example.com/other", bloom, canonical));
+    EXPECT_TRUE(bloom.probablyContains("https://example.com/other"));
     EXPECT_FALSE(bloom.probablyContains(""));
 }
