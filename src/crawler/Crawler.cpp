@@ -8,7 +8,7 @@
 #include <thread>
 #include <unistd.h>
 
-static volatile bool shouldStop = false;
+static std::atomic<bool> shouldStop{false};
 Frontier *f = nullptr;
 
 static void signalHandler(int) {

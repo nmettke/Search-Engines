@@ -12,6 +12,8 @@ UrlBloomFilter::UrlBloomFilter(std::size_t bc, std::uint32_t hc, std::vector<boo
     : bitCount(bc), hashCount(hc), bits(std::move(b)) {}
 
 bool UrlBloomFilter::serializeToStream(FILE *f) const {
+    lock_guard guard(m_);
+
     fwrite(&bitCount, sizeof(bitCount), 1, f);
     fwrite(&hashCount, sizeof(hashCount), 1, f);
 
