@@ -79,7 +79,7 @@ string normalizeUrl(const string &rawUrl) {
     }
 
     string scheme = toLower(cleaned.substr(0, schemePos));
-    if (scheme != "http" && scheme != "https") {
+    if (scheme != "https") {
         return "";
     }
 
