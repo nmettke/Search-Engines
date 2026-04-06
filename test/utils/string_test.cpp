@@ -184,3 +184,13 @@ TEST(StringStlCompatibility, MoveAssignmentLeavesSourceValidAndEmpty) {
     ASSERT_NE(source.cstr(), nullptr);
     EXPECT_STREQ(source.cstr(), "");
 }
+
+TEST(StringEdgeCases, ReserveOnEmptyStringKeepsStringValid) {
+    string s;
+
+    s.reserve(1);
+
+    EXPECT_EQ(s.size(), 0);
+    ASSERT_NE(s.cstr(), nullptr);
+    EXPECT_STREQ(s.cstr(), "");
+}

@@ -1,9 +1,7 @@
 // A deque for crawler to write HTML parser to and for index worker to read from
 // + wrappers for threading and fault tolerance
 
-// TODO: Change std::deque to self written one
-
-#include <deque>
+#include "utils/STL_rewrite/deque.hpp"
 #include <optional>
 
 // #include "./html_parser.h"
@@ -25,7 +23,7 @@ class IndexQueue {
     void shutdown();
 
   private:
-    std::deque<HtmlParser> queue;
+    ::deque<HtmlParser> queue;
     mutable ::mutex m;
     ::condition_variable cv;
     bool closed;

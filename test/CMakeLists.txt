@@ -38,6 +38,24 @@ gtest_discover_tests(string_tests
 )
 
 # -------------------------
+# Deque Tests
+# -------------------------
+
+add_executable(deque_tests
+    utils/deque_test.cpp
+)
+
+target_link_libraries(deque_tests
+    PRIVATE
+        utils
+        GTest::gtest_main
+)
+
+gtest_discover_tests(deque_tests
+    TEST_PREFIX "deque::"
+)
+
+# -------------------------
 # FrontierItemHelper Tests
 # -------------------------
 

@@ -1,12 +1,12 @@
 #pragma once
 
+#include "utils/STL_rewrite/pair.hpp"
 #include "utils/string.hpp"
 #include "utils/threads/mutex.hpp"
 #include "utils/vector.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
-#include <utility>
 
 ::string normalizeUrl(const ::string &rawUrl);
 
@@ -28,7 +28,7 @@ class UrlBloomFilter {
 
     UrlBloomFilter(std::size_t bitCount, std::uint32_t hashCount, vector<bool> bits);
 
-    static std::pair<std::uint64_t, std::uint64_t> hashKey(const ::string &key);
+    static ::pair<std::uint64_t, std::uint64_t> hashKey(const ::string &key);
     bool getBit(std::size_t index) const;
     void setBit(std::size_t index);
 };

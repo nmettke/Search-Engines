@@ -6,10 +6,10 @@
 #include "HtmlTags.h"
 #include "utils/Utf8.h"
 #include "utils/string.hpp"
+#include "utils/vector.hpp"
 #include <cctype>
 #include <cstring>
 #include <stack>
-#include <vector>
 
 // This is a simple HTML parser class.  Given a text buffer containing
 // a presumed HTML page, the constructor will parse the text to create
@@ -76,15 +76,15 @@
 class Link {
   public:
     ::string URL;
-    std::vector<::string> anchorText;
+    ::vector<::string> anchorText;
 
     Link(::string URL) : URL(URL) {}
 };
 
 class HtmlParser {
   public:
-    std::vector<::string> words, titleWords;
-    std::vector<Link> links;
+    ::vector<::string> words, titleWords;
+    ::vector<Link> links;
     ::string base;
 
   private:
@@ -244,7 +244,7 @@ class HtmlParser {
 
             if (!isSelfClosing) {
                 inAnchor = true;
-                currentLink = &links.back();
+                currentLink = &links[links.size() - 1];
             }
         }
     }

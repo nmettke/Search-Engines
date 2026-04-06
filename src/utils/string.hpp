@@ -283,7 +283,7 @@ class string {
         char *newBuffer = new char[new_cap + 1];
         copyData(newBuffer, _buffer, _size);
         newBuffer[_size] = '\0';
-        delete[] _buffer;
+        releaseBuffer();
         _buffer = newBuffer;
         _capacity = new_cap;
     }

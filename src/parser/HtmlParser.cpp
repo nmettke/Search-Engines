@@ -29,8 +29,7 @@ static bool isNonLatinAlpha(Unicode cp) {
            || (cp >= 0xAC00 && cp <= 0xD7AF); // Hangul Syllables
 }
 
-static void countAlpha(const std::vector<string> &wordList, size_t &latinCount,
-                       size_t &totalAlpha) {
+static void countAlpha(const ::vector<string> &wordList, size_t &latinCount, size_t &totalAlpha) {
     for (const auto &word : wordList) {
         const Utf8 *p = reinterpret_cast<const Utf8 *>(word.cstr());
         const Utf8 *bound = p + word.size();
