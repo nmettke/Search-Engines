@@ -5,10 +5,10 @@
 #include "parser/HtmlParser.h"
 #include "types.h"
 
+#include "utils/STL_rewrite/pair.hpp"
 #include "utils/string.hpp"
 #include "utils/vector.hpp"
 #include <array>
-#include <utility>
 
 struct TokenizedDocument {
     ::vector<TokenOutput> tokens;
@@ -153,7 +153,7 @@ class PorterStemmer {
     }
 
     static void step2(::string &w) {
-        static constexpr std::array<std::pair<::string_view, ::string_view>, 20> subs = {{
+        static constexpr std::array<::pair<::string_view, ::string_view>, 20> subs = {{
             {"ational", "ate"}, {"tional", "tion"}, {"enci", "ence"},   {"anci", "ance"},
             {"izer", "ize"},    {"abli", "able"},   {"alli", "al"},     {"entli", "ent"},
             {"eli", "e"},       {"ousli", "ous"},   {"ization", "ize"}, {"ation", "ate"},
@@ -172,7 +172,7 @@ class PorterStemmer {
     }
 
     static void step3(::string &w) {
-        static constexpr std::array<std::pair<::string_view, ::string_view>, 7> subs = {{
+        static constexpr std::array<::pair<::string_view, ::string_view>, 7> subs = {{
             {"icate", "ic"},
             {"ative", ""},
             {"alize", "al"},

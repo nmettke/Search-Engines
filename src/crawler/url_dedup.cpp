@@ -133,7 +133,7 @@ UrlBloomFilter::UrlBloomFilter(std::size_t expectedItems, double falsePositiveRa
     bits.assign(bitCount, false);
 }
 
-std::pair<std::uint64_t, std::uint64_t> UrlBloomFilter::hashKey(const string &key) {
+::pair<std::uint64_t, std::uint64_t> UrlBloomFilter::hashKey(const string &key) {
     std::uint64_t h1 = 0;
     std::uint64_t h2 = 0;
     unsigned char digest[MD5_DIGEST_LENGTH];
