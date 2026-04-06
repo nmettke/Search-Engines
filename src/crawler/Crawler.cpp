@@ -99,13 +99,19 @@ int main() {
     } else {
         f = new Frontier("src/crawler/seedList.txt");
         std::cerr << "Starting fresh from seed list\n";
+
+        // Add seedlist URLs to bloom filter to prevent re-crawling
+        vector<FrontierItem> items = f->snapshot();
+        for (size_t i = 0; i < items.size(); ++i) {
+            bloom.insert(items[i].link);
+        }
     }
 
     // Start checkpoint thread
     pthread_t cpThread;
     pthread_create(&cpThread, nullptr, CheckpointThread, nullptr);
 
-    size_t ThreadCount = cores * 3;
+    size_t ThreadCount = cores * 8;
     vector<pthread_t> threads(ThreadCount);
 
     for (size_t i = 0; i < ThreadCount; i++) {
