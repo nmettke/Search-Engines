@@ -418,6 +418,8 @@ class HtmlParser {
     }
 
   public:
+    HtmlParser() = default;
+
     // The constructor is given a buffer and length containing
     // presumed HTML.  It will parse the buffer, stripping out
     // all the HTML tags and producing the list of words in body,
@@ -500,7 +502,8 @@ class HtmlParser {
     }
 
     HtmlParser(std::initializer_list<::string> words, std::initializer_list<::string> titleWords,
-               std::initializer_list<Link> links, ::string base);
+               std::initializer_list<Link> links, ::string base)
+        : words(words), titleWords(titleWords), links(links), base(std::move(base)) {}
 
     // Returns true if page has too many broken-HTML signals to be worth indexing.
     // Fires when 2+ of 5 signals are present to avoid false positives.

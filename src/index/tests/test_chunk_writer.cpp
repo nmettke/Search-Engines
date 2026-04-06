@@ -58,7 +58,11 @@ void test_write_posting_list() {
     unlink(test_file);
 
     DiskChunkWriter writer(test_file);
-    std::vector<uint32_t> dummy_locations = {4, 15, 18, 302};
+    ::vector<uint32_t> dummy_locations;
+    dummy_locations.pushBack(4);
+    dummy_locations.pushBack(15);
+    dummy_locations.pushBack(18);
+    dummy_locations.pushBack(302);
 
     uint64_t offset = writer.writePostingList(dummy_locations);
 
@@ -82,7 +86,7 @@ void test_write_document_table() {
 
     DiskChunkWriter writer(test_file);
 
-    std::vector<DocumentRecord> dummy_docs;
+    ::vector<DocumentRecord> dummy_docs;
     dummy_docs.push_back({"https://example.com/cats", 0, 3, 3, 1});
     dummy_docs.push_back({"https://example.com/dogs", 4, 7, 3, 1});
 
@@ -115,7 +119,7 @@ void test_write_dictionary_and_finish() {
     writer.writeHeader(header);
 
     // Bucket 0 is empty. Bucket 1 has one term.
-    std::vector<std::vector<DiskChunkWriter::DictionaryEntry>> buckets(2);
+    ::vector<::vector<DiskChunkWriter::DictionaryEntry>> buckets(2);
 
     BucketDisk cat_disk_info;
     cat_disk_info.occupied = 1;

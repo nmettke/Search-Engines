@@ -52,7 +52,7 @@ void setup_test_index() {
 void test_isr_and(const DiskChunkReader &reader) {
     std::cout << "Running test_isr_and...\n";
     // Query: cat AND bird (Should match Doc 0 and Doc 1)
-    std::vector<std::unique_ptr<ISR>> terms;
+    ::vector<std::unique_ptr<ISR>> terms;
     terms.push_back(reader.createISR("cat"));
     terms.push_back(reader.createISR("bird"));
 
@@ -73,7 +73,7 @@ void test_isr_and(const DiskChunkReader &reader) {
 void test_isr_or(const DiskChunkReader &reader) {
     std::cout << "Running test_isr_or...\n";
     // Query: fish OR dog (Locations: 1, 5, 8, 12, 13)
-    std::vector<std::unique_ptr<ISR>> terms;
+    ::vector<std::unique_ptr<ISR>> terms;
     terms.push_back(reader.createISR("fish")); // 5, 13
     terms.push_back(reader.createISR("dog"));  // 1, 8, 12
 
@@ -93,7 +93,7 @@ void test_isr_or(const DiskChunkReader &reader) {
 void test_isr_phrase(const DiskChunkReader &reader) {
     std::cout << "Running test_isr_phrase...\n";
     // Query: "cat dog" (Should match Doc 0 and Doc 3)
-    std::vector<std::unique_ptr<ISR>> terms;
+    ::vector<std::unique_ptr<ISR>> terms;
     terms.push_back(reader.createISR("cat")); // 0, 4, 11
     terms.push_back(reader.createISR("dog")); // 1, 8, 12
 
@@ -119,7 +119,7 @@ void test_isr_container(const DiskChunkReader &reader) {
     // Expected Matches: Doc 0, Doc 2.
 
     auto pos = reader.createISR("bird");
-    std::vector<std::unique_ptr<ISR>> negs;
+    ::vector<std::unique_ptr<ISR>> negs;
     negs.push_back(reader.createISR("fish"));
 
     ISRContainer isr_container(std::move(pos), std::move(negs), reader.createISR(docEndToken),

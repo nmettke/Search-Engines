@@ -5,27 +5,26 @@
 #include "lib/query_engine.h"
 #include "lib/tokenizer.h"
 
+#include "utils/string.hpp"
+#include "utils/vector.hpp"
 #include <cstdint>
 #include <exception>
 #include <iostream>
-#include <vector>
-
-#include "utils/string.hpp"
 
 // this is a simple integration interface to show how the components fit together.
 
 int main() {
     // 1. Mock the crawler output using the HtmlParser interface
-    std::vector<HtmlParser> docs = {
-        // Initialization: {words}, {titleWords}, {links}, base_url
-        {{"The", "CAT", "sat."}, {}, {}, "doc1"},
-        {{"A", "Dog", "Running", "after", "my", "cat!"}, {}, {}, "doc2"},
-        {{"My", "cat", "and", "my", "dog", "are", "friends."}, {}, {}, "doc3"},
-        {{"No", "cats", "here."}, {}, {}, "doc4"},
-        {{"Just", "a", "cat."}, {}, {}, "doc5"},
-        {{"I", "love", "my", "cat.", "and", "my", "dog."}, {}, {}, "doc6"},
-        {{"My", "cat", "hates", "dogs."}, {}, {}, "doc7"},
-        {{"My", "cat", "loves", "ice", "cream."}, {}, {}, "doc8"}};
+    ::vector<HtmlParser> docs;
+    // Initialization: {words}, {titleWords}, {links}, base_url
+    docs.pushBack(HtmlParser{{"The", "CAT", "sat."}, {}, {}, "doc1"});
+    docs.pushBack(HtmlParser{{"A", "Dog", "Running", "after", "my", "cat!"}, {}, {}, "doc2"});
+    docs.pushBack(HtmlParser{{"My", "cat", "and", "my", "dog", "are", "friends."}, {}, {}, "doc3"});
+    docs.pushBack(HtmlParser{{"No", "cats", "here."}, {}, {}, "doc4"});
+    docs.pushBack(HtmlParser{{"Just", "a", "cat."}, {}, {}, "doc5"});
+    docs.pushBack(HtmlParser{{"I", "love", "my", "cat.", "and", "my", "dog."}, {}, {}, "doc6"});
+    docs.pushBack(HtmlParser{{"My", "cat", "hates", "dogs."}, {}, {}, "doc7"});
+    docs.pushBack(HtmlParser{{"My", "cat", "loves", "ice", "cream."}, {}, {}, "doc8"});
 
     // 2. Tokenize and build the In-Memory Index
     Tokenizer tokenizer;
