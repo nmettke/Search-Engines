@@ -37,6 +37,16 @@ TEST(VectorTest, FillConstructor) {
         EXPECT_EQ(v[i], 7);
 }
 
+TEST(VectorTest, InitializerListConstructor) {
+    vector<int> v = {1, 2, 3, 4};
+
+    ASSERT_EQ(v.size(), 4);
+    EXPECT_EQ(v[0], 1);
+    EXPECT_EQ(v[1], 2);
+    EXPECT_EQ(v[2], 3);
+    EXPECT_EQ(v[3], 4);
+}
+
 TEST(VectorTest, PushBack) {
     vector<int> v;
 

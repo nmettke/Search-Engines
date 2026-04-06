@@ -52,6 +52,17 @@ template <typename T> class vector {
             new (p) T(val);
     }
 
+    vector(std::initializer_list<T> init)
+        : data_(nullptr), size_(init.size()), capacity_(init.size()) {
+        data_ = allocate(capacity_);
+
+        T *p = data_;
+        for (const T &value : init) {
+            new (p) T(value);
+            ++p;
+        }
+    }
+
     // Copy Constructor
     // REQUIRES: Nothing
     // MODIFIES: *this
