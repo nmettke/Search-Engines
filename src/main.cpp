@@ -17,9 +17,9 @@
 #include "./utils/threads/condition_variable.hpp"
 #include "./utils/vector.hpp"
 
+#include <atomic>
 #include <cerrno>
 #include <csignal>
-#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
