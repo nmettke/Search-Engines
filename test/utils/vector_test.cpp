@@ -269,3 +269,26 @@ TEST(VectorEdgeCases, SelfAssignment) {
     for (int i = 0; i < 10; ++i)
         EXPECT_EQ(v[i], i);
 }
+
+TEST(VectorEdgeCases, InsertRvalueInMiddlePreservesTailElement) {
+    vector<std::unique_ptr<int>> v;
+
+    v.pushBack(std::make_unique<int>(1));
+    v.pushBack(std::make_unique<int>(2));
+    v.pushBack(std::make_unique<int>(3));
+    v.pushBack(std::make_unique<int>(4));
+
+    v.insert(v.begin() + 1, std::make_unique<int>(99));
+
+    ASSERT_EQ(v.size(), 5);
+    ASSERT_NE(v[0], nullptr);
+    ASSERT_NE(v[1], nullptr);
+    ASSERT_NE(v[2], nullptr);
+    ASSERT_NE(v[3], nullptr);
+    ASSERT_NE(v[4], nullptr);
+    EXPECT_EQ(*v[0], 1);
+    EXPECT_EQ(*v[1], 99);
+    EXPECT_EQ(*v[2], 2);
+    EXPECT_EQ(*v[3], 3);
+    EXPECT_EQ(*v[4], 4);
+}

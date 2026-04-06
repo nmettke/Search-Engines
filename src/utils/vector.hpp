@@ -232,12 +232,15 @@ template <typename T> class vector {
         }
         if (size_ == capacity_)
             reserve(capacity_ == 0 ? 8 : capacity_ * 3);
-        pushBack(std::move(data_[size_ - 1]));
-        for (ptrdiff_t i = static_cast<ptrdiff_t>(size_) - 2; i >= static_cast<ptrdiff_t>(index);
+
+        const size_t old_size = size_;
+        new (data_ + old_size) T(std::move(data_[old_size - 1]));
+        for (ptrdiff_t i = static_cast<ptrdiff_t>(old_size) - 1; i > static_cast<ptrdiff_t>(index);
              --i) {
-            data_[static_cast<size_t>(i) + 1] = std::move(data_[static_cast<size_t>(i)]);
+            data_[static_cast<size_t>(i)] = std::move(data_[static_cast<size_t>(i) - 1]);
         }
         data_[index] = x;
+        ++size_;
         return data_ + index;
     }
 
@@ -254,12 +257,15 @@ template <typename T> class vector {
         }
         if (size_ == capacity_)
             reserve(capacity_ == 0 ? 8 : capacity_ * 3);
-        pushBack(std::move(data_[size_ - 1]));
-        for (ptrdiff_t i = static_cast<ptrdiff_t>(size_) - 2; i >= static_cast<ptrdiff_t>(index);
+
+        const size_t old_size = size_;
+        new (data_ + old_size) T(std::move(data_[old_size - 1]));
+        for (ptrdiff_t i = static_cast<ptrdiff_t>(old_size) - 1; i > static_cast<ptrdiff_t>(index);
              --i) {
-            data_[static_cast<size_t>(i) + 1] = std::move(data_[static_cast<size_t>(i)]);
+            data_[static_cast<size_t>(i)] = std::move(data_[static_cast<size_t>(i) - 1]);
         }
         data_[index] = std::move(x);
+        ++size_;
         return data_ + index;
     }
 

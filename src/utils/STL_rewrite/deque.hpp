@@ -114,15 +114,19 @@ template <typename T> class deque {
 
     void reallocate(size_t new_capacity) {
         T *new_data = allocate(new_capacity);
+        const size_t old_size = size_;
 
         for (size_t i = 0; i < size_; ++i) {
             new (new_data + i) T(std::move(data_[physical_index(i)]));
         }
 
-        clear();
+        for (size_t i = 0; i < old_size; ++i) {
+            data_[physical_index(i)].~T();
+        }
         ::operator delete(data_);
 
         data_ = new_data;
+        size_ = old_size;
         capacity_ = new_capacity;
         front_index_ = 0;
     }
