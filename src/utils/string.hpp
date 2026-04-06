@@ -1,7 +1,12 @@
 #pragma once
+#include <cctype>
 #include <cstddef>   // for size_t
-#include <iostream>  // for ostream
-#include <stdexcept> // for out_of_range (substr)
+#include <cstring>   // for memmove, memcpy
+#include <functional> // for std::hash specialization
+#include <iostream>   // for ostream, istream
+#include <stdexcept>  // for out_of_range (substr)
+
+#include "STL_rewrite/string_view.hpp"
 
 // IMPORTANT: I did not count '\0' in size or capacity
 class string {
@@ -43,6 +48,18 @@ class string {
         _capacity = _size;
         _buffer = new char[_capacity + 1];
         copyData(_buffer, begin, _size);
+        _buffer[_size] = '\0';
+    }
+
+    // string_view constructor (characters need not be NUL-terminated)
+    // REQUIRES: Nothing
+    // MODIFIES: *this
+    // EFFECTS: Creates a string with the same sequence of characters as sv
+    string(::string_view sv) : _buffer(nullptr), _size(sv.size()), _capacity(_size) {
+        _buffer = new char[_capacity + 1];
+        if (_size > 0 && sv.data() != nullptr) {
+            copyData(_buffer, sv.data(), _size);
+        }
         _buffer[_size] = '\0';
     }
 
@@ -133,6 +150,14 @@ class string {
     }
 
     void operator+=(char c) { pushBack(c); }
+
+    void operator+=(const char *cstr) {
+        if (cstr == nullptr) {
+            return;
+        }
+        const size_t n = getLength(cstr);
+        append(cstr, n);
+    }
 
     void append(const char *data, size_t count) {
         growCapacity(_size + count);
@@ -227,6 +252,72 @@ class string {
         }
     }
 
+    void pop_back() { popBack(); }
+
+    void reserve(size_t new_cap) {
+        if (new_cap <= _capacity) {
+            return;
+        }
+        char *newBuffer = new char[new_cap + 1];
+        copyData(newBuffer, _buffer, _size);
+        newBuffer[_size] = '\0';
+        delete[] _buffer;
+        _buffer = newBuffer;
+        _capacity = new_cap;
+    }
+
+    void erase(size_t pos) {
+        if (pos > _size) {
+            throw std::out_of_range("string::erase");
+        }
+        _size = pos;
+        _buffer[_size] = '\0';
+    }
+
+    void erase(size_t pos, size_t count) {
+        if (pos > _size) {
+            throw std::out_of_range("string::erase");
+        }
+        const size_t tail = _size - pos;
+        if (count >= tail) {
+            _size = pos;
+        } else {
+            for (size_t i = 0; i < tail - count; ++i) {
+                _buffer[pos + i] = _buffer[pos + count + i];
+            }
+            _size -= count;
+        }
+        _buffer[_size] = '\0';
+    }
+
+    void replace(size_t pos, size_t len, const char *str, size_t n) {
+        if (pos > _size) {
+            throw std::out_of_range("string::replace");
+        }
+        const size_t tail_avail = _size - pos;
+        if (len > tail_avail) {
+            len = tail_avail;
+        }
+        const size_t suffix_len = _size - pos - len;
+        const size_t new_size = _size - len + n;
+        growCapacity(new_size);
+        char *const p = _buffer + pos;
+        memmove(p + n, p + len, suffix_len);
+        memcpy(p, str, n);
+        _size = new_size;
+        _buffer[_size] = '\0';
+    }
+
+    void replace(size_t pos, size_t len, const char *cstr) {
+        size_t n = 0;
+        if (cstr != nullptr) {
+            while (cstr[n] != '\0') {
+                ++n;
+            }
+        }
+        replace(pos, len, cstr, n);
+    }
+
     // Equality Operator
     // REQUIRES: Nothing
     // MODIFIES: Nothing
@@ -237,6 +328,19 @@ class string {
             return false;
         }
         return compareStrings(_buffer, other._buffer) == 0;
+    }
+
+    bool operator==(const char *rhs) const {
+        if (rhs == nullptr) {
+            return _size == 0;
+        }
+        size_t i = 0;
+        for (; i < _size && rhs[i] != '\0'; ++i) {
+            if (_buffer[i] != rhs[i]) {
+                return false;
+            }
+        }
+        return i == _size && rhs[i] == '\0';
     }
 
     // Not-Equality Operator
@@ -332,27 +436,64 @@ class string {
     }
 };
 
-inline std::ostream &operator<<(std::ostream &os, const string &s) {
+inline std::ostream &operator<<(std::ostream &os, const ::string &s) {
     if (s.size() > 0) {
         os << s.cstr();
     }
     return os;
 }
 
-inline string operator+(const string &lhs, const char *rhs) {
-    string result(lhs);
-    result += string(rhs);
+inline std::istream &operator>>(std::istream &is, ::string &s) {
+    s = ::string();
+    using traits = std::istream::traits_type;
+    auto ch = is.get();
+    while (ch != traits::eof() && std::isspace(static_cast<unsigned char>(ch))) {
+        ch = is.get();
+    }
+    if (ch == traits::eof()) {
+        is.setstate(std::ios::failbit);
+        return is;
+    }
+    while (ch != traits::eof() && !std::isspace(static_cast<unsigned char>(ch))) {
+        s.pushBack(static_cast<char>(ch));
+        ch = is.get();
+    }
+    if (ch != traits::eof()) {
+        is.unget();
+    }
+    return is;
+}
+
+inline ::string operator+(const ::string &lhs, const char *rhs) {
+    ::string result(lhs);
+    result += ::string(rhs);
     return result;
 }
 
-inline string operator+(const char *lhs, const string &rhs) {
-    string result(lhs);
+inline ::string operator+(const char *lhs, const ::string &rhs) {
+    ::string result(lhs);
     result += rhs;
     return result;
 }
 
-inline string operator+(const string &lhs, const string &rhs) {
-    string result(lhs);
+inline ::string operator+(const ::string &lhs, const ::string &rhs) {
+    ::string result(lhs);
     result += rhs;
     return result;
 }
+
+inline bool operator==(const char *lhs, const ::string &rhs) { return rhs == lhs; }
+
+namespace std {
+template <>
+struct hash<::string> {
+    size_t operator()(const ::string &s) const noexcept {
+        size_t h = 0;
+        const char *p = s.cstr();
+        while (p && *p) {
+            h = h * 131u + static_cast<unsigned char>(*p++);
+        }
+        return h;
+    }
+};
+} // namespace std

@@ -4,7 +4,7 @@
 #include "isr.h"
 #include "types.h"
 #include <optional>
-#include <string>
+#include "utils/string.hpp"
 
 class DiskChunkReader {
   public:
@@ -17,13 +17,13 @@ class DiskChunkReader {
 
     // opens the file, mmaps it, and validates the header.
     // returns true on success, false on failure (e.g., bad magic number).
-    bool open(const std::string &filename);
+    bool open(const ::string &filename);
 
     // expose the parsed header
     const FileHeader &header() const { return header_; }
 
     // returns a unique_ptr to an ISRWord. Returns nullptr if term is not found.
-    std::unique_ptr<ISRWord> createISR(const std::string &term) const;
+    std::unique_ptr<ISRWord> createISR(const ::string &term) const;
 
     // retrieves a document by its integer ID (0 to num_documents - 1).
     // returns std::nullopt if the ID is out of bounds.

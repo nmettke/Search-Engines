@@ -2,9 +2,9 @@
 #include "Common.h"
 #include "disk_chunk_writer.h"
 #include "in_memory_index.h"
-#include <vector>
+#include "utils/vector.hpp"
 
-void flushIndexChunk(const InMemoryIndex &mem_index, const std::string &filename) {
+void flushIndexChunk(const InMemoryIndex &mem_index, const ::string &filename) {
     DiskChunkWriter writer(filename);
 
     // write dummy header
@@ -17,7 +17,7 @@ void flushIndexChunk(const InMemoryIndex &mem_index, const std::string &filename
 
     // size the dictionary to keep load factor low
     size_t num_buckets = std::max<size_t>(1, num_unique_terms * 1.5);
-    std::vector<std::vector<DiskChunkWriter::DictionaryEntry>> dict_buckets(num_buckets);
+    ::vector<::vector<DiskChunkWriter::DictionaryEntry>> dict_buckets(num_buckets);
 
     // write Posting Lists and build Dictionary Entries
     for (const auto &[term, posting_list] : postings) {

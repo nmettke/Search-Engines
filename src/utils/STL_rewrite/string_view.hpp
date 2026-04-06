@@ -87,8 +87,8 @@ class string_view {
     size_t size_;
 };
 
-constexpr bool operator==(string_view lhs, string_view rhs) noexcept {
+constexpr bool operator==(::string_view lhs, ::string_view rhs) noexcept {
     return lhs.compare(rhs) == 0;
 }
 
-constexpr bool operator!=(string_view lhs, string_view rhs) noexcept { return !(lhs == rhs); }
+constexpr bool operator!=(::string_view lhs, ::string_view rhs) noexcept { return !(lhs == rhs); }

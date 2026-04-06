@@ -1,17 +1,17 @@
 // src/lib/tokenizer.h
 #pragma once
 
-#include "html_parser.h"
+// #include "html_parser.h"
+#include "parser/HtmlParser.h"
 #include "types.h"
 
 #include <array>
-#include <string>
-#include <string_view>
 #include <utility>
-#include <vector>
+#include "utils/string.hpp"
+#include "utils/vector.hpp"
 
 struct TokenizedDocument {
-    std::vector<TokenOutput> tokens;
+    ::vector<TokenOutput> tokens;
     DocEndOutput doc_end;
 };
 
@@ -19,11 +19,11 @@ class Tokenizer {
   public:
     Tokenizer(uint32_t base_location = 0) : next_location(base_location) {}
     TokenizedDocument processDocument(const HtmlParser &doc);
-    std::vector<std::string> processToken(const std::string &raw);
+    ::vector<::string> processToken(const ::string &raw);
 
   private:
-    static std::string makeLowerCase(std::string s);
-    static std::string stripPunc(const std::string &s);
+    static ::string makeLowerCase(::string s);
+    static ::string stripPunc(const ::string &s);
     static bool isAlphaNumeric(unsigned char c);
 
     uint32_t next_location = 0;
@@ -32,11 +32,11 @@ class Tokenizer {
 class PorterStemmer {
     // following https://vijinimallawaarachchi.com/2017/05/09/porter-stemming-algorithm/
   public:
-    static std::string stem(const std::string &token) {
+    static ::string stem(const ::string &token) {
         if (token.length() <= 2)
             return token;
 
-        std::string w = token;
+        ::string w = token;
 
         step1(w);
         if (w.length() > 2) {
@@ -54,13 +54,13 @@ class PorterStemmer {
         return c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u';
     }
 
-    static bool ends_with(std::string_view value, std::string_view ending) {
+    static bool ends_with(::string_view value, ::string_view ending) {
         if (ending.size() > value.size())
             return false;
         return value.compare(value.size() - ending.size(), ending.size(), ending) == 0;
     }
 
-    static inline bool isVowel(std::string_view w, size_t i) {
+    static inline bool isVowel(::string_view w, size_t i) {
         char c = w[i];
         if (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u')
             return true;
@@ -69,7 +69,7 @@ class PorterStemmer {
         return false;
     }
 
-    static int getMeasure(std::string_view w) {
+    static int getMeasure(::string_view w) {
         int m = 0;
         bool prev_is_vowel = false;
         bool in_vowel_run = false;
@@ -87,7 +87,7 @@ class PorterStemmer {
         return m;
     }
 
-    static bool containsVowel(std::string_view w) {
+    static bool containsVowel(::string_view w) {
         bool prev_is_vowel = false;
         for (size_t i = 0; i < w.size(); ++i) {
             const char c = w[i];
@@ -99,13 +99,13 @@ class PorterStemmer {
         return false;
     }
 
-    static bool endsWithDoubleConsonant(std::string_view w) {
+    static bool endsWithDoubleConsonant(::string_view w) {
         if (w.length() < 2)
             return false;
         return (w[w.length() - 1] == w[w.length() - 2] && !isVowel(w, w.length() - 1));
     }
 
-    static bool ends_cvc(std::string_view w) {
+    static bool ends_cvc(::string_view w) {
         size_t n = w.length();
         if (n < 3)
             return false;
@@ -115,7 +115,7 @@ class PorterStemmer {
         return (c != 'w' && c != 'x' && c != 'y');
     }
 
-    static void step1(std::string &w) {
+    static void step1(::string &w) {
         if (ends_with(w, "sses"))
             w.erase(w.length() - 2);
         else if (ends_with(w, "ies"))
@@ -125,15 +125,15 @@ class PorterStemmer {
 
         bool do_cleanup = false;
         if (ends_with(w, "eed")) {
-            if (getMeasure(std::string_view(w).substr(0, w.length() - 3)) > 0)
+            if (getMeasure(::string_view(w).substr(0, w.length() - 3)) > 0)
                 w.pop_back();
         } else if (ends_with(w, "ed")) {
-            if (containsVowel(std::string_view(w).substr(0, w.length() - 2))) {
+            if (containsVowel(::string_view(w).substr(0, w.length() - 2))) {
                 w.erase(w.length() - 2);
                 do_cleanup = true;
             }
         } else if (ends_with(w, "ing")) {
-            if (containsVowel(std::string_view(w).substr(0, w.length() - 3))) {
+            if (containsVowel(::string_view(w).substr(0, w.length() - 3))) {
                 w.erase(w.length() - 3);
                 do_cleanup = true;
             }
@@ -148,12 +148,12 @@ class PorterStemmer {
             else if (getMeasure(w) == 1 && ends_cvc(w))
                 w += "e";
         }
-        if (ends_with(w, "y") && containsVowel(std::string_view(w).substr(0, w.length() - 1)))
+        if (ends_with(w, "y") && containsVowel(::string_view(w).substr(0, w.length() - 1)))
             w[w.length() - 1] = 'i';
     }
 
-    static void step2(std::string &w) {
-        static constexpr std::array<std::pair<std::string_view, std::string_view>, 20> subs = {{
+    static void step2(::string &w) {
+        static constexpr std::array<std::pair<::string_view, ::string_view>, 20> subs = {{
             {"ational", "ate"}, {"tional", "tion"}, {"enci", "ence"},   {"anci", "ance"},
             {"izer", "ize"},    {"abli", "able"},   {"alli", "al"},     {"entli", "ent"},
             {"eli", "e"},       {"ousli", "ous"},   {"ization", "ize"}, {"ation", "ate"},
@@ -162,7 +162,7 @@ class PorterStemmer {
         }};
         for (const auto &[suffix, rep] : subs) {
             if (ends_with(w, suffix)) {
-                if (getMeasure(std::string_view(w).substr(0, w.length() - suffix.length())) > 0) {
+                if (getMeasure(::string_view(w).substr(0, w.length() - suffix.length())) > 0) {
                     w.replace(w.length() - suffix.length(), suffix.length(), rep.data(),
                               rep.length());
                 }
@@ -171,8 +171,8 @@ class PorterStemmer {
         }
     }
 
-    static void step3(std::string &w) {
-        static constexpr std::array<std::pair<std::string_view, std::string_view>, 7> subs = {{
+    static void step3(::string &w) {
+        static constexpr std::array<std::pair<::string_view, ::string_view>, 7> subs = {{
             {"icate", "ic"},
             {"ative", ""},
             {"alize", "al"},
@@ -183,7 +183,7 @@ class PorterStemmer {
         }};
         for (const auto &[suffix, rep] : subs) {
             if (ends_with(w, suffix)) {
-                if (getMeasure(std::string_view(w).substr(0, w.length() - suffix.length())) > 0) {
+                if (getMeasure(::string_view(w).substr(0, w.length() - suffix.length())) > 0) {
                     w.replace(w.length() - suffix.length(), suffix.length(), rep.data(),
                               rep.length());
                 }
@@ -192,28 +192,28 @@ class PorterStemmer {
         }
     }
 
-    static void step4(std::string &w) {
-        static constexpr std::array<std::string_view, 18> suffixes = {
+    static void step4(::string &w) {
+        static constexpr std::array<::string_view, 18> suffixes = {
             "al",   "ance", "ence", "er",  "ic",  "able", "ible", "ant", "ement",
             "ment", "ent",  "ou",   "ism", "ate", "iti",  "ous",  "ive", "ize"};
-        for (std::string_view s : suffixes) {
+        for (::string_view s : suffixes) {
             if (ends_with(w, s)) {
-                if (getMeasure(std::string_view(w).substr(0, w.length() - s.length())) > 1)
+                if (getMeasure(::string_view(w).substr(0, w.length() - s.length())) > 1)
                     w.erase(w.length() - s.length());
                 return;
             }
         }
         if (ends_with(w, "ion")) {
-            std::string_view stem = std::string_view(w).substr(0, w.length() - 3);
+            ::string_view stem = ::string_view(w).substr(0, w.length() - 3);
             if (getMeasure(stem) > 1 && (ends_with(stem, "s") || ends_with(stem, "t")))
                 w.erase(w.length() - 3);
         }
     }
 
-    static void step5(std::string &w) {
-        int m = getMeasure(std::string_view(w).substr(0, w.length() - 1));
+    static void step5(::string &w) {
+        int m = getMeasure(::string_view(w).substr(0, w.length() - 1));
         if (ends_with(w, "e") &&
-            (m > 1 || (m == 1 && !ends_cvc(std::string_view(w).substr(0, w.length() - 1)))))
+            (m > 1 || (m == 1 && !ends_cvc(::string_view(w).substr(0, w.length() - 1)))))
             w.pop_back();
         if (getMeasure(w) > 1 && endsWithDoubleConsonant(w) && ends_with(w, "l"))
             w.pop_back();

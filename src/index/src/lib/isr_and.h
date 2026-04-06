@@ -5,11 +5,11 @@
 #include "isr.h"
 #include <memory>
 #include <optional>
-#include <vector>
+#include "utils/vector.hpp"
 
 class ISRAnd : public ISR {
   public:
-    ISRAnd(std::vector<std::unique_ptr<ISR>> terms, std::unique_ptr<ISRWord> doc_end_isr,
+    ISRAnd(::vector<std::unique_ptr<ISR>> terms, std::unique_ptr<ISRWord> doc_end_isr,
            const DiskChunkReader &reader);
 
     uint32_t next() override;
@@ -20,7 +20,7 @@ class ISRAnd : public ISR {
     std::optional<DocumentRecord> currentDocument() const { return current_doc_; }
 
   private:
-    std::vector<std::unique_ptr<ISR>> terms_;
+    ::vector<std::unique_ptr<ISR>> terms_;
     std::unique_ptr<ISRWord> doc_end_isr_;
     const DiskChunkReader &reader_;
 

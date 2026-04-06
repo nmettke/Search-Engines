@@ -10,7 +10,11 @@
 #include <iostream>
 #include <vector>
 
+#include "utils/string.hpp"
+
+
 // this is a simple integration interface to show how the components fit together.
+
 
 int main() {
     // 1. Mock the crawler output using the HtmlParser interface
@@ -37,7 +41,7 @@ int main() {
     }
 
     // 3. Flush the chunk to disk using OUR flusher interface
-    const std::string path = "chunk_0001.idx";
+    const ::string path = "chunk_0001.idx";
     try {
         flushIndexChunk(index, path);
         std::cout << "Successfully wrote chunk to: " << path << "\n";
@@ -59,10 +63,10 @@ int main() {
 
     QueryEngine engine(reader);
 
-    std::string query1 = "cat AND dog";
-    std::string query2 = "cat OR dog";
-    std::string query3 = "\"my cat\" -dog";
-    std::string query4 = "\"my dog\"";
+    ::string query1 = "cat AND dog";
+    ::string query2 = "cat OR dog";
+    ::string query3 = "\"my cat\" -dog";
+    ::string query4 = "\"my dog\"";
 
     auto results1 = engine.search(query1);
     auto results2 = engine.search(query2);

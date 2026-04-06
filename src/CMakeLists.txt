@@ -89,3 +89,46 @@ target_link_libraries(crawler
 
 target_compile_features(crawler_lib PUBLIC cxx_std_17)
 target_compile_features(crawler PUBLIC cxx_std_17)
+
+# -------------------------
+# Index library (for src/main.cpp)
+# -------------------------
+
+find_package(Threads REQUIRED)
+
+add_library(index_lib
+    index/src/lib/Common.cpp
+    index/src/lib/vbyte.cpp
+    index/src/lib/seek_table.cpp
+    index/src/lib/in_memory_index.cpp
+    index/src/lib/disk_chunk_writer.cpp
+    index/src/lib/chunk_flusher.cpp
+    index/src/lib/indexQueue.cpp
+    index/src/lib/tokenizer.cpp
+)
+
+target_include_directories(index_lib
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/index/src/lib
+)
+
+target_link_libraries(index_lib
+    PUBLIC
+        utils
+)
+
+target_compile_features(index_lib PUBLIC cxx_std_17)
+
+add_executable(search_engine
+    main.cpp
+)
+
+target_link_libraries(search_engine
+    PRIVATE
+        crawler_lib
+        index_lib
+        Threads::Threads
+)
+
+target_compile_features(search_engine PUBLIC cxx_std_17)

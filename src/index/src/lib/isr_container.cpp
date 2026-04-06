@@ -2,7 +2,7 @@
 #include "isr_container.h"
 
 ISRContainer::ISRContainer(std::unique_ptr<ISR> positive_isr,
-                           std::vector<std::unique_ptr<ISR>> negative_isrs,
+                           ::vector<std::unique_ptr<ISR>> negative_isrs,
                            std::unique_ptr<ISRWord> doc_end_isr, const DiskChunkReader &reader)
     : positive_isr_(std::move(positive_isr)), negative_isrs_(std::move(negative_isrs)),
       doc_end_isr_(std::move(doc_end_isr)), reader_(reader), current_loc_(0), is_exhausted_(false) {

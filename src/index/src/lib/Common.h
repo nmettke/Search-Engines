@@ -3,13 +3,12 @@
 
 // Nicole Hamilton  nham@umich.edu
 
-#include "HashTable.h"
+#include "utils/hash/HashTable.h"
 #include <cstdint>
 #include <cstring>
 #include <string>
-#include <vector>
-
-using namespace std;
+#include "utils/string.hpp"
+#include "utils/vector.hpp"
 
 // You may define additional helper routines here and in
 // Common.cpp.
@@ -26,14 +25,14 @@ bool CompareEqual(const char *a, const char *b);
 
 // Caller is responsible for deleting the Hash.
 
-HashTable<const char *, size_t> *BuildHashTable(const vector<string> &words,
+HashTable<const char *, size_t> *BuildHashTable(const ::vector<::string> &words,
                                                 uint64_t (*hash)(const char *key) = hashString);
 
 // Collect words read from a file specified on the command line
 // as either individual word or whole lines in a vector of
 // strings.  Return the index of the last argv word consumed.
 
-int CollectWordsIn(int argc, char **argv, vector<string> &words);
+int CollectWordsIn(int argc, char **argv, ::vector<::string> &words);
 
 // -v (verbose) command line option.
 

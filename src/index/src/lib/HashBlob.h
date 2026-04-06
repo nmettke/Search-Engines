@@ -17,7 +17,7 @@
 #include <unistd.h>
 
 #include "Common.h"
-#include "HashTable.h"
+#include "utils/hash/HashTable.h"
 
 using Hash = HashTable<const char *, size_t>;
 using Pair = Tuple<const char *, size_t>;

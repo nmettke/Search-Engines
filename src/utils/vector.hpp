@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <new>
 #include <utility>
 template <typename T> class vector {
   public:
@@ -148,10 +149,29 @@ template <typename T> class vector {
     const T &operator[](size_t i) const { return data_[i]; }
 
     // REQUIRES: Nothing
+    // MODIFIES: Nothing
+    // EFFECTS: Returns a pointer to the underlying element array (may be nullptr if empty)
+    T *data() { return data_; }
+
+    // REQUIRES: Nothing
+    // MODIFIES: Nothing
+    // EFFECTS: Returns a const pointer to the underlying element array
+    const T *data() const { return data_; }
+
+    // REQUIRES: Nothing
     // MODIFIES: this, size( ), capacity( )
     // EFFECTS: Appends the element x to the vector, allocating
     //    additional space if neccesary
     void pushBack(const T &x) {
+        if (size_ == capacity_) {
+            reserve(capacity_ == 0 ? 8 : capacity_ * 3);
+        }
+
+        new (data_ + size_) T(x);
+        size_++;
+    }
+
+    void push_back(const T &x) {
         if (size_ == capacity_) {
             reserve(capacity_ == 0 ? 8 : capacity_ * 3);
         }
@@ -169,6 +189,94 @@ template <typename T> class vector {
         size_++;
     }
 
+    // REQUIRES: begin() <= pos <= end()
+    // MODIFIES: this, size( ), capacity( ) if reallocation is needed
+    // EFFECTS: Inserts a copy of x before the element at pos (or at end if pos == end()),
+    //    returns a pointer to the new element
+    T *insert(T *pos, const T &x) {
+        const size_t index = static_cast<size_t>(pos - begin());
+        if (index > size_)
+            return end();
+        if (index == size_) {
+            pushBack(x);
+            return data_ + index;
+        }
+        if (size_ == capacity_)
+            reserve(capacity_ == 0 ? 8 : capacity_ * 3);
+        pushBack(data_[size_ - 1]);
+        for (ptrdiff_t i = static_cast<ptrdiff_t>(size_) - 2; i >= static_cast<ptrdiff_t>(index);
+             --i) {
+            data_[static_cast<size_t>(i) + 1] = std::move(data_[static_cast<size_t>(i)]);
+        }
+        data_[index] = x;
+        return data_ + index;
+    }
+
+    // REQUIRES: begin() <= pos <= end()
+    // MODIFIES: this, size( ), capacity( ) if reallocation is needed
+    // EFFECTS: Inserts x before pos using move semantics where supported
+    T *insert(T *pos, T &&x) {
+        const size_t index = static_cast<size_t>(pos - begin());
+        if (index > size_)
+            return end();
+        if (index == size_) {
+            emplaceBack(std::move(x));
+            return data_ + index;
+        }
+        if (size_ == capacity_)
+            reserve(capacity_ == 0 ? 8 : capacity_ * 3);
+        pushBack(data_[size_ - 1]);
+        for (ptrdiff_t i = static_cast<ptrdiff_t>(size_) - 2; i >= static_cast<ptrdiff_t>(index);
+             --i) {
+            data_[static_cast<size_t>(i) + 1] = std::move(data_[static_cast<size_t>(i)]);
+        }
+        data_[index] = std::move(x);
+        return data_ + index;
+    }
+
+    // REQUIRES: begin() <= pos <= end(), [first, last) is a valid range
+    // MODIFIES: this, size( ), capacity( ) if reallocation is needed
+    // EFFECTS: Inserts copies of the elements in [first, last) before pos;
+    //    returns a pointer to the first inserted element (or pos if the range is empty)
+    template <typename Iter> T *insert(T *pos, Iter first, Iter last) {
+        const size_t index = static_cast<size_t>(pos - begin());
+        if (index > size_)
+            return end();
+        size_t count = 0;
+        for (Iter it = first; it != last; ++it)
+            ++count;
+        if (count == 0)
+            return data_ + index;
+
+        if (index == size_) {
+            for (Iter it = first; it != last; ++it)
+                pushBack(*it);
+            return data_ + index;
+        }
+
+        if (size_ + count > capacity_) {
+            size_t new_cap = capacity_;
+            if (new_cap == 0)
+                new_cap = 8;
+            while (new_cap < size_ + count)
+                new_cap *= 3;
+            reserve(new_cap);
+        }
+
+        for (ptrdiff_t i = static_cast<ptrdiff_t>(size_) - 1; i >= static_cast<ptrdiff_t>(index);
+             --i) {
+            new (data_ + static_cast<size_t>(i) + count) T(std::move(data_[static_cast<size_t>(i)]));
+            data_[static_cast<size_t>(i)].~T();
+        }
+
+        size_t j = index;
+        for (Iter it = first; it != last; ++it, ++j) {
+            new (data_ + j) T(*it);
+        }
+        size_ += count;
+        return data_ + index;
+    }
+
     // REQUIRES: Nothing
     // MODIFIES: this, size( )
     // EFFECTS: Removes the last element of the vector,
@@ -176,6 +284,45 @@ template <typename T> class vector {
     void popBack() {
         data_[size_ - 1].~T();
         size_--;
+    }
+
+    // REQUIRES: Nothing
+    // MODIFIES: this, size( ), capacity( ) if count exceeds capacity( )
+    // EFFECTS: Replaces all elements with count copies of value
+    void assign(size_t count, const T &value) {
+        destroyRange(begin(), end());
+        size_ = 0;
+        if (count > capacity_) {
+            ::operator delete(data_);
+            data_ = allocate(count);
+            capacity_ = count;
+        }
+        for (size_t i = 0; i < count; ++i) {
+            new (data_ + i) T(value);
+        }
+        size_ = count;
+    }
+
+    // REQUIRES: [first, last) is a valid range
+    // MODIFIES: this, size( ), capacity( ) if the range length exceeds capacity( )
+    // EFFECTS: Replaces all elements with copies of the elements in [first, last)
+    template <typename Iter> void assign(Iter first, Iter last) {
+        size_t count = 0;
+        for (Iter it = first; it != last; ++it) {
+            ++count;
+        }
+        destroyRange(begin(), end());
+        size_ = 0;
+        if (count > capacity_) {
+            ::operator delete(data_);
+            data_ = allocate(count);
+            capacity_ = count;
+        }
+        size_t i = 0;
+        for (Iter it = first; it != last; ++it, ++i) {
+            new (data_ + i) T(*it);
+        }
+        size_ = count;
     }
 
     // REQUIRES: Nothing
@@ -200,6 +347,8 @@ template <typename T> class vector {
     // EFFECTS: Returns a random access iterator to
     //    one past the last valid element of the vector
     const T *end() const { return data_ + size_; }
+
+    bool empty() const { return size_ == 0; }
 
   private:
     T *data_;

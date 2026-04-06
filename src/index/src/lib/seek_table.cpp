@@ -78,13 +78,13 @@ SeekTable SeekTable::build(const uint8_t *encoded_deltas, size_t data_size, uint
     return table;
 }
 
-SeekTable SeekTable::build(const std::vector<uint8_t> &encoded_deltas, uint32_t num_postings) {
+SeekTable SeekTable::build(const ::vector<uint8_t> &encoded_deltas, uint32_t num_postings) {
     return build(encoded_deltas.data(), encoded_deltas.size(), num_postings);
 }
 
-std::vector<uint8_t> SeekTable::serialize() const {
+::vector<uint8_t> SeekTable::serialize() const {
     // create a vector of bytes for chunk writer
-    std::vector<uint8_t> bytes(SerializedSize);
+    ::vector<uint8_t> bytes(SerializedSize);
     uint8_t *ptr = bytes.data();
     for (const auto &entry : _entries) {
         std::memcpy(ptr, &entry.byte_offset, sizeof(entry.byte_offset));

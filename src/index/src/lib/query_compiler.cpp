@@ -5,7 +5,7 @@
 #include "isr_or.h"
 #include "isr_phrase.h"
 
-std::unique_ptr<ISR> QueryCompiler::compile(const std::vector<QueryToken> &tokens) {
+std::unique_ptr<ISR> QueryCompiler::compile(const ::vector<QueryToken> &tokens) {
     tokens_ = tokens;
     current_ = 0;
     if (tokens_.empty())
@@ -21,17 +21,17 @@ void QueryCompiler::consume() {
 }
 
 std::unique_ptr<ISR> QueryCompiler::parseOr() {
-    std::vector<std::unique_ptr<ISR>> children;
+    ::vector<std::unique_ptr<ISR>> children;
 
     auto left = parseAnd();
     if (left)
-        children.push_back(std::move(left));
+        children.pushBack(std::move(left));
 
     while (!isAtEnd() && peek().type == QueryTokenType::OR) {
         consume();
         auto right = parseAnd();
         if (right)
-            children.push_back(std::move(right));
+            children.pushBack(std::move(right));
     }
 
     if (children.empty())
@@ -43,8 +43,8 @@ std::unique_ptr<ISR> QueryCompiler::parseOr() {
 }
 
 std::unique_ptr<ISR> QueryCompiler::parseAnd() {
-    std::vector<std::unique_ptr<ISR>> positives;
-    std::vector<std::unique_ptr<ISR>> negatives;
+    ::vector<std::unique_ptr<ISR>> positives;
+    ::vector<std::unique_ptr<ISR>> negatives;
 
     while (!isAtEnd() && peek().type != QueryTokenType::OR &&
            peek().type != QueryTokenType::R_PAREN) {
@@ -71,9 +71,9 @@ std::unique_ptr<ISR> QueryCompiler::parseAnd() {
                 continue; // Negative term missing -> safe to ignore exclusion
         } else {
             if (is_not)
-                negatives.push_back(std::move(node));
+                negatives.pushBack(std::move(node));
             else
-                positives.push_back(std::move(node));
+                positives.pushBack(std::move(node));
         }
     }
 
@@ -113,14 +113,14 @@ std::unique_ptr<ISR> QueryCompiler::parsePrimary() {
         return node;
     } else if (token.type == QueryTokenType::QUOTE) {
         consume();
-        std::vector<std::unique_ptr<ISR>> phrase_terms;
+        ::vector<std::unique_ptr<ISR>> phrase_terms;
         bool missing_term = false;
 
         while (!isAtEnd() && peek().type != QueryTokenType::QUOTE) {
             if (peek().type == QueryTokenType::WORD) {
                 auto node = reader_.createISR(peek().text);
                 if (node)
-                    phrase_terms.push_back(std::move(node));
+                    phrase_terms.pushBack(std::move(node));
                 else
                     missing_term = true; // Phrase broken
             }

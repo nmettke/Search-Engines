@@ -2,7 +2,7 @@
 #include "isr_or.h"
 #include <algorithm>
 
-ISROr::ISROr(std::vector<std::unique_ptr<ISR>> terms)
+ISROr::ISROr(::vector<std::unique_ptr<ISR>> terms)
     : terms_(std::move(terms)), current_loc_(0), is_exhausted_(false) {
     if (terms_.empty()) {
         is_exhausted_ = true;

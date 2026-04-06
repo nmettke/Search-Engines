@@ -1,5 +1,5 @@
 CXX      := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra
+CXXFLAGS := -std=c++17 -Wall -Wextra -I..
 
 SRC_DIR  := src
 LIB_DIR  := $(SRC_DIR)/lib

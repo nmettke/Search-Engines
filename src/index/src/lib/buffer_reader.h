@@ -2,7 +2,7 @@
 #pragma once
 
 #include <cstdint>
-#include <string_view>
+#include "utils/STL_rewrite/string_view.hpp"
 
 class BufferReader {
   public:
@@ -18,11 +18,11 @@ class BufferReader {
 
     // reads a 16-bit length prefix, then returns a string_view of the data.
     // does NOT copy the string. It just points to the mapped file!
-    std::string_view readString16() {
+    ::string_view readString16() {
         uint16_t len = *reinterpret_cast<const uint16_t *>(ptr_);
         ptr_ += sizeof(uint16_t);
 
-        std::string_view str(reinterpret_cast<const char *>(ptr_), len);
+        ::string_view str(reinterpret_cast<const char *>(ptr_), len);
         ptr_ += len;
 
         return str;

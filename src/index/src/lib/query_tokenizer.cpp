@@ -3,7 +3,7 @@
 #include "tokenizer.h"
 #include <cctype>
 
-std::string to_lower(std::string &s) {
+static ::string to_lower(::string &s) {
     for (char &c : s) {
         if (c >= 'A' && c <= 'Z')
             c = static_cast<char>(c + 32);
@@ -11,8 +11,8 @@ std::string to_lower(std::string &s) {
     return s;
 }
 
-std::vector<QueryToken> QueryTokenizer::tokenize(const std::string &query) {
-    std::vector<QueryToken> tokens;
+::vector<QueryToken> QueryTokenizer::tokenize(const ::string &query) {
+    ::vector<QueryToken> tokens;
     size_t i = 0;
 
     while (i < query.length()) {
@@ -60,7 +60,7 @@ std::vector<QueryToken> QueryTokenizer::tokenize(const std::string &query) {
         }
 
         if (c != '(' && c != ')' && c != '"' && c != '|' && c != '&' && (!std::isspace(c))) {
-            std::string word;
+            ::string word;
 
             while (i < query.length()) {
                 char wc = query[i];
@@ -82,7 +82,7 @@ std::vector<QueryToken> QueryTokenizer::tokenize(const std::string &query) {
                 i++;
             }
 
-            std::string lower_word = to_lower(word);
+            ::string lower_word = to_lower(word);
 
             if (lower_word == "or") {
                 tokens.push_back({QueryTokenType::OR, "OR"});
@@ -92,7 +92,7 @@ std::vector<QueryToken> QueryTokenizer::tokenize(const std::string &query) {
                 tokens.push_back({QueryTokenType::NOT, "NOT"});
             } else {
                 Tokenizer doc_tokenizer;
-                std::vector<std::string> processed = doc_tokenizer.processToken(word);
+                ::vector<::string> processed = doc_tokenizer.processToken(word);
 
                 if (!processed.empty()) {
                     tokens.push_back({QueryTokenType::WORD, processed[0]});

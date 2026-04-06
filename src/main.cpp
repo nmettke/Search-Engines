@@ -18,11 +18,11 @@
 #include "./utils/vector.hpp"
 
 #include <cerrno>
+#include <cstdio>
 #include <csignal>
 #include <cstring>
 #include <iostream>
 #include <optional>
-#include <string>
 #include <thread>
 
 #include <arpa/inet.h>
@@ -33,7 +33,7 @@
 static volatile bool shouldStop = false;
 Frontier *f = nullptr;
 IndexQueue *q = nullptr;
-InMemoryIndex index;
+InMemoryIndex mem_index;
 // Distributed args
 std::atomic<size_t> numLinkThreshold = 128; // how much is in batch before we push
 vector<vector<Link>> batches;
@@ -87,7 +87,7 @@ void *CrawlerWorkerThread(void *arg) {
 
         for (const Link &link : parsed.links) {
             if (link.URL.find("http") != link.URL.npos) {
-                size_t hashto = hashString(link.URL) % num_machine;
+                size_t hashto = hashString(link.URL.cstr()) % num_machine;
                 if (hashto != machine_id.load()) {
                     batch_lock.lock();
                     batches[hashto].pushBack(link);
@@ -110,8 +110,8 @@ void *CrawlerWorkerThread(void *arg) {
         ++urlsCrawled;
         std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
 
-        if (!shouldStop && checkpoint->shouldCheckpoint(urlsCrawled)) {
-            checkpoint->save(*f, bloom, urlsCrawled);
+        if (!shouldStop && (urlsCrawled.load() % 500) == 0) {
+            checkpoint->save(*f, bloom, urlsCrawled.load());
         }
     }
 
@@ -127,25 +127,27 @@ void *IndexWorkerThread(void *arg) {
 
     // Tokenize and build the In-Memory Index
     while (std::optional<HtmlParser> doc = q->pop()) {
-        auto tokenized = tokenizer.processDocument(doc);
+        auto tokenized = tokenizer.processDocument(*doc);
         for (const auto &tok : tokenized.tokens) {
-            index.addToken(tok);
+            mem_index.addToken(tok);
         }
-        index.finishDocument(tokenized.doc_end);
+        mem_index.finishDocument(tokenized.doc_end);
         ++doc_processed;
 
         if (doc_processed >= 512) {
             // flush every 512 docs
             // Flush the chunk to disk using OUR flusher interface
-            const std::string path = "chunk_" << chunks_written << ".idx";
+            char chunk_path_buf[64];
+            std::snprintf(chunk_path_buf, sizeof(chunk_path_buf), "chunk_%zu.idx", chunks_written);
+            const string path(chunk_path_buf);
             try {
-                flushIndexChunk(index, path);
+                flushIndexChunk(mem_index, path);
                 std::cout << "Successfully wrote chunk with " << doc_processed
                           << "docs to: " << path << "\n"
                           << "total chuncks: " << chunks_written;
             } catch (const std::exception &e) {
                 std::cerr << "Failed to write chunk: " << e.what() << "\n";
-                return 1;
+                return nullptr;
             }
             ++chunks_written;
         }
@@ -177,7 +179,7 @@ static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
     if (colon == string::npos) {
         valid_addr = false;
     } else {
-        host = string(peer.cstr(), colon);
+        host = string(peer.cstr(), peer.cstr() + colon);
         port = string(peer.cstr() + colon + 1);
         valid_addr = !host.empty() && !port.empty();
     }
@@ -219,11 +221,11 @@ static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
         return false;
     }
 
-    std::string payload;
+    string payload;
     payload.reserve(batch.size() * 64);
     for (const Link &link : batch) {
         payload += link.URL.cstr();
-        payload.push_back('\n');
+        payload.pushBack('\n');
     }
 
     const char *data = payload.data();
@@ -309,7 +311,6 @@ int main() {
     signal(SIGTERM, signalHandler);
 
     cpConfig.directory = "src/crawler";
-    cpConfig.interval = 500;
     checkpoint = new Checkpoint(cpConfig);
 
     // Set up distribution, placeholder for now
@@ -323,9 +324,11 @@ int main() {
     vector<FrontierItem> recoveredItems;
     urlsCrawled = 0;
 
-    if (checkpoint->load(recoveredItems, bloom, urlsCrawled)) {
+    size_t recoveredUrlCount = 0;
+    if (checkpoint->load(recoveredItems, bloom, recoveredUrlCount)) {
+        urlsCrawled = recoveredUrlCount;
         f = new Frontier(recoveredItems);
-        std::cerr << "Recovered from checkpoint at " << urlsCrawled << " URLs\n";
+        std::cerr << "Recovered from checkpoint at " << urlsCrawled.load() << " URLs\n";
     } else {
         f = new Frontier("src/crawler/seedList.txt");
         std::cerr << "Starting fresh from seed list\n";

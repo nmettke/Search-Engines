@@ -499,6 +499,11 @@ class HtmlParser {
         }
     }
 
+    HtmlParser(std::initializer_list<::string> words,
+        std::initializer_list<::string> titleWords,
+        std::initializer_list<Link> links,
+        ::string base);
+
     // Returns true if page has too many broken-HTML signals to be worth indexing.
     // Fires when 2+ of 5 signals are present to avoid false positives.
     bool isBroken() const {

@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <vector>
+#include "utils/vector.hpp"
 
 struct SeekTableEntry {
     uint32_t byte_offset = 0;
@@ -26,8 +26,8 @@ class SeekTable {
 
     static bool shouldBuild(uint32_t num_postings);
     static SeekTable build(const uint8_t *encoded_deltas, size_t data_size, uint32_t num_postings);
-    static SeekTable build(const std::vector<uint8_t> &encoded_deltas, uint32_t num_postings);
-    std::vector<uint8_t> serialize() const;
+    static SeekTable build(const ::vector<uint8_t> &encoded_deltas, uint32_t num_postings);
+    ::vector<uint8_t> serialize() const;
     static SeekTable deserialize(const uint8_t *data, const uint8_t *encoded_deltas,
                                  size_t data_size, uint32_t num_postings,
                                  size_t serialized_size = SerializedSize);

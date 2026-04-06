@@ -2,7 +2,7 @@
 #include "isr_phrase.h"
 #include <algorithm>
 
-ISRPhrase::ISRPhrase(std::vector<std::unique_ptr<ISR>> terms)
+ISRPhrase::ISRPhrase(::vector<std::unique_ptr<ISR>> terms)
     : terms_(std::move(terms)), current_loc_(0), is_exhausted_(false) {
     if (terms_.empty()) {
         is_exhausted_ = true;

@@ -8,14 +8,14 @@
 #include <openssl/md5.h>
 #include <stdexcept>
 
-UrlBloomFilter::UrlBloomFilter(std::size_t bc, std::uint32_t hc, std::vector<bool> b)
+UrlBloomFilter::UrlBloomFilter(std::size_t bc, std::uint32_t hc, ::vector<bool> b)
     : bitCount(bc), hashCount(hc), bits(std::move(b)) {}
 
 bool UrlBloomFilter::serializeToStream(FILE *f) const {
     fwrite(&bitCount, sizeof(bitCount), 1, f);
     fwrite(&hashCount, sizeof(hashCount), 1, f);
 
-    std::vector<uint8_t> packed((bitCount + 7) / 8, 0);
+    ::vector<uint8_t> packed((bitCount + 7) / 8, 0);
     for (std::size_t i = 0; i < bitCount; ++i) {
         if (bits[i])
             packed[i / 8] |= (1 << (i % 8));
@@ -31,10 +31,10 @@ UrlBloomFilter UrlBloomFilter::deserializeFromStream(FILE *f) {
     fread(&hc, sizeof(hc), 1, f);
 
     std::size_t packedSize = (bc + 7) / 8;
-    std::vector<uint8_t> packed(packedSize);
+    ::vector<uint8_t> packed(packedSize);
     fread(packed.data(), 1, packedSize, f);
 
-    std::vector<bool> b(bc, false);
+    ::vector<bool> b(bc, false);
     for (std::size_t i = 0; i < bc; ++i) {
         if (packed[i / 8] & (1 << (i % 8)))
             b[i] = true;

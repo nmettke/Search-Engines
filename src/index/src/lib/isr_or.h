@@ -2,11 +2,11 @@
 #pragma once
 #include "isr.h"
 #include <memory>
-#include <vector>
+#include "utils/vector.hpp"
 
 class ISROr : public ISR {
   public:
-    explicit ISROr(std::vector<std::unique_ptr<ISR>> terms);
+    explicit ISROr(::vector<std::unique_ptr<ISR>> terms);
 
     uint32_t next() override;
     uint32_t seek(uint32_t target) override;
@@ -14,7 +14,7 @@ class ISROr : public ISR {
     bool done() const override { return is_exhausted_; }
 
   private:
-    std::vector<std::unique_ptr<ISR>> terms_;
+    ::vector<std::unique_ptr<ISR>> terms_;
     uint32_t current_loc_;
     bool is_exhausted_;
 

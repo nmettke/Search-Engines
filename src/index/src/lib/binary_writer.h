@@ -2,7 +2,6 @@
 #pragma once
 
 #include <fcntl.h>
-#include <string>
 #include <system_error>
 #include <unistd.h>
 
@@ -20,7 +19,7 @@ class BinaryWriter {
     }
 
     // writes a string prefixed by a 16-bit length
-    void writeString16(const std::string &str) {
+    void writeString16(const ::string &str) {
         uint16_t len = static_cast<uint16_t>(str.size());
         writePOD(len); // Write the length prefix
 

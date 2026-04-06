@@ -1,6 +1,7 @@
 // tests/test_tokenizer.cpp
 #include "../src/lib/tokenizer.h"
 #include "../src/lib/types.h"
+#include "../../utils/string.hpp"
 #include <iostream>
 #include <vector>
 
@@ -13,8 +14,8 @@
     } while (false)
 
 struct TestCase {
-    std::string input;
-    std::string expected;
+    ::string input;
+    ::string expected;
 };
 
 void test_stemmer() {
@@ -60,7 +61,7 @@ void test_stemmer() {
 
     std::cout << "Running test_stemmer...\n";
     for (const auto &test : tests) {
-        std::string actual = PorterStemmer::stem(test.input);
+        ::string actual = PorterStemmer::stem(test.input);
         TEST_ASSERT(actual == test.expected, "Stemming failed for input: " + test.input);
     }
     std::cout << "test_stemmer PASSED.\n";

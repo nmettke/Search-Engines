@@ -7,7 +7,7 @@
 #include <system_error>
 #include <unistd.h>
 
-DiskChunkWriter::DiskChunkWriter(const std::string &filename) {
+DiskChunkWriter::DiskChunkWriter(const ::string &filename) {
     fd_ = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd_ < 0) {
         throw std::system_error(errno, std::generic_category(),
@@ -26,17 +26,17 @@ void DiskChunkWriter::writeHeader(const FileHeader &header) {
     writer.writePOD(header);
 }
 
-uint64_t DiskChunkWriter::writePostingList(const std::vector<uint32_t> &locations) {
+uint64_t DiskChunkWriter::writePostingList(const ::vector<uint32_t> &locations) {
     BinaryWriter writer(fd_);
     uint64_t current_offset = static_cast<uint64_t>(writer.currentOffset());
 
-    std::vector<uint8_t> compressed_data = VariableByteEncoder::encodeDeltaList(locations);
+    ::vector<uint8_t> compressed_data = VariableByteEncoder::encodeDeltaList(locations);
 
     PostingListHeader pl_header;
     pl_header.num_postings = locations.size();
     pl_header.data_size = compressed_data.size();
 
-    std::vector<uint8_t> seek_table_bytes;
+    ::vector<uint8_t> seek_table_bytes;
     if (SeekTable::shouldBuild(locations.size())) {
         pl_header.has_seek_table = 1;
         SeekTable table = SeekTable::build(compressed_data, locations.size());
@@ -56,7 +56,7 @@ uint64_t DiskChunkWriter::writePostingList(const std::vector<uint32_t> &location
     return current_offset;
 }
 
-uint64_t DiskChunkWriter::writeDocumentTable(const std::vector<DocumentRecord> &documents) {
+uint64_t DiskChunkWriter::writeDocumentTable(const ::vector<DocumentRecord> &documents) {
     BinaryWriter writer(fd_);
     uint64_t doctable_start = static_cast<uint64_t>(writer.currentOffset());
 
@@ -64,7 +64,7 @@ uint64_t DiskChunkWriter::writeDocumentTable(const std::vector<DocumentRecord> &
     writer.writePOD(num_docs);
 
     off_t offsets_array_start = writer.currentOffset();
-    std::vector<uint64_t> doc_offsets(num_docs, 0);
+    ::vector<uint64_t> doc_offsets(num_docs, 0);
     writer.writeBuffer(doc_offsets.data(), num_docs);
 
     for (size_t i = 0; i < num_docs; ++i) {
@@ -93,7 +93,7 @@ uint64_t DiskChunkWriter::writeDocumentTable(const std::vector<DocumentRecord> &
 }
 
 uint64_t
-DiskChunkWriter::writeDictionary(const std::vector<std::vector<DictionaryEntry>> &buckets) {
+DiskChunkWriter::writeDictionary(const ::vector<::vector<DictionaryEntry>> &buckets) {
     BinaryWriter writer(fd_);
     off_t dict_start_offset = writer.currentOffset();
 
@@ -103,7 +103,7 @@ DiskChunkWriter::writeDictionary(const std::vector<std::vector<DictionaryEntry>>
 
     // write placeholder Buckets[] array
     off_t bucket_array_start = writer.currentOffset();
-    std::vector<size_t> bucket_offsets(num_buckets, 0);
+    ::vector<size_t> bucket_offsets(num_buckets, 0);
     writer.writeBuffer(bucket_offsets.data(), num_buckets);
 
     // write the chains and record their start offsets

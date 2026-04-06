@@ -1,13 +1,12 @@
 // Common code used by the various hashing sample applications.
 
 #include "Common.h"
-#include "HashTable.h"
+#include "utils/hash/HashTable.h"
 #include <cstring>
 #include <fstream>
+#include "utils/vector.hpp"
+#include "utils/string.hpp"
 #include <string>
-#include <vector>
-
-using namespace std;
 
 // -v (verbose) command line option instantiation and
 // initial value.
@@ -40,7 +39,7 @@ using Pair = Tuple<const char *, size_t>;
 
 // Caller is responsible for deleting the Hash.
 
-Hash *BuildHashTable(const vector<string> &words, uint64_t (*hash)(const char *key)) {
+Hash *BuildHashTable(const ::vector<::string> &words, uint64_t (*hash)(const char *key)) {
     Hash *hashtable = new Hash(CompareEqual, hash);
 
     for (size_t i = 0; i < words.size(); i++) {
@@ -55,7 +54,7 @@ Hash *BuildHashTable(const vector<string> &words, uint64_t (*hash)(const char *k
 // as either individual word or whole lines in a vector of
 // strings.  Return the index of the last argv word consumed.
 
-int CollectWordsIn(int argc, char **argv, vector<string> &words) {
+int CollectWordsIn(int argc, char **argv, ::vector<::string> &words) {
     bool optLines = false;
 
     assert(argc > 1);
@@ -78,24 +77,24 @@ int CollectWordsIn(int argc, char **argv, vector<string> &words) {
 
     assert(i < argc);
 
-    ifstream wordsin(argv[i]);
+    std::ifstream wordsin(argv[i]);
 
     assert(wordsin.is_open());
 
-    string word;
+    std::string word;
     size_t sumLengths = 0;
 
     if (optLines)
         while (!wordsin.eof()) {
-            getline(wordsin, word);
+            std::getline(wordsin, word);
             if (word != "") {
-                words.push_back(word);
+                words.pushBack(::string(word.c_str()));
                 sumLengths += word.size();
             }
         }
     else
         while (wordsin >> word) {
-            words.push_back(word);
+            words.pushBack(::string(word.c_str()));
             sumLengths += word.size();
         }
 
@@ -103,11 +102,11 @@ int CollectWordsIn(int argc, char **argv, vector<string> &words) {
 
     if (optVerbose) {
         size_t numberOfTokens = words.size();
-        cout << "Number of tokens = " << numberOfTokens << endl;
-        cout << "Total characters = " << sumLengths << endl;
-        cout << "Average token length = " << (double)sumLengths / (double)numberOfTokens
-             << " characters" << endl
-             << endl;
+        std::cout << "Number of tokens = " << numberOfTokens << std::endl;
+        std::cout << "Total characters = " << sumLengths << std::endl;
+        std::cout << "Average token length = " << (double)sumLengths / (double)numberOfTokens
+                  << " characters" << std::endl
+                  << std::endl;
     }
 
     return i;

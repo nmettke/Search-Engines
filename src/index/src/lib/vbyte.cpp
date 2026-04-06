@@ -37,8 +37,8 @@ uint32_t VariableByteEncoder::decode(const uint8_t *&ptr) {
     return result;
 }
 
-std::vector<uint8_t> VariableByteEncoder::encodeDeltaList(const std::vector<uint32_t> &locations) {
-    std::vector<uint8_t> out;
+::vector<uint8_t> VariableByteEncoder::encodeDeltaList(const ::vector<uint32_t> &locations) {
+    ::vector<uint8_t> out;
 
     uint32_t prev = 0;
     uint32_t value;
@@ -57,8 +57,8 @@ std::vector<uint8_t> VariableByteEncoder::encodeDeltaList(const std::vector<uint
     return out;
 }
 
-std::vector<uint32_t> VariableByteEncoder::decodeDeltaList(const uint8_t *data, size_t count) {
-    std::vector<uint32_t> out;
+::vector<uint32_t> VariableByteEncoder::decodeDeltaList(const uint8_t *data, size_t count) {
+    ::vector<uint32_t> out;
     uint32_t prev = 0;
     uint32_t delta;
 

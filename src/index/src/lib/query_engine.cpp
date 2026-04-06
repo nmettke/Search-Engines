@@ -3,8 +3,8 @@
 #include "query_compiler.h"
 #include "query_tokenizer.h"
 
-std::vector<DocumentRecord> QueryEngine::search(const std::string &query) const {
-    std::vector<DocumentRecord> results;
+::vector<DocumentRecord> QueryEngine::search(const ::string &query) const {
+    ::vector<DocumentRecord> results;
 
     auto tokens = QueryTokenizer::tokenize(query);
     if (tokens.empty())
@@ -29,7 +29,7 @@ std::vector<DocumentRecord> QueryEngine::search(const std::string &query) const 
         uint32_t doc_id = doc_end_isr->currentIndex() - 1;
         auto doc = reader_.getDocument(doc_id);
         if (doc) {
-            results.push_back(*doc);
+            results.pushBack(*doc);
         }
 
         // seek past this document so we don't return same match again

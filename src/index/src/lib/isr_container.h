@@ -4,11 +4,11 @@
 #include "isr.h"
 #include "isr_and.h"
 #include <memory>
-#include <vector>
+#include "utils/vector.hpp"
 
 class ISRContainer : public ISR {
   public:
-    ISRContainer(std::unique_ptr<ISR> positive_isr, std::vector<std::unique_ptr<ISR>> negative_isrs,
+    ISRContainer(std::unique_ptr<ISR> positive_isr, ::vector<std::unique_ptr<ISR>> negative_isrs,
                  std::unique_ptr<ISRWord> doc_end_isr, const DiskChunkReader &reader);
 
     uint32_t next() override;
@@ -18,7 +18,7 @@ class ISRContainer : public ISR {
 
   private:
     std::unique_ptr<ISR> positive_isr_;
-    std::vector<std::unique_ptr<ISR>> negative_isrs_;
+    ::vector<std::unique_ptr<ISR>> negative_isrs_;
     std::unique_ptr<ISRWord> doc_end_isr_;
     const DiskChunkReader &reader_;
 

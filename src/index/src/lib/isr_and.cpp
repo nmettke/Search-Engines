@@ -1,7 +1,7 @@
 #include "isr_and.h"
 #include <algorithm>
 
-ISRAnd::ISRAnd(std::vector<std::unique_ptr<ISR>> terms, std::unique_ptr<ISRWord> doc_end_isr,
+ISRAnd::ISRAnd(::vector<std::unique_ptr<ISR>> terms, std::unique_ptr<ISRWord> doc_end_isr,
                const DiskChunkReader &reader)
     : terms_(std::move(terms)), doc_end_isr_(std::move(doc_end_isr)), reader_(reader) {
 

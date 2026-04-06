@@ -21,7 +21,7 @@ DiskChunkReader::~DiskChunkReader() {
     }
 }
 
-bool DiskChunkReader::open(const std::string &filename) {
+bool DiskChunkReader::open(const ::string &filename) {
     fd_ = ::open(filename.c_str(), O_RDONLY);
     if (fd_ < 0)
         return false;
@@ -61,7 +61,7 @@ bool DiskChunkReader::open(const std::string &filename) {
     return true;
 }
 
-std::unique_ptr<ISRWord> DiskChunkReader::createISR(const std::string &term) const {
+std::unique_ptr<ISRWord> DiskChunkReader::createISR(const ::string &term) const {
     if (!data_)
         return nullptr;
 
@@ -83,11 +83,11 @@ std::unique_ptr<ISRWord> DiskChunkReader::createISR(const std::string &term) con
         if (b_disk->occupied == 0)
             break;
 
-        std::string_view current_term(reinterpret_cast<const char *>(reader.current()),
+        ::string_view current_term(reinterpret_cast<const char *>(reader.current()),
                                       b_disk->string_length);
         reader.skip(b_disk->string_length);
 
-        if (std::string(current_term) == term) {
+        if (::string(current_term) == term) {
             BufferReader p_reader(data_ + header_.postings_offset + b_disk->posting_offset);
             const PostingListHeader *p_header = p_reader.readPOD<PostingListHeader>();
             std::optional<SeekTable> table = std::nullopt;
@@ -124,11 +124,11 @@ std::optional<DocumentRecord> DiskChunkReader::getDocument(uint32_t doc_id) cons
 
     BufferReader reader(doctable_ptr + doc_offset);
 
-    std::string_view url_view = reader.readString16();
+    ::string_view url_view = reader.readString16();
     const DocumentRecordDisk *disk_rec = reader.readPOD<DocumentRecordDisk>();
 
     DocumentRecord doc;
-    doc.url = std::string(url_view);
+    doc.url = ::string(url_view);
     doc.start_location = disk_rec->start_location;
     doc.end_location = disk_rec->end_location;
     doc.word_count = disk_rec->word_count;
@@ -147,12 +147,12 @@ std::optional<DocumentRecord> DiskChunkReader::getDocumentByLocation(uint32_t lo
 
     for (uint32_t i = 0; i < header_.num_documents; ++i) {
         // Read cleanly!
-        std::string_view url_view = reader.readString16();
+        ::string_view url_view = reader.readString16();
         const DocumentRecordDisk *disk_rec = reader.readPOD<DocumentRecordDisk>();
 
         if (location >= disk_rec->start_location && location <= disk_rec->end_location) {
             DocumentRecord doc;
-            doc.url = std::string(url_view);
+            doc.url = ::string(url_view);
             doc.start_location = disk_rec->start_location;
             doc.end_location = disk_rec->end_location;
             doc.word_count = disk_rec->word_count;

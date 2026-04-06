@@ -2,11 +2,12 @@
 #include "../src/lib/Common.h" // For hashString
 #include "../src/lib/disk_chunk_writer.h"
 #include "../src/lib/in_memory_index.h"
+#include "../../utils/string.hpp"
 #include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>
 
-void flushIndexChunk(const InMemoryIndex &mem_index, const std::string &filename);
+void flushIndexChunk(const InMemoryIndex &mem_index, const ::string &filename);
 
 #define TEST_ASSERT(condition, message)                                                            \
     do {                                                                                           \
