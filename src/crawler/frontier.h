@@ -23,9 +23,7 @@ class Frontier {
     ~Frontier() = default;
 
     void push(const string &url);
-    void push(const string &url, const FrontierItem &parent);
     void pushMany(const vector<string> &urls);
-    void pushMany(const vector<string> &urls, const FrontierItem &parent);
 
     std::optional<FrontierItem> pop();
 

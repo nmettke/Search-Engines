@@ -152,3 +152,35 @@ TEST(StringCapacityTest, LargeGrowthMaintainsCorrectContent) {
 
     EXPECT_EQ(s.cstr()[s.size()], '\0');
 }
+
+TEST(StringStlCompatibility, EmptyStringExposesValidDataPointer) {
+    string s;
+
+    ASSERT_NE(s.cstr(), nullptr);
+    ASSERT_NE(s.data(), nullptr);
+    EXPECT_EQ(s.cstr()[0], '\0');
+    EXPECT_EQ(s.data()[0], '\0');
+}
+
+TEST(StringStlCompatibility, MovedFromStringRemainsValidAndEmpty) {
+    string original("hello");
+    string moved(std::move(original));
+
+    EXPECT_STREQ(moved.cstr(), "hello");
+    EXPECT_EQ(original.size(), 0);
+    ASSERT_NE(original.cstr(), nullptr);
+    ASSERT_NE(original.data(), nullptr);
+    EXPECT_STREQ(original.cstr(), "");
+}
+
+TEST(StringStlCompatibility, MoveAssignmentLeavesSourceValidAndEmpty) {
+    string source("hello");
+    string target("world");
+
+    target = std::move(source);
+
+    EXPECT_STREQ(target.cstr(), "hello");
+    EXPECT_EQ(source.size(), 0);
+    ASSERT_NE(source.cstr(), nullptr);
+    EXPECT_STREQ(source.cstr(), "");
+}

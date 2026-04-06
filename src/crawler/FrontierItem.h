@@ -2,7 +2,7 @@
 
 #include "../utils/string.hpp"
 
-enum class Suffix { COM, EDU, GOV, ORG, NET, MIL, INT, IO, DEV, APP, CCTLD, OTHER };
+enum class Suffix { COM, EDU, GOV, ORG, NET, MIL, INT, OTHER };
 
 class FrontierItem {
   public:
@@ -22,19 +22,16 @@ class FrontierItem {
 
   private:
     FrontierItem(const string &link, Suffix suffix, size_t baseLength, size_t seedDistance,
-                 size_t pathDepth, bool failed, bool broken, bool english, size_t queryParamCount,
-                 bool lowValuePath);
+                 size_t pathDepth, bool failed, bool broken, bool english);
 
     Suffix suffix = Suffix::OTHER;
     size_t baseLength = 0;
     size_t seedDistance = 0;
     size_t pathDepth = 0;
-    size_t queryParamCount = 0;
 
     bool failed = false;
     bool broken = false;
     bool english = true;
-    bool lowValuePath = false;
 
     void parseURL(const string &url);
 };

@@ -1,5 +1,4 @@
 #include "Crawler.h"
-#include "UrlFilter.h"
 #include "checkpoint.h"
 #include "url_dedup.h"
 #include <atomic>
@@ -21,7 +20,6 @@ Checkpoint *checkpoint;
 std::atomic<size_t> urlsCrawled{0};
 UrlBloomFilter bloom(1000000, 0.0001);
 RobotsCache *robotsCache = nullptr;
-UrlFilter urlFilter;
 unsigned int cores = std::thread::hardware_concurrency();
 
 void *WorkerThread(void *arg) {
@@ -44,25 +42,18 @@ void *WorkerThread(void *arg) {
             break;
 
         HtmlParser parsed(page.cstr(), page.size());
-
-        // Skip non-English pages: check language tag and text analysis
-        if (!parsed.isEnglishPage()) {
-            std::cerr << "Skipped [non-English]: " << item->link << '\n';
-            continue;
-        }
-
         vector<string> discoveredLinks;
 
         for (const Link &link : parsed.links) {
             if (link.URL.find("http") != link.URL.npos) {
                 string canonical;
-                if (shouldEnqueueUrl(link.URL, bloom, canonical, &urlFilter)) {
+                if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
                     discoveredLinks.pushBack(canonical);
                 }
             }
         }
 
-        f->pushMany(discoveredLinks, *item);
+        f->pushMany(discoveredLinks);
         ++urlsCrawled;
         std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
     }
@@ -89,8 +80,6 @@ int main() {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
-    urlFilter.loadBlacklist("src/crawler/blackList.txt");
-
     CheckpointConfig cpConfig;
     cpConfig.directory = "src/crawler";
     checkpoint = new Checkpoint(cpConfig);
@@ -106,19 +95,13 @@ int main() {
     } else {
         f = new Frontier("src/crawler/seedList.txt");
         std::cerr << "Starting fresh from seed list\n";
-
-        // Add seedlist URLs to bloom filter to prevent re-crawling
-        vector<FrontierItem> items = f->snapshot();
-        for (size_t i = 0; i < items.size(); ++i) {
-            bloom.insert(items[i].link);
-        }
     }
 
     // Start checkpoint thread
     pthread_t cpThread;
     pthread_create(&cpThread, nullptr, CheckpointThread, nullptr);
 
-    size_t ThreadCount = cores * 8;
+    size_t ThreadCount = cores * 3;
     vector<pthread_t> threads(ThreadCount);
 
     for (size_t i = 0; i < ThreadCount; i++) {

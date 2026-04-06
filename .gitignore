@@ -55,3 +55,7 @@ build*/
 # For Vasu
 vasuBuild.shsrc/crawler/checkpoint.dat
 src/crawler/checkpoint.dat.tmp
+*.vscode/*
+
+*.idx
+*.dat/*

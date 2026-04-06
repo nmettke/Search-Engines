@@ -1,6 +1,16 @@
 #include "utils/vector.hpp"
 #include <gtest/gtest.h>
+#include <memory>
 #include <string>
+#include <type_traits>
+#include <utility>
+
+static_assert(
+    std::is_same_v<decltype(std::declval<vector<int> &>() = std::declval<const vector<int> &>()),
+                   vector<int> &>);
+static_assert(
+    std::is_same_v<decltype(std::declval<vector<int> &>() = std::declval<vector<int> &&>()),
+                   vector<int> &>);
 
 TEST(VectorTest, DefaultConstructor) {
     vector<int> v;
@@ -25,6 +35,16 @@ TEST(VectorTest, FillConstructor) {
 
     for (size_t i = 0; i < v.size(); ++i)
         EXPECT_EQ(v[i], 7);
+}
+
+TEST(VectorTest, InitializerListConstructor) {
+    vector<int> v = {1, 2, 3, 4};
+
+    ASSERT_EQ(v.size(), 4);
+    EXPECT_EQ(v[0], 1);
+    EXPECT_EQ(v[1], 2);
+    EXPECT_EQ(v[2], 3);
+    EXPECT_EQ(v[3], 4);
 }
 
 TEST(VectorTest, PushBack) {
@@ -159,6 +179,24 @@ TEST(VectorTest, ManyPushBack) {
 
     for (int i = 0; i < 1000; ++i)
         EXPECT_EQ(v[i], i);
+}
+
+TEST(VectorMoveOnly, PushBackRvalueSupportsUniquePtr) {
+    vector<std::unique_ptr<int>> v;
+
+    auto first = std::make_unique<int>(7);
+    auto second = std::make_unique<int>(11);
+
+    v.pushBack(std::move(first));
+    v.push_back(std::move(second));
+
+    ASSERT_EQ(v.size(), 2);
+    ASSERT_NE(v[0], nullptr);
+    ASSERT_NE(v[1], nullptr);
+    EXPECT_EQ(*v[0], 7);
+    EXPECT_EQ(*v[1], 11);
+    EXPECT_EQ(first, nullptr);
+    EXPECT_EQ(second, nullptr);
 }
 
 TEST(VectorEdgeCases, ReservePreservesData) {
