@@ -6,7 +6,6 @@
 #include "HtmlTags.h"
 #include "utils/Utf8.h"
 #include "utils/string.hpp"
-#include "utils/vector.hpp"
 #include <cctype>
 #include <cstring>
 #include <stack>
@@ -77,15 +76,15 @@
 class Link {
   public:
     ::string URL;
-    vector<::string> anchorText;
+    std::vector<::string> anchorText;
 
     Link(::string URL) : URL(URL) {}
 };
 
 class HtmlParser {
   public:
-    vector<::string> words, titleWords;
-    vector<Link> links;
+    std::vector<::string> words, titleWords;
+    std::vector<Link> links;
     ::string base;
 
   private:
@@ -99,10 +98,6 @@ class HtmlParser {
     // Structural integrity signals for isBroken()
     bool sawBodyTag = false;
     bool sawCloseHtml = false;
-
-    // Language detection
-    ::string langAttribute;
-    bool isEnglishLanguage = true; // Default to true if no lang attribute
     bool truncated = false;
 
     bool inDiscardSection() const { return !openSections.empty(); }
@@ -149,13 +144,13 @@ class HtmlParser {
         ::string word(start, end);
 
         if (inTitle) {
-            titleWords.pushBack(word);
+            titleWords.push_back(word);
         } else {
-            words.pushBack(word);
+            words.push_back(word);
         }
 
         if (inAnchor && currentLink) {
-            currentLink->anchorText.pushBack(word);
+            currentLink->anchorText.push_back(word);
         }
     }
 
@@ -245,11 +240,11 @@ class HtmlParser {
                 currentLink = nullptr;
             }
 
-            links.pushBack(Link(href));
+            links.push_back(Link(href));
 
             if (!isSelfClosing) {
                 inAnchor = true;
-                currentLink = &links[links.size() - 1];
+                currentLink = &links.back();
             }
         }
     }
@@ -268,7 +263,7 @@ class HtmlParser {
     void handleEmbed(const char *attrStart, const char *attrEnd) {
         ::string src = extractAttribute(attrStart, attrEnd, "src");
         if (!src.empty()) {
-            links.pushBack(Link(src));
+            links.push_back(Link(src));
         }
     }
 
@@ -413,10 +408,6 @@ class HtmlParser {
                 sawBodyTag = true;
             if (tagLen == 4 && strncasecmp(tagStart, "html", 4) == 0 && isClosing)
                 sawCloseHtml = true;
-            // Extract lang attribute from opening html tag
-            if (tagLen == 4 && strncasecmp(tagStart, "html", 4) == 0 && !isClosing) {
-                langAttribute = extractAttribute(tagEnd, close, "lang");
-            }
             break;
         }
         default:
@@ -427,6 +418,8 @@ class HtmlParser {
     }
 
   public:
+    HtmlParser() = default;
+
     // The constructor is given a buffer and length containing
     // presumed HTML.  It will parse the buffer, stripping out
     // all the HTML tags and producing the list of words in body,
@@ -508,6 +501,10 @@ class HtmlParser {
         }
     }
 
+    HtmlParser(std::initializer_list<::string> words, std::initializer_list<::string> titleWords,
+               std::initializer_list<Link> links, ::string base)
+        : words(words), titleWords(titleWords), links(links), base(std::move(base)) {}
+
     // Returns true if page has too many broken-HTML signals to be worth indexing.
     // Fires when 2+ of 5 signals are present to avoid false positives.
     bool isBroken() const {
@@ -529,9 +526,4 @@ class HtmlParser {
     // Uses ReadUtf8 from Utf8.h to decode words into Unicode codepoints,
     // then checks ratio of Latin alphabetic chars to total alphabetic chars.
     bool isEnglish(double threshold = 0.6) const;
-
-    // Returns true if page is determined to be in English based on lang attribute and text
-    // analysis. First checks explicit lang attribute, then falls back to text analysis. Returns
-    // false if lang attribute indicates non-English language.
-    bool isEnglishPage(double threshold = 0.6) const;
 };

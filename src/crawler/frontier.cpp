@@ -21,16 +21,8 @@ Frontier::Frontier(const string &seed_list_str) {
 }
 
 Frontier::Frontier(vector<FrontierItem> items) {
-    closed = false;
-    pending = 0;
-
     for (size_t i = 0; i < items.size(); ++i) {
         pq.push(items[i]);
-        ++pending;
-    }
-
-    if (pending == 0) {
-        closed = true;
     }
 }
 
@@ -52,16 +44,6 @@ void Frontier::push(const string &url) {
         return;
     }
     pq.emplace(url);
-    ++pending;
-    cv.notify_one();
-}
-
-void Frontier::push(const string &url, const FrontierItem &parent) {
-    lock_guard guard(m);
-    if (closed) {
-        return;
-    }
-    pq.emplace(url, parent);
     ++pending;
     cv.notify_one();
 }
@@ -113,20 +95,6 @@ void Frontier::taskDone() {
 void Frontier::shutdown() {
     lock_guard guard(m);
     closed = true;
-    cv.notify_all();
-}
-
-void Frontier::pushMany(const vector<string> &urls, const FrontierItem &parent) {
-    lock_guard guard(m);
-    if (closed || urls.size() == 0) {
-        return;
-    }
-
-    for (const string &url : urls) {
-        pq.emplace(url, parent);
-        ++pending;
-    }
-
     cv.notify_all();
 }
 

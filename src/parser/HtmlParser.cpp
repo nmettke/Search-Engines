@@ -29,7 +29,8 @@ static bool isNonLatinAlpha(Unicode cp) {
            || (cp >= 0xAC00 && cp <= 0xD7AF); // Hangul Syllables
 }
 
-static void countAlpha(const vector<string> &wordList, size_t &latinCount, size_t &totalAlpha) {
+static void countAlpha(const std::vector<string> &wordList, size_t &latinCount,
+                       size_t &totalAlpha) {
     for (const auto &word : wordList) {
         const Utf8 *p = reinterpret_cast<const Utf8 *>(word.cstr());
         const Utf8 *bound = p + word.size();
@@ -60,24 +61,4 @@ bool HtmlParser::isEnglish(double threshold) const {
         return true;
 
     return static_cast<double>(latinCount) / totalAlpha >= threshold;
-}
-
-bool HtmlParser::isEnglishPage(double threshold) const {
-    // If lang attribute is present and is not English, reject the page immediately
-    if (!langAttribute.empty()) {
-        // Extract language code (e.g., "en" from "en-US" or "en")
-        const char *langCstr = langAttribute.cstr();
-        // Check for common English variations
-        // en, en-US, en-GB, en-AU, en-CA, en-NZ, etc.
-        if (langCstr[0] == 'e' && langCstr[1] == 'n' &&
-            (langCstr[2] == '\0' || langCstr[2] == '-')) {
-            // Explicit English language tag
-            return true;
-        }
-        // If lang attribute exists but is not English, reject
-        return false;
-    }
-
-    // No explicit lang attribute, fall back to text analysis
-    return isEnglish(threshold);
 }

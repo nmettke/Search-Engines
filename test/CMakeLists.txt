@@ -74,24 +74,6 @@ gtest_discover_tests(url_dedup_tests
 )
 
 # -------------------------
-# FrontierItem Tests
-# -------------------------
-
-add_executable(FrontierItem_tests
-    crawler/FrontierItem_test.cpp
-)
-
-target_link_libraries(FrontierItem_tests
-    PRIVATE
-        crawler_lib
-        GTest::gtest_main
-)
-
-gtest_discover_tests(FrontierItem_tests
-    TEST_PREFIX "FrontierItem::"
-)
-
-# -------------------------
 # PriorityQueue Tests
 # -------------------------
 add_executable(PriorityQueue_tests

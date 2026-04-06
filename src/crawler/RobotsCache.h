@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../utils/HashTable.h"
+#include "../utils/hash/HashTable.h"
 #include "../utils/string.hpp"
 #include "../utils/threads/lock_guard.hpp"
 #include "../utils/threads/mutex.hpp"
