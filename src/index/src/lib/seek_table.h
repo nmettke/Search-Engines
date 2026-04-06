@@ -1,11 +1,11 @@
 // Header file for building the seek table
 #pragma once
 
+#include "utils/vector.hpp"
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include "utils/vector.hpp"
 
 struct SeekTableEntry {
     uint32_t byte_offset = 0;

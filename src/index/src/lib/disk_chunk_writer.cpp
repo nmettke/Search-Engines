@@ -92,8 +92,7 @@ uint64_t DiskChunkWriter::writeDocumentTable(const ::vector<DocumentRecord> &doc
     return doctable_start;
 }
 
-uint64_t
-DiskChunkWriter::writeDictionary(const ::vector<::vector<DictionaryEntry>> &buckets) {
+uint64_t DiskChunkWriter::writeDictionary(const ::vector<::vector<DictionaryEntry>> &buckets) {
     BinaryWriter writer(fd_);
     off_t dict_start_offset = writer.currentOffset();
 

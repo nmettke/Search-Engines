@@ -1,8 +1,8 @@
 // src/lib/buffer_reader.h
 #pragma once
 
-#include <cstdint>
 #include "utils/STL_rewrite/string_view.hpp"
+#include <cstdint>
 
 class BufferReader {
   public:

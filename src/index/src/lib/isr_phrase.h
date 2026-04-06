@@ -1,8 +1,8 @@
 // src/lib/isr_phrase.h
 #pragma once
 #include "isr.h"
-#include <memory>
 #include "utils/vector.hpp"
+#include <memory>
 
 class ISRPhrase : public ISR {
   public:

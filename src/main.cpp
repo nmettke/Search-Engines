@@ -18,8 +18,8 @@
 #include "./utils/vector.hpp"
 
 #include <cerrno>
-#include <cstdio>
 #include <csignal>
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <optional>
@@ -312,6 +312,7 @@ int main() {
 
     cpConfig.directory = "src/crawler";
     checkpoint = new Checkpoint(cpConfig);
+    q = new IndexQueue();
 
     // Set up distribution, placeholder for now
     machine_id = 0;
@@ -354,12 +355,14 @@ int main() {
         pthread_join(crawlerThreads[i], nullptr);
     }
 
+    shouldStop = true;
+    q->shutdown();
+    batch_cv.notify_all();
+
     for (size_t i = 0; i < IndexThreadCount; i++) {
         pthread_join(indexThreads[i], nullptr);
     }
 
-    shouldStop = true;
-    batch_cv.notify_all();
     pthread_join(senderThread, nullptr);
 
     checkpoint->save(*f, bloom, urlsCrawled);
@@ -368,6 +371,7 @@ int main() {
         std::cerr << "Graceful shutdown after SIGINT\n";
 
     delete f;
+    delete q;
     delete checkpoint;
     return 0;
 }

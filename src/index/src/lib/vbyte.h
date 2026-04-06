@@ -1,9 +1,9 @@
 // src/lib/vbyte.h
 #pragma once
 
+#include "utils/vector.hpp"
 #include <cstddef>
 #include <cstdint>
-#include "utils/vector.hpp"
 
 class VariableByteEncoder {
   public:

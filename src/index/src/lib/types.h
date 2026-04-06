@@ -1,10 +1,10 @@
 // src/lib/types.h
 #pragma once
 
+#include "utils/string.hpp"
+#include "utils/vector.hpp"
 #include <cstdint>
 #include <limits>
-#include "utils/vector.hpp"
-#include "utils/string.hpp"
 
 constexpr uint32_t magic = 0x49445831; // magic for writing chunk
 constexpr uint32_t version = 1;        // chunk file encoding version

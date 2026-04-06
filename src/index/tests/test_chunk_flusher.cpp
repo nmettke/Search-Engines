@@ -1,8 +1,8 @@
 // tests/test_chunk_flusher.cpp
+#include "../../utils/string.hpp"
 #include "../src/lib/Common.h" // For hashString
 #include "../src/lib/disk_chunk_writer.h"
 #include "../src/lib/in_memory_index.h"
-#include "../../utils/string.hpp"
 #include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>

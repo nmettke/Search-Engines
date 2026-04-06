@@ -2,10 +2,10 @@
 
 #include "Common.h"
 #include "utils/hash/HashTable.h"
+#include "utils/string.hpp"
+#include "utils/vector.hpp"
 #include <cstring>
 #include <fstream>
-#include "utils/vector.hpp"
-#include "utils/string.hpp"
 #include <string>
 
 // -v (verbose) command line option instantiation and

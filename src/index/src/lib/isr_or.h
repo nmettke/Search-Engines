@@ -1,8 +1,8 @@
 // src/lib/isr_or.h
 #pragma once
 #include "isr.h"
-#include <memory>
 #include "utils/vector.hpp"
+#include <memory>
 
 class ISROr : public ISR {
   public:

@@ -1,7 +1,7 @@
 // tests/test_tokenizer.cpp
+#include "../../utils/string.hpp"
 #include "../src/lib/tokenizer.h"
 #include "../src/lib/types.h"
-#include "../../utils/string.hpp"
 #include <iostream>
 #include <vector>
 

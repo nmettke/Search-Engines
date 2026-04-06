@@ -4,11 +4,11 @@
 // Nicole Hamilton  nham@umich.edu
 
 #include "utils/hash/HashTable.h"
+#include "utils/string.hpp"
+#include "utils/vector.hpp"
 #include <cstdint>
 #include <cstring>
 #include <string>
-#include "utils/string.hpp"
-#include "utils/vector.hpp"
 
 // You may define additional helper routines here and in
 // Common.cpp.

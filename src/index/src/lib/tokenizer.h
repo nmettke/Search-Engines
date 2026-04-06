@@ -5,10 +5,10 @@
 #include "parser/HtmlParser.h"
 #include "types.h"
 
-#include <array>
-#include <utility>
 #include "utils/string.hpp"
 #include "utils/vector.hpp"
+#include <array>
+#include <utility>
 
 struct TokenizedDocument {
     ::vector<TokenOutput> tokens;

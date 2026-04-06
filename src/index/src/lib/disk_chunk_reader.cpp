@@ -84,7 +84,7 @@ std::unique_ptr<ISRWord> DiskChunkReader::createISR(const ::string &term) const 
             break;
 
         ::string_view current_term(reinterpret_cast<const char *>(reader.current()),
-                                      b_disk->string_length);
+                                   b_disk->string_length);
         reader.skip(b_disk->string_length);
 
         if (::string(current_term) == term) {

@@ -3,8 +3,8 @@
 #include "disk_chunk_reader.h"
 #include "isr.h"
 #include "query_tokenizer.h"
-#include <memory>
 #include "utils/vector.hpp"
+#include <memory>
 
 class QueryCompiler {
   public:

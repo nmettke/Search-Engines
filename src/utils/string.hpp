@@ -1,7 +1,7 @@
 #pragma once
 #include <cctype>
-#include <cstddef>   // for size_t
-#include <cstring>   // for memmove, memcpy
+#include <cstddef>    // for size_t
+#include <cstring>    // for memmove, memcpy
 #include <functional> // for std::hash specialization
 #include <iostream>   // for ostream, istream
 #include <stdexcept>  // for out_of_range (substr)
@@ -18,16 +18,16 @@ class string {
     // REQUIRES: Nothing
     // MODIFIES: *this
     // EFFECTS: Creates an empty string
-    string() : _buffer(nullptr), _size(0), _capacity(0) {
-        _buffer = new char[1]; // for the null terminator
-        _buffer[0] = '\0';
-    }
+    string() : _buffer(emptyBuffer()), _size(0), _capacity(0) {}
 
     // string Literal / C string Constructor
     // REQUIRES: cstr is a null terminated C style string
     // MODIFIES: *this
     // EFFECTS: Creates a string with equivalent contents to cstr
-    string(const char *cstr) : _buffer(nullptr), _size(getLength(cstr)), _capacity(_size) {
+    string(const char *cstr) : _buffer(emptyBuffer()), _size(getLength(cstr)), _capacity(_size) {
+        if (_size == 0) {
+            return;
+        }
         _buffer = new char[_capacity + 1];
         copyData(_buffer, cstr, _size);
         _buffer[_size] = '\0';
@@ -37,10 +37,8 @@ class string {
     // REQUIRES: begin/end define a valid range or both are null
     // MODIFIES: *this
     // EFFECTS: Creates a string containing characters from begin up to (not including) end
-    string(const char *begin, const char *end) : _buffer(nullptr), _size(0), _capacity(0) {
+    string(const char *begin, const char *end) : _buffer(emptyBuffer()), _size(0), _capacity(0) {
         if (begin == nullptr || end == nullptr || end <= begin) {
-            _buffer = new char[1];
-            _buffer[0] = '\0';
             return;
         }
 
@@ -55,16 +53,23 @@ class string {
     // REQUIRES: Nothing
     // MODIFIES: *this
     // EFFECTS: Creates a string with the same sequence of characters as sv
-    string(::string_view sv) : _buffer(nullptr), _size(sv.size()), _capacity(_size) {
+    string(::string_view sv) : _buffer(emptyBuffer()), _size(sv.size()), _capacity(_size) {
+        if (_size == 0) {
+            return;
+        }
         _buffer = new char[_capacity + 1];
-        if (_size > 0 && sv.data() != nullptr) {
+        if (sv.data() != nullptr) {
             copyData(_buffer, sv.data(), _size);
         }
         _buffer[_size] = '\0';
     }
 
     // deep copy constructor
-    string(const string &other) : _buffer(nullptr), _size(other._size), _capacity(other._capacity) {
+    string(const string &other)
+        : _buffer(emptyBuffer()), _size(other._size), _capacity(other._size) {
+        if (_size == 0) {
+            return;
+        }
         _buffer = new char[_capacity + 1];
         copyData(_buffer, other._buffer, _size);
         _buffer[_size] = '\0';
@@ -73,12 +78,16 @@ class string {
     // assignment operator
     string &operator=(const string &other) {
         if (this != &other) {
-            delete[] _buffer;
+            releaseBuffer();
             _size = other._size;
-            _capacity = other._capacity;
-            _buffer = new char[_capacity + 1];
-            copyData(_buffer, other._buffer, _size);
-            _buffer[_size] = '\0';
+            _capacity = other._size;
+            if (_size == 0) {
+                _buffer = emptyBuffer();
+            } else {
+                _buffer = new char[_capacity + 1];
+                copyData(_buffer, other._buffer, _size);
+                _buffer[_size] = '\0';
+            }
         }
         return *this;
     }
@@ -86,13 +95,26 @@ class string {
     // move constructor
     string(string &&other) noexcept
         : _buffer(other._buffer), _size(other._size), _capacity(other._capacity) {
-        other._buffer = nullptr;
+        other._buffer = emptyBuffer();
         other._size = 0;
         other._capacity = 0;
     }
 
+    string &operator=(string &&other) noexcept {
+        if (this != &other) {
+            releaseBuffer();
+            _buffer = other._buffer;
+            _size = other._size;
+            _capacity = other._capacity;
+            other._buffer = emptyBuffer();
+            other._size = 0;
+            other._capacity = 0;
+        }
+        return *this;
+    }
+
     // destructor
-    ~string() { delete[] _buffer; }
+    ~string() { releaseBuffer(); }
 
     // Size
     // REQUIRES: Nothing
@@ -379,6 +401,11 @@ class string {
     size_t _size;
     size_t _capacity;
 
+    static char *emptyBuffer() {
+        static char empty = '\0';
+        return &empty;
+    }
+
     // strlen
     size_t getLength(const char *str) const {
         if (str == nullptr) {
@@ -429,10 +456,16 @@ class string {
         char *newBuffer = new char[newCapacity + 1];
         copyData(newBuffer, _buffer, _size);
         newBuffer[_size] = '\0';
-        delete[] _buffer;
+        releaseBuffer();
 
         _buffer = newBuffer;
         _capacity = newCapacity;
+    }
+
+    void releaseBuffer() {
+        if (_buffer != emptyBuffer()) {
+            delete[] _buffer;
+        }
     }
 };
 
@@ -485,8 +518,7 @@ inline ::string operator+(const ::string &lhs, const ::string &rhs) {
 inline bool operator==(const char *lhs, const ::string &rhs) { return rhs == lhs; }
 
 namespace std {
-template <>
-struct hash<::string> {
+template <> struct hash<::string> {
     size_t operator()(const ::string &s) const noexcept {
         size_t h = 0;
         const char *p = s.cstr();

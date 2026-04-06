@@ -3,9 +3,9 @@
 
 #include "disk_chunk_reader.h"
 #include "isr.h"
+#include "utils/vector.hpp"
 #include <memory>
 #include <optional>
-#include "utils/vector.hpp"
 
 class ISRAnd : public ISR {
   public:

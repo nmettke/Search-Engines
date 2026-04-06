@@ -3,8 +3,8 @@
 #include "disk_chunk_reader.h"
 #include "isr.h"
 #include "isr_and.h"
-#include <memory>
 #include "utils/vector.hpp"
+#include <memory>
 
 class ISRContainer : public ISR {
   public:

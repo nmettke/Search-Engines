@@ -2,11 +2,11 @@
 
 #include "utils/string.hpp"
 #include "utils/threads/mutex.hpp"
+#include "utils/vector.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <utility>
-#include "utils/vector.hpp"
 
 ::string normalizeUrl(const ::string &rawUrl);
 

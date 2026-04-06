@@ -12,9 +12,7 @@
 
 #include "utils/string.hpp"
 
-
 // this is a simple integration interface to show how the components fit together.
-
 
 int main() {
     // 1. Mock the crawler output using the HtmlParser interface

@@ -65,7 +65,7 @@ template <typename T> class vector {
     // REQUIRES: Nothing
     // MODIFIES: *this
     // EFFECTS: Duplicates the state of other to *this
-    vector operator=(const vector<T> &other) {
+    vector &operator=(const vector<T> &other) {
         if (this == &other)
             return *this;
 
@@ -91,7 +91,7 @@ template <typename T> class vector {
     // REQUIRES: Nothing
     // MODIFIES: *this, leaves otherin a default constructed state
     // EFFECTS: Takes the data from other in constant time
-    vector operator=(vector<T> &&other) {
+    vector &operator=(vector<T> &&other) {
         if (this == &other)
             return *this;
 
@@ -118,7 +118,7 @@ template <typename T> class vector {
         T *end = data_ + size_;
 
         for (; src != end; ++src, ++dst) {
-            new (dst) T(*src);
+            new (dst) T(std::move(*src));
             src->~T();
         }
 
@@ -171,12 +171,30 @@ template <typename T> class vector {
         size_++;
     }
 
+    void pushBack(T &&x) {
+        if (size_ == capacity_) {
+            reserve(capacity_ == 0 ? 8 : capacity_ * 3);
+        }
+
+        new (data_ + size_) T(std::move(x));
+        size_++;
+    }
+
     void push_back(const T &x) {
         if (size_ == capacity_) {
             reserve(capacity_ == 0 ? 8 : capacity_ * 3);
         }
 
         new (data_ + size_) T(x);
+        size_++;
+    }
+
+    void push_back(T &&x) {
+        if (size_ == capacity_) {
+            reserve(capacity_ == 0 ? 8 : capacity_ * 3);
+        }
+
+        new (data_ + size_) T(std::move(x));
         size_++;
     }
 
@@ -203,7 +221,7 @@ template <typename T> class vector {
         }
         if (size_ == capacity_)
             reserve(capacity_ == 0 ? 8 : capacity_ * 3);
-        pushBack(data_[size_ - 1]);
+        pushBack(std::move(data_[size_ - 1]));
         for (ptrdiff_t i = static_cast<ptrdiff_t>(size_) - 2; i >= static_cast<ptrdiff_t>(index);
              --i) {
             data_[static_cast<size_t>(i) + 1] = std::move(data_[static_cast<size_t>(i)]);
@@ -225,7 +243,7 @@ template <typename T> class vector {
         }
         if (size_ == capacity_)
             reserve(capacity_ == 0 ? 8 : capacity_ * 3);
-        pushBack(data_[size_ - 1]);
+        pushBack(std::move(data_[size_ - 1]));
         for (ptrdiff_t i = static_cast<ptrdiff_t>(size_) - 2; i >= static_cast<ptrdiff_t>(index);
              --i) {
             data_[static_cast<size_t>(i) + 1] = std::move(data_[static_cast<size_t>(i)]);
@@ -265,7 +283,8 @@ template <typename T> class vector {
 
         for (ptrdiff_t i = static_cast<ptrdiff_t>(size_) - 1; i >= static_cast<ptrdiff_t>(index);
              --i) {
-            new (data_ + static_cast<size_t>(i) + count) T(std::move(data_[static_cast<size_t>(i)]));
+            new (data_ + static_cast<size_t>(i) + count)
+                T(std::move(data_[static_cast<size_t>(i)]));
             data_[static_cast<size_t>(i)].~T();
         }
 
