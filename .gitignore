@@ -46,6 +46,7 @@
 # Local crawler build artifacts
 src/crawler/basic
 src/crawler/url_dedup_test
+src/crawler/seed_ranking.txt
 
 # For CMake
 build*/

@@ -87,6 +87,15 @@ target_link_libraries(crawler
         utils
 )
 
+add_executable(rank_seedlist EXCLUDE_FROM_ALL
+    ../rank_seedlist.cpp
+)
+
+target_link_libraries(rank_seedlist
+    PRIVATE
+        crawler_lib
+)
+
 target_compile_features(crawler_lib PUBLIC cxx_std_17)
 target_compile_features(crawler PUBLIC cxx_std_17)
 
