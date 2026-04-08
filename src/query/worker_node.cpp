@@ -20,7 +20,10 @@ struct ThreadArgs {
 };
 
 // TODO: Implement the scoring function based on the document and query
-double calculate_score(const DocumentRecord &doc, const String &query) { return 1.0; }
+double calculate_score(const DocumentRecord &doc, const String &query) {
+    int num = std::stoi(doc.url.substr(3)); // Extract the number from "docN"
+    return num * 1.0;
+}
 
 void *handle_master_connection(void *args) {
     ThreadArgs *t_args = (ThreadArgs *)args;

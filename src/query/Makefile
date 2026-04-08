@@ -40,6 +40,9 @@ create_dummy_index: dummy_index
 worker_node: worker_node.cpp $(ALL_LIB_SRCS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ -pthread
 
+broker_server: broker_server.cpp
+	$(CXX) $(CXXFLAGS) $^ -o $@ -pthread
+
 # ─── Lint / Format ─────────────────────────────────────────
 
 lint:
@@ -48,7 +51,7 @@ lint:
 # ─── Clean ─────────────────────────────────────────────────
 
 clean:
-	rm -f dummy_index worker_node
+	rm -f dummy_index worker_node broker_server
 	rm -f *.idx
 
 # ─── Help ──────────────────────────────────────────────────
