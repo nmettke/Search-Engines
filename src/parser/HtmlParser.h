@@ -86,6 +86,7 @@ class HtmlParser {
     ::vector<::string> words, titleWords;
     ::vector<Link> links;
     ::string base;
+    int distanceFromSeed;
 
   private:
     // discard section tags

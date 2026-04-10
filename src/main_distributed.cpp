@@ -260,7 +260,7 @@ void *CrawlerWorkerThread(void *) {
         }
 
         HtmlParser parsed(page.cstr(), page.size());
-
+        parsed.distanceFromSeed = item->seedDistance;
         // Add title word into anchor index
         // Add parsed body into index queue
         appendAnchorTerms(item->link, parsed.titleWords, true);

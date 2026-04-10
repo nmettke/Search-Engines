@@ -64,7 +64,7 @@ void *WorkerThread(void *arg) {
             break;
 
         HtmlParser parsed(page.cstr(), page.size());
-
+        parsed.distanceFromSeed = item->seedDistance;
         if (parsed.isBroken() || !parsed.isEnglish()) {
             continue;
         }

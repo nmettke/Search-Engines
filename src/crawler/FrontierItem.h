@@ -19,6 +19,7 @@ class FrontierItem {
     double getScore() const;
 
     string link;
+    size_t seedDistance = 0;
 
   private:
     FrontierItem(const string &link, Suffix suffix, size_t baseLength, size_t seedDistance,
@@ -26,7 +27,6 @@ class FrontierItem {
 
     Suffix suffix = Suffix::OTHER;
     size_t baseLength = 0;
-    size_t seedDistance = 0;
     size_t pathDepth = 0;
 
     bool failed = false;
