@@ -49,15 +49,41 @@ static void countAlpha(const ::vector<string> &wordList, size_t &latinCount, siz
     }
 }
 
-bool HtmlParser::isEnglish(double threshold) const {
-    size_t latinCount = 0, totalAlpha = 0;
+static const char *englishStopWords[] = {"the",  "of", "and",  "to",   "in",  "is", "for",
+                                         "that", "it", "was",  "on",   "are", "as", "with",
+                                         "be",   "at", "this", "from", "or",  "an"};
+static const size_t numStopWords = 20;
 
+bool HtmlParser::isEnglish(double threshold) const {
+    // Tier 1: HTML lang attribute — most reliable, instant
+    if (!htmlLang.empty()) {
+        if (htmlLang.size() >= 2 && (htmlLang[0] == 'e' || htmlLang[0] == 'E') &&
+            (htmlLang[1] == 'n' || htmlLang[1] == 'N') &&
+            (htmlLang.size() == 2 || htmlLang[2] == '-'))
+            return true;
+        return false;
+    }
+
+    // Tier 2: English stop word frequency — distinguishes English from other Latin-script languages
+    size_t totalWords = words.size();
+    if (totalWords >= 50) {
+        size_t hits = 0;
+        for (const auto &word : words) {
+            for (size_t i = 0; i < numStopWords; ++i) {
+                if (strcasecmp(word.cstr(), englishStopWords[i]) == 0) {
+                    ++hits;
+                    break;
+                }
+            }
+        }
+        return static_cast<double>(hits) / totalWords >= 0.03;
+    }
+
+    // Tier 3: Latin character percentage — fallback for pages with few words
+    size_t latinCount = 0, totalAlpha = 0;
     countAlpha(words, latinCount, totalAlpha);
     countAlpha(titleWords, latinCount, totalAlpha);
-
-    // Too little text to make a judgment default accept
     if (totalAlpha < 50)
         return true;
-
     return static_cast<double>(latinCount) / totalAlpha >= threshold;
 }
