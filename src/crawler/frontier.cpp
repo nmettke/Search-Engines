@@ -62,6 +62,19 @@ void Frontier::pushMany(const vector<string> &urls) {
     cv.notify_all();
 }
 
+void Frontier::pushDeferred(const vector<FrontierItem> &items) {
+    lock_guard guard(m);
+    if (items.size() == 0 || closed) {
+        return;
+    }
+    // we dont change pending here. deferred items were popped earlier but their task was never
+    // marked done, so putting them back on the heap is a just requueue
+    for (size_t i = 0; i < items.size(); ++i) {
+        pq.push(items[i]);
+    }
+    cv.notify_all();
+}
+
 std::optional<FrontierItem> Frontier::pop() {
     m.lock();
     while (pq.empty() && !closed) {

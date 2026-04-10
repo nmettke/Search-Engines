@@ -58,6 +58,7 @@ add_library(crawler_lib
     crawler/checkpoint.cpp
     crawler/RobotsTxt.cpp
     crawler/RobotsCache.cpp
+    crawler/DelayedQueue.cpp
 )
 
 target_include_directories(crawler_lib

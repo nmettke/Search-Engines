@@ -1,8 +1,10 @@
 #include "RobotsCache.h"
 #include "../utils/SSL/LinuxSSL_Crawler.hpp"
 #include <cstring>
+#include <time.h>
 
 static const char *CRAWLER_USER_AGENT = "LinuxGetSsl";
+static const int64_t DEFAULT_CRAWL_DELAY_MS = 500;
 
 uint64_t RobotsCache::hashCString(const char *key) {
     uint64_t h = 0;
@@ -18,11 +20,11 @@ bool RobotsCache::compareCStrings(const char *a, const char *b) { return strcmp(
 RobotsCache::RobotsCache() : cache(compareCStrings, hashCString, 512) {}
 
 RobotsCache::~RobotsCache() {
-    HashTable<const char *, RobotsTxt *>::Iterator it = cache.begin();
-    HashTable<const char *, RobotsTxt *>::Iterator end = cache.end();
+    HashTable<const char *, CacheEntry>::Iterator it = cache.begin();
+    HashTable<const char *, CacheEntry>::Iterator end = cache.end();
     while (it != end) {
         delete[] it->key;
-        delete it->value;
+        delete it->value.robots;
         ++it;
     }
 }
@@ -39,6 +41,12 @@ string RobotsCache::extractOrigin(const string &url) {
     }
 
     return url;
+}
+
+int64_t RobotsCache::nowMillis() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
 RobotsTxt *RobotsCache::fetchRobotsTxt(const string &origin) {
@@ -58,47 +66,68 @@ static char *dupCString(const char *src) {
     return copy;
 }
 
-bool RobotsCache::isAllowed(const string &url, int *crawlDelay) {
+RobotCheckResult RobotsCache::checkAndReserve(const string &url) {
     string origin = extractOrigin(url);
     if (origin.empty())
-        return true;
+        return {RobotCheckStatus::ALLOWED, 0};
 
     const char *originKey = origin.cstr();
 
+    Tuple<const char *, CacheEntry> *entry = nullptr;
+    RobotsTxt *robotsPtr = nullptr;
+
+    // Step 1: try to find in cache
     {
         lock_guard<mutex> guard(cacheMutex);
-        Tuple<const char *, RobotsTxt *> *entry = cache.Find(originKey);
+        entry = cache.Find(originKey);
         if (entry) {
-            if (!entry->value)
-                return true;
-            return entry->value->UrlAllowed((const Utf8 *)CRAWLER_USER_AGENT,
-                                            (const Utf8 *)url.cstr(), crawlDelay);
+            robotsPtr = entry->value.robots;
         }
     }
 
-    RobotsTxt *robots = fetchRobotsTxt(origin);
+    if (!entry) {
+        RobotsTxt *robots = fetchRobotsTxt(origin);
 
-    {
         lock_guard<mutex> guard(cacheMutex);
-        // ase a heap alloced key so it outlives scope.
         char *heapKey = dupCString(originKey);
-        Tuple<const char *, RobotsTxt *> *entry = cache.Find(heapKey, nullptr);
+        CacheEntry initial = {nullptr, 0};
+        entry = cache.Find(heapKey, initial);
 
         if (entry->key != heapKey) {
-            // another thread already inserted this origin while we were trying to fetch
+            // another thread inserted this origin while we were fetching
             delete[] heapKey;
-            if (robots) {
+            if (robots)
                 delete robots;
-                robots = entry->value;
-            }
         } else {
-            entry->value = robots;
+            entry->value.robots = robots;
         }
+        robotsPtr = entry->value.robots;
     }
 
-    if (!robots)
-        return true;
+    int crawlDelay = 0;
+    bool allowed = true;
+    if (robotsPtr) {
+        allowed = robotsPtr->UrlAllowed((const Utf8 *)CRAWLER_USER_AGENT, (const Utf8 *)url.cstr(),
+                                        &crawlDelay);
+    }
 
-    return robots->UrlAllowed((const Utf8 *)CRAWLER_USER_AGENT, (const Utf8 *)url.cstr(),
-                              crawlDelay);
+    if (!allowed) {
+        return {RobotCheckStatus::DISALLOWED, 0};
+    }
+
+    int64_t now = nowMillis();
+    int64_t delayMs = (int64_t)crawlDelay * 1000;
+    if (delayMs < DEFAULT_CRAWL_DELAY_MS)
+        delayMs = DEFAULT_CRAWL_DELAY_MS;
+
+    {
+        lock_guard<mutex> guard(cacheMutex);
+        int64_t last = entry->value.lastAccessedMs;
+        if (last != 0 && now < last + delayMs) {
+            return {RobotCheckStatus::DELAYED, last + delayMs};
+        }
+        entry->value.lastAccessedMs = now;
+    }
+
+    return {RobotCheckStatus::ALLOWED, 0};
 }
