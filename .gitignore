@@ -59,3 +59,4 @@ src/crawler/checkpoint.dat.tmp
 
 *.idx
 *.dat/*
+.env
