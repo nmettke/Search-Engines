@@ -11,17 +11,6 @@ constexpr uint32_t version = 1;        // chunk file encoding version
 constexpr uint32_t ISRSentinel = std::numeric_limits<uint32_t>::max();
 constexpr const char *docEndToken = "#DocEnd";
 
-enum class TldBucket : uint32_t {
-    None = 0,
-    GovEdu = 1,
-    ComOrg = 2,
-    NetTech = 3,
-    CountryOrKnownMisc = 4,
-    Biz = 5,
-    IpAddress = 6,
-    Other = 7,
-};
-
 enum DocumentFeatureFlag : uint32_t {
     kFeaturesPresent = 1u << 0,
     kHttps = 1u << 1,
@@ -91,13 +80,6 @@ struct DocumentRecord {
     uint16_t title_word_count = 0;
     uint8_t seed_distance = 0;
     DocumentFeatures features;
-};
-
-struct RankedDocument {
-    DocumentRecord document;
-    double static_score = 0.0;
-    double query_score = 0.0;
-    double total_score = 0.0;
 };
 
 struct FileHeader {

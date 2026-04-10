@@ -154,27 +154,6 @@ bool looksLikeIpv4Address(const ::string &host) {
     return segment_count == 4;
 }
 
-double normalizedTldScore(const ::string &tld) {
-    if (tld.size() == 0) {
-        return 0.0;
-    }
-
-    if (tld == "edu" || tld == "gov")
-        return 1.0;
-
-    if (tld == "com" || tld == "org")
-        return 0.75;
-
-    if (tld == "net" || tld == "io" || tld == "dev" || tld == "ai" || tld == "co" || tld == "app")
-        return 0.5;
-
-    if (tld == "us" || tld == "uk" || tld == "ca" || tld == "de" || tld == "au" || tld == "fr" ||
-        tld == "jp" || tld == "mil" || tld == "int" || tld == "info" || tld == "me" || tld == "biz")
-        return 0.35;
-
-    return 0.15;
-}
-
 } // namespace
 
 ParsedUrl parseUrl(const ::string &url) {
@@ -236,104 +215,6 @@ ParsedUrl parseUrl(const ::string &url) {
     return result;
 }
 
-double urlTldScoreForTld(const ::string &tld) { return normalizedTldScore(lowerAscii(tld)); }
-
-double urlTldScore(TldBucket bucket) {
-    switch (bucket) {
-    case TldBucket::GovEdu:
-        return 1.0;
-    case TldBucket::ComOrg:
-        return 0.75;
-    case TldBucket::NetTech:
-        return 0.5;
-    case TldBucket::CountryOrKnownMisc:
-    case TldBucket::Biz:
-        return 0.35;
-    case TldBucket::Other:
-        return 0.15;
-    case TldBucket::IpAddress:
-    case TldBucket::None:
-        return 0.0;
-    }
-
-    return 0.0;
-}
-
-double urlPathDepthScore(uint32_t path_depth) {
-    if (path_depth <= 1) {
-        return 1.0;
-    }
-    if (path_depth >= 8) {
-        return 0.0;
-    }
-    return 1.0 - ((path_depth - 1) / 7.0);
-}
-
-double urlLengthScore(uint32_t url_length) {
-    if (url_length == 0) {
-        return 1.0;
-    }
-
-    if (url_length <= 30) {
-        return 1.0;
-    }
-    if (url_length >= 200) {
-        return 0.0;
-    }
-    return 1.0 - ((url_length - 30) / 170.0);
-}
-
-double urlHttpsScore(bool is_https) { return is_https ? 1.0 : 0.0; }
-
-double urlQueryParamScore(uint32_t query_param_count) {
-    if (query_param_count == 0) {
-        return 1.0;
-    }
-
-    double score = 1.0 - (query_param_count * 0.15);
-    if (score < 0.0) {
-        return 0.0;
-    }
-    return score;
-}
-
-double urlNumericDensityScore(uint32_t numeric_path_char_count, uint32_t path_length) {
-    if (path_length == 0) {
-        return 1.0;
-    }
-
-    double ratio = static_cast<double>(numeric_path_char_count) / static_cast<double>(path_length);
-    return 1.0 - ratio;
-}
-
-TldBucket urlTldBucket(const ParsedUrl &parsed) {
-    if (parsed.is_ip_address) {
-        return TldBucket::IpAddress;
-    }
-    if (parsed.tld.size() == 0) {
-        return TldBucket::None;
-    }
-    if (parsed.tld == "edu" || parsed.tld == "gov") {
-        return TldBucket::GovEdu;
-    }
-    if (parsed.tld == "com" || parsed.tld == "org") {
-        return TldBucket::ComOrg;
-    }
-    if (parsed.tld == "net" || parsed.tld == "io" || parsed.tld == "dev" || parsed.tld == "ai" ||
-        parsed.tld == "app") {
-        return TldBucket::NetTech;
-    }
-    if (parsed.tld == "biz") {
-        return TldBucket::Biz;
-    }
-    if (parsed.tld == "us" || parsed.tld == "uk" || parsed.tld == "ca" || parsed.tld == "de" ||
-        parsed.tld == "au" || parsed.tld == "fr" || parsed.tld == "jp" || parsed.tld == "mil" ||
-        parsed.tld == "int" || parsed.tld == "info" || parsed.tld == "me" || parsed.tld == "co") {
-        return TldBucket::CountryOrKnownMisc;
-    }
-    return TldBucket::Other;
-}
-
 uint32_t urlBaseDomainLength(const ParsedUrl &parsed) {
     return static_cast<uint32_t>(parsed.base_domain_length);
 }
@@ -357,41 +238,6 @@ uint32_t urlDomainHyphenCount(const ParsedUrl &parsed) {
 }
 
 bool urlHasHttps(const ::string &url) {
-    if (url.size() < 8) {
-        return false;
-    }
-    return url.substr(0, 8) == "https://";
+    return url.size() >= 8 && url[0] == 'h' && url[1] == 't' && url[2] == 't' && url[3] == 'p' &&
+           url[4] == 's' && url[5] == ':' && url[6] == '/' && url[7] == '/';
 }
-
-double urlTldScore(const ParsedUrl &parsed) { return urlTldScoreForTld(parsed.tld); }
-
-double urlPathDepthScore(const ParsedUrl &parsed) {
-    return urlPathDepthScore(static_cast<uint32_t>(parsed.path_depth));
-}
-
-double urlNumericDensityScore(const ParsedUrl &parsed) {
-    size_t path_len = parsed.path.size();
-    size_t query_pos = parsed.path.find_first_of("?#");
-    if (query_pos != ::string::npos) {
-        path_len = query_pos;
-    }
-    return urlNumericDensityScore(static_cast<uint32_t>(parsed.numeric_path_char_count),
-                                  static_cast<uint32_t>(path_len));
-}
-
-double urlTldScore(const ::string &url) { return urlTldScore(parseUrl(url)); }
-
-double urlPathDepthScore(const ::string &url) { return urlPathDepthScore(parseUrl(url)); }
-
-double urlLengthScore(const ::string &url) {
-    return urlLengthScore(static_cast<uint32_t>(url.size()));
-}
-
-double urlHttpsScore(const ::string &url) { return urlHttpsScore(urlHasHttps(url)); }
-
-double urlQueryParamScore(const ::string &url) {
-    ParsedUrl parsed = parseUrl(url);
-    return urlQueryParamScore(static_cast<uint32_t>(parsed.query_param_count));
-}
-
-double urlNumericDensityScore(const ::string &url) { return urlNumericDensityScore(parseUrl(url)); }

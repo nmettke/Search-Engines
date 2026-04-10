@@ -127,8 +127,6 @@ add_library(index_lib
     index/src/lib/isr_phrase.cpp
     index/src/lib/isr_container.cpp
     index/src/lib/url_features.cpp
-    index/src/lib/content_features.cpp
-    index/src/lib/static_ranker.cpp
 )
 
 target_include_directories(index_lib

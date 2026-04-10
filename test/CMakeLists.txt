@@ -120,27 +120,8 @@ gtest_discover_tests(PriorityQueue_tests
 )
 
 # -------------------------
-# Index Ranking Tests
+# Index Feature Tests
 # -------------------------
-
-add_executable(content_features_tests
-    index/content_features_test.cpp
-)
-
-target_link_libraries(content_features_tests
-    PRIVATE
-        index_lib
-        GTest::gtest
-        GTest::gtest_main
-)
-
-target_include_directories(content_features_tests SYSTEM BEFORE PRIVATE
-    ${FETCHED_GTEST_INCLUDE_DIRS}
-)
-
-gtest_discover_tests(content_features_tests
-    TEST_PREFIX "content_features::"
-)
 
 add_executable(url_features_tests
     index/url_features_test.cpp
@@ -178,23 +159,4 @@ target_include_directories(document_features_tests SYSTEM BEFORE PRIVATE
 
 gtest_discover_tests(document_features_tests
     TEST_PREFIX "document_features::"
-)
-
-add_executable(static_ranker_tests
-    index/static_ranker_test.cpp
-)
-
-target_link_libraries(static_ranker_tests
-    PRIVATE
-        index_lib
-        GTest::gtest
-        GTest::gtest_main
-)
-
-target_include_directories(static_ranker_tests SYSTEM BEFORE PRIVATE
-    ${FETCHED_GTEST_INCLUDE_DIRS}
-)
-
-gtest_discover_tests(static_ranker_tests
-    TEST_PREFIX "static_ranker::"
 )
