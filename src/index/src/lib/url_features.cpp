@@ -165,13 +165,11 @@ double normalizedTldScore(const ::string &tld) {
     if (tld == "com" || tld == "org")
         return 0.75;
 
-    if (tld == "net" || tld == "io" || tld == "dev" || tld == "ai" || tld == "co" ||
-        tld == "app")
+    if (tld == "net" || tld == "io" || tld == "dev" || tld == "ai" || tld == "co" || tld == "app")
         return 0.5;
 
-    if (tld == "us" || tld == "uk" || tld == "ca" || tld == "de" || tld == "au" ||
-        tld == "fr" || tld == "jp" || tld == "mil" || tld == "int" || tld == "info" ||
-        tld == "me" || tld == "biz")
+    if (tld == "us" || tld == "uk" || tld == "ca" || tld == "de" || tld == "au" || tld == "fr" ||
+        tld == "jp" || tld == "mil" || tld == "int" || tld == "info" || tld == "me" || tld == "biz")
         return 0.35;
 
     return 0.15;
@@ -285,9 +283,7 @@ double urlLengthScore(uint32_t url_length) {
     return 1.0 - ((url_length - 30) / 170.0);
 }
 
-double urlHttpsScore(bool is_https) {
-    return is_https ? 1.0 : 0.0;
-}
+double urlHttpsScore(bool is_https) { return is_https ? 1.0 : 0.0; }
 
 double urlQueryParamScore(uint32_t query_param_count) {
     if (query_param_count == 0) {
@@ -332,8 +328,7 @@ TldBucket urlTldBucket(const ParsedUrl &parsed) {
     }
     if (parsed.tld == "us" || parsed.tld == "uk" || parsed.tld == "ca" || parsed.tld == "de" ||
         parsed.tld == "au" || parsed.tld == "fr" || parsed.tld == "jp" || parsed.tld == "mil" ||
-        parsed.tld == "int" || parsed.tld == "info" || parsed.tld == "me" ||
-        parsed.tld == "co") {
+        parsed.tld == "int" || parsed.tld == "info" || parsed.tld == "me" || parsed.tld == "co") {
         return TldBucket::CountryOrKnownMisc;
     }
     return TldBucket::Other;
@@ -343,7 +338,9 @@ uint32_t urlBaseDomainLength(const ParsedUrl &parsed) {
     return static_cast<uint32_t>(parsed.base_domain_length);
 }
 
-uint32_t urlPathLength(const ParsedUrl &parsed) { return static_cast<uint32_t>(parsed.path.size()); }
+uint32_t urlPathLength(const ParsedUrl &parsed) {
+    return static_cast<uint32_t>(parsed.path.size());
+}
 
 uint32_t urlPathDepth(const ParsedUrl &parsed) { return static_cast<uint32_t>(parsed.path_depth); }
 
@@ -386,7 +383,9 @@ double urlTldScore(const ::string &url) { return urlTldScore(parseUrl(url)); }
 
 double urlPathDepthScore(const ::string &url) { return urlPathDepthScore(parseUrl(url)); }
 
-double urlLengthScore(const ::string &url) { return urlLengthScore(static_cast<uint32_t>(url.size())); }
+double urlLengthScore(const ::string &url) {
+    return urlLengthScore(static_cast<uint32_t>(url.size()));
+}
 
 double urlHttpsScore(const ::string &url) { return urlHttpsScore(urlHasHttps(url)); }
 

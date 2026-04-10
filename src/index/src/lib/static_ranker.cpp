@@ -8,7 +8,7 @@ constexpr double weights[] = {1.5, 2.0, 1.0, 0.5, 2.5, 2.0, 1.0, 0.5};
 bool hasPersistedFeatures(const DocumentRecord &doc) {
     return (doc.features.flags & kFeaturesPresent) != 0;
 }
-}
+} // namespace
 
 void computeStaticFeatures(const DocumentRecord &doc, double *features) {
     if (hasPersistedFeatures(doc)) {
@@ -19,8 +19,8 @@ void computeStaticFeatures(const DocumentRecord &doc, double *features) {
         features[FEATURE_WORD_COUNT] = contentWordCountScore(doc.word_count);
         features[FEATURE_TITLE] = contentTitleScore(doc.title_word_count);
         features[FEATURE_QUERY_PARAM] = urlQueryParamScore(doc.features.query_param_count);
-        features[FEATURE_NUMERIC_DENSITY] = urlNumericDensityScore(
-            doc.features.numeric_path_char_count, doc.features.path_length);
+        features[FEATURE_NUMERIC_DENSITY] =
+            urlNumericDensityScore(doc.features.numeric_path_char_count, doc.features.path_length);
         return;
     }
 

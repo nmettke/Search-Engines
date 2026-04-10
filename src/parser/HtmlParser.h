@@ -7,8 +7,8 @@
 #include "utils/Utf8.h"
 #include "utils/string.hpp"
 #include "utils/vector.hpp"
-#include <cstdint>
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <stack>
 

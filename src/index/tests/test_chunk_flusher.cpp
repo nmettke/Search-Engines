@@ -1,8 +1,8 @@
 // tests/test_chunk_flusher.cpp
 #include "../../utils/string.hpp"
 #include "../src/lib/Common.h" // For hashString
-#include "../src/lib/disk_chunk_writer.h"
 #include "../src/lib/disk_chunk_reader.h"
+#include "../src/lib/disk_chunk_writer.h"
 #include "../src/lib/in_memory_index.h"
 #include <iostream>
 #include <sys/stat.h>
@@ -77,7 +77,8 @@ void test_end_to_end_flush() {
     TEST_ASSERT(doc1.has_value(), "Doc 1 should exist");
     TEST_ASSERT(doc0->features.query_param_count == cats_features.query_param_count,
                 "Flushed doc 0 should preserve features");
-    TEST_ASSERT(doc1->features.outgoing_anchor_word_count == dogs_features.outgoing_anchor_word_count,
+    TEST_ASSERT(doc1->features.outgoing_anchor_word_count ==
+                    dogs_features.outgoing_anchor_word_count,
                 "Flushed doc 1 should preserve features");
     TEST_ASSERT(doc0->seed_distance == 2, "Flushed doc 0 should preserve seed distance");
     TEST_ASSERT(doc1->seed_distance == 3, "Flushed doc 1 should preserve seed distance");

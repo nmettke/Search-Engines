@@ -4,8 +4,8 @@
 #include "../src/lib/disk_chunk_reader.h"
 #include "../src/lib/disk_chunk_writer.h"
 #include "../src/lib/in_memory_index.h"
-#include <iostream>
 #include <fcntl.h>
+#include <iostream>
 #include <unistd.h>
 
 #define TEST_ASSERT(condition, message)                                                            \

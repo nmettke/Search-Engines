@@ -1,6 +1,6 @@
 // src/lib/tokenizer.cpp
-#include "document_features.h"
 #include "tokenizer.h"
+#include "document_features.h"
 
 bool Tokenizer::isAlphaNumeric(unsigned char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
