@@ -22,6 +22,10 @@ struct DocEndOutput {
     uint32_t word_count;
     uint16_t title_word_count;
     uint32_t doc_start_loc;
+    uint8_t suffix_type;
+    uint8_t path_depth;
+    uint16_t url_length;
+    uint8_t seed_distance;
 };
 
 struct PostingList {
@@ -36,6 +40,10 @@ struct DocumentRecord {
     uint32_t end_location = 0;
     uint32_t word_count = 0;
     uint16_t title_word_count = 0;
+    uint8_t suffix_type = 0;
+    uint8_t path_depth = 0;
+    uint16_t url_length = 0;
+    uint8_t seed_distance = 0;
 };
 
 struct FileHeader {
@@ -77,4 +85,8 @@ struct __attribute__((packed)) DocumentRecordDisk {
     uint32_t end_location = 0;
     uint32_t word_count = 0;
     uint16_t title_word_count = 0;
+    uint8_t suffix_type = 0;
+    uint8_t path_depth = 0;
+    uint16_t url_length = 0;
+    uint8_t seed_distance = 0;
 };
