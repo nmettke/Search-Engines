@@ -64,6 +64,11 @@ void *WorkerThread(void *arg) {
             break;
 
         HtmlParser parsed(page.cstr(), page.size());
+
+        if (parsed.isBroken() || !parsed.isEnglish()) {
+            continue;
+        }
+
         vector<string> discoveredLinks;
 
         for (const Link &link : parsed.links) {
