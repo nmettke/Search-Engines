@@ -47,7 +47,6 @@ make broker_server
 
 
 ## TODOs
-- Change std::vector and std::string to our vector and string
 - Implement top-K using our homework
 - Implement sorting to return pages based on score
 - Change worker to handle a directory of files, not one (Every worker should manage two sets of files: body_chunks/ and anchor_chunks/)

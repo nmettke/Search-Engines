@@ -7,14 +7,11 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-// TODO: Change to self-designed string and vector
-#include <string>
-#include <vector>
-using String = std::string;
-template <typename T> using Vector = std::vector<T>;
+#include "../utils/string.hpp"
+#include "../utils/vector.hpp"
 
 struct GlobalResult {
-    String url;
+    ::string url;
     double score;
 
     bool operator>(const GlobalResult &other) const { return score > other.score; }
@@ -22,11 +19,23 @@ struct GlobalResult {
 };
 
 struct WorkerArgs {
-    String ip;
+    ::string ip;
     int port;
-    String query;
-    Vector<GlobalResult> local_results;
+    ::string query;
+    ::vector<GlobalResult> local_results;
 };
+
+::string to_string(double score) {
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "%.4f", score);
+    return ::string(buffer);
+}
+
+::string to_string(size_t n) {
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "%zu", n);
+    return ::string(buffer);
+}
 
 void *fetch_from_worker(void *args) {
     WorkerArgs *wa = (WorkerArgs *)args;
@@ -46,11 +55,11 @@ void *fetch_from_worker(void *args) {
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) >= 0) {
-        String msg = wa->query + "\n";
+        ::string msg = wa->query + "\n";
         send(sock, msg.c_str(), msg.size(), 0);
 
         char buffer[4096];
-        String raw_response = "";
+        ::string raw_response = "";
 
         while (true) {
             memset(buffer, 0, sizeof(buffer));
@@ -59,22 +68,22 @@ void *fetch_from_worker(void *args) {
                 break;
 
             raw_response += buffer;
-            if (raw_response.find("END_OF_RESULTS") != String::npos)
+            if (raw_response.find("END_OF_RESULTS") != ::string::npos)
                 break;
         }
 
         size_t pos = 0;
-        while ((pos = raw_response.find('\n')) != String::npos) {
-            String line = raw_response.substr(0, pos);
+        while ((pos = raw_response.find('\n')) != ::string::npos) {
+            ::string line = raw_response.substr(0, pos);
             raw_response.erase(0, pos + 1);
 
             if (line == "END_OF_RESULTS")
                 break;
 
             size_t space_pos = line.find(' ');
-            if (space_pos != String::npos) {
-                String url = line.substr(0, space_pos);
-                double score = std::stod(line.substr(space_pos + 1));
+            if (space_pos != ::string::npos) {
+                ::string url = line.substr(0, space_pos);
+                double score = atoi(line.substr(space_pos + 1).c_str());
                 wa->local_results.push_back({url, score});
             }
         }
@@ -87,13 +96,13 @@ struct ClientArgs {
     int socket;
 };
 
-String url_decode(const String &src) {
-    String ret;
+::string url_decode(const ::string &src) {
+    ::string ret;
     char ch;
     for (size_t i = 0; i < src.length(); i++) {
         if (src[i] == '%') {
             int ii;
-            sscanf(src.substr(i + 1, 2).c_str(), "%x", &ii);
+            sscanf(src.substr(i + 1, 2).data(), "%x", &ii);
             ch = static_cast<char>(ii);
             ret += ch;
             i += 2;
@@ -113,20 +122,22 @@ void *handle_frontend(void *args) {
     char buffer[4096];
     memset(buffer, 0, sizeof(buffer));
     read(client_sock, buffer, sizeof(buffer) - 1);
-    String http_request(buffer);
+    ::string http_request(buffer);
 
     // Parse HTTP GET /search?q=cat HTTP/1.1
-    String query = "";
+    ::string query = "";
     size_t q_pos = http_request.find("GET /search?q=");
-    if (q_pos != String::npos) {
+    if (q_pos != ::string::npos) {
         size_t start = q_pos + 14;
-        size_t end = http_request.find(" ", start);
-        String raw_query = http_request.substr(start, end - start);
+        size_t end = http_request.substr(start).find(' ');
+        if (end != ::string::npos)
+            end += start;
+        ::string raw_query = http_request.substr(start, end - start);
         query = url_decode(raw_query);
     }
 
     if (query.empty()) {
-        String response = "HTTP/1.1 400 Bad Request\r\n\r\nMissing query";
+        ::string response = "HTTP/1.1 400 Bad Request\r\n\r\nMissing query";
         send(client_sock, response.c_str(), response.size(), 0);
         close(client_sock);
         delete ca;
@@ -135,9 +146,9 @@ void *handle_frontend(void *args) {
 
     // Launch concurrent pthreads to query the Workers
     // TODO: load these from a config file
-    Vector<WorkerArgs> workers = {{"localhost", 8081, query, {}}, {"localhost", 8082, query, {}}};
+    ::vector<WorkerArgs> workers = {{"localhost", 8081, query, {}}, {"localhost", 8082, query, {}}};
 
-    Vector<pthread_t> threads(workers.size());
+    ::vector<pthread_t> threads(workers.size());
     for (size_t i = 0; i < workers.size(); ++i) {
         pthread_create(&threads[i], nullptr, fetch_from_worker, &workers[i]);
     }
@@ -147,7 +158,7 @@ void *handle_frontend(void *args) {
     }
 
     // merge results from all workers into a single list
-    Vector<GlobalResult> all_results;
+    ::vector<GlobalResult> all_results;
     for (const auto &w : workers) {
         for (const auto &res : w.local_results) {
             all_results.push_back(res);
@@ -156,8 +167,8 @@ void *handle_frontend(void *args) {
 
     // TODO: Implement a more efficient Top-K selection algorithm instead of sorting the entire list
     // TODO: Implement a custom sorting function if needed instead of std::sort
-    std::sort(all_results.begin(), all_results.end(),
-              [](const GlobalResult &a, const GlobalResult &b) { return a.score > b.score; });
+    // std::sort(all_results.begin(), all_results.end(),
+    //           [](const GlobalResult &a, const GlobalResult &b) { return a.score > b.score; });
 
     // TODO: Change the hardcoded 10
     if (all_results.size() > 10) {
@@ -165,10 +176,10 @@ void *handle_frontend(void *args) {
     }
 
     // Manually format the JSON response
-    String json = "{\n  \"query\": \"" + query + "\",\n  \"results\": [\n";
+    ::string json = "{\n  \"query\": \"" + query + "\",\n  \"results\": [\n";
     for (size_t i = 0; i < all_results.size(); ++i) {
         json += "    {\"url\": \"" + all_results[i].url +
-                "\", \"score\": " + std::to_string(all_results[i].score) + "}";
+                "\", \"score\": " + to_string(all_results[i].score) + "}";
         if (i < all_results.size() - 1)
             json += ",\n";
         else
@@ -177,14 +188,14 @@ void *handle_frontend(void *args) {
     json += "  ]\n}";
 
     // Manually format the HTTP Response Header with CORS allowed
-    String http_response = "HTTP/1.1 200 OK\r\n"
-                           "Content-Type: application/json\r\n"
-                           "Access-Control-Allow-Origin: *\r\n"
-                           "Content-Length: " +
-                           std::to_string(json.size()) +
-                           "\r\n"
-                           "\r\n" +
-                           json;
+    ::string http_response = "HTTP/1.1 200 OK\r\n"
+                             "Content-Type: application/json\r\n"
+                             "Access-Control-Allow-Origin: *\r\n"
+                             "Content-Length: " +
+                             to_string(json.size()) +
+                             "\r\n"
+                             "\r\n" +
+                             json;
 
     send(client_sock, http_response.c_str(), http_response.size(), 0);
 

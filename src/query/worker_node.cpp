@@ -8,11 +8,8 @@
 #include "../index/src/lib/disk_chunk_reader.h"
 #include "../index/src/lib/query_engine.h"
 
-// TODO: Change to self-designed string and vector
-#include <string>
-#include <vector>
-using String = std::string;
-template <typename T> using Vector = std::vector<T>;
+#include "../utils/string.hpp"
+#include "../utils/vector.hpp"
 
 struct ThreadArgs {
     int client_socket;
@@ -20,9 +17,15 @@ struct ThreadArgs {
 };
 
 // TODO: Implement the scoring function based on the document and query
-double calculate_score(const DocumentRecord &doc, const String &query) {
-    int num = std::stoi(doc.url.substr(3)); // Extract the number from "docN"
+double calculate_score(const DocumentRecord &doc, const ::string &query) {
+    int num = std::stoi(doc.url.substr(3).c_str()); // Extract the number from "docN"
     return num * 1.0;
+}
+
+::string to_string(double score) {
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "%.4f", score);
+    return ::string(buffer);
 }
 
 void *handle_master_connection(void *args) {
@@ -35,24 +38,23 @@ void *handle_master_connection(void *args) {
     ssize_t bytes_read = read(sock, buffer, sizeof(buffer) - 1);
 
     if (bytes_read > 0) {
-        String query(buffer);
+        ::string query(buffer);
 
         while (!query.empty() && (query.back() == '\n' || query.back() == '\r')) {
             query.pop_back();
         }
 
-        Vector<DocumentRecord> matches = engine->search(query);
+        ::vector<DocumentRecord> matches = engine->search(query);
 
         // Format the response: "url score\n"
-        String response = "";
+        ::string response = "";
 
         // TODO: implement Top-K selection algorithm to get the top 500 results
         size_t limit = (matches.size() < 500) ? matches.size() : 500;
 
         for (size_t i = 0; i < limit; ++i) {
             double score = calculate_score(matches[i], query);
-            // TODO: implement score to string conversion if needed
-            response += matches[i].url + " " + std::to_string(score) + "\n";
+            response += matches[i].url + " " + to_string(score) + "\n";
         }
 
         response += "END_OF_RESULTS\n";
@@ -71,7 +73,7 @@ int main(int argc, char **argv) {
     }
 
     int port = std::stoi(argv[1]);
-    String index_file = argv[2];
+    ::string index_file = argv[2];
 
     DiskChunkReader reader;
     if (!reader.open(index_file)) {

@@ -9,7 +9,10 @@
 #include <iostream>
 #include <vector>
 
-void create_dummy_index(const std::string &path, const std::vector<HtmlParser> &docs) {
+#include "../utils/string.hpp"
+#include "../utils/vector.hpp"
+
+void create_dummy_index(const ::string &path, const ::vector<HtmlParser> &docs) {
     Tokenizer tokenizer;
     InMemoryIndex index;
     for (const auto &doc : docs) {
@@ -29,14 +32,14 @@ void create_dummy_index(const std::string &path, const std::vector<HtmlParser> &
 }
 
 int main() {
-    std::vector<HtmlParser> docs1 = {
+    ::vector<HtmlParser> docs1 = {
         {{"The", "CAT", "sat."}, {}, {}, "doc1"},
         {{"A", "Dog", "Running", "after", "my", "cat!"}, {}, {}, "doc2"},
         {{"My", "cat", "and", "my", "dog", "are", "friends."}, {}, {}, "doc3"},
         {{"No", "cats", "here."}, {}, {}, "doc4"},
     };
 
-    std::vector<HtmlParser> docs2 = {
+    ::vector<HtmlParser> docs2 = {
         {{"Just", "a", "cat."}, {}, {}, "doc5"},
         {{"I", "love", "my", "cat.", "and", "my", "dog."}, {}, {}, "doc6"},
         {{"My", "cat", "hates", "dogs."}, {}, {}, "doc7"},

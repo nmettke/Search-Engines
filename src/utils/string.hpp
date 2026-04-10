@@ -340,6 +340,13 @@ class string {
         replace(pos, len, cstr, n);
     }
 
+    char back() const {
+        if (_size == 0) {
+            throw std::out_of_range("string::back");
+        }
+        return _buffer[_size - 1];
+    }
+
     // Equality Operator
     // REQUIRES: Nothing
     // MODIFIES: Nothing
