@@ -16,12 +16,6 @@ struct ThreadArgs {
     QueryEngine *engine;
 };
 
-// TODO: Implement the scoring function based on the document and query
-double calculate_score(const DocumentRecord &doc, const ::string &query) {
-    int num = std::stoi(doc.url.substr(3).c_str()); // Extract the number from "docN"
-    return num * 1.0;
-}
-
 ::string to_string(double score) {
     char buffer[64];
     snprintf(buffer, sizeof(buffer), "%.4f", score);
@@ -44,17 +38,14 @@ void *handle_master_connection(void *args) {
             query.pop_back();
         }
 
-        ::vector<DocumentRecord> matches = engine->search(query);
+        // TODO: Default value for K, can be modified to read from query if needed
+        size_t K = 10;
+        ::vector<ScoredDocument> matches = engine->search(query, K);
 
         // Format the response: "url score\n"
         ::string response = "";
-
-        // TODO: implement Top-K selection algorithm to get the top 500 results
-        size_t limit = (matches.size() < 500) ? matches.size() : 500;
-
-        for (size_t i = 0; i < limit; ++i) {
-            double score = calculate_score(matches[i], query);
-            response += matches[i].url + " " + to_string(score) + "\n";
+        for (const auto &match : matches) {
+            response += match.doc.url + " " + to_string(match.score) + "\n";
         }
 
         response += "END_OF_RESULTS\n";

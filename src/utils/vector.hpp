@@ -403,6 +403,10 @@ template <typename T> class vector {
         }
     }
 
+    T back() { return data_[size_ - 1]; }
+
+    T back() const { return data_[size_ - 1]; }
+
   private:
     T *data_;
     size_t size_;

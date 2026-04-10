@@ -1,4 +1,3 @@
-#include <algorithm> // TODO: Remove when custom sorting is implemented
 #include <arpa/inet.h>
 #include <cstring>
 #include <iostream>
@@ -16,6 +15,83 @@ struct GlobalResult {
 
     bool operator>(const GlobalResult &other) const { return score > other.score; }
     bool operator<(const GlobalResult &other) const { return score < other.score; }
+};
+
+class GlobalTopKHeap {
+  private:
+    ::vector<GlobalResult> heap_;
+    size_t k_;
+
+    void heapifyUp(int index) {
+        while (index > 0) {
+            int parent = (index - 1) / 2;
+            if (heap_[index].score < heap_[parent].score) {
+                GlobalResult temp = heap_[index];
+                heap_[index] = heap_[parent];
+                heap_[parent] = temp;
+
+                index = parent;
+            } else {
+                break;
+            }
+        }
+    }
+
+    void heapifyDown(int index) {
+        int size = heap_.size();
+        while (true) {
+            int left = 2 * index + 1;
+            int right = 2 * index + 2;
+            int smallest = index;
+
+            if (left < size && heap_[left].score < heap_[smallest].score)
+                smallest = left;
+            if (right < size && heap_[right].score < heap_[smallest].score)
+                smallest = right;
+
+            if (smallest != index) {
+                GlobalResult temp = heap_[index];
+                heap_[index] = heap_[smallest];
+                heap_[smallest] = temp;
+
+                index = smallest;
+            } else {
+                break;
+            }
+        }
+    }
+
+  public:
+    GlobalTopKHeap(size_t k) : k_(k) { heap_.reserve(k + 1); }
+
+    void push(const GlobalResult &item) {
+        if (heap_.size() < k_) {
+            heap_.pushBack(item);
+            heapifyUp(heap_.size() - 1);
+        } else if (item.score > heap_[0].score) {
+            heap_[0] = item;
+            heapifyDown(0);
+        }
+    }
+
+    ::vector<GlobalResult> extractSorted() {
+        ::vector<GlobalResult> sorted;
+        while (!heap_.empty()) {
+            sorted.pushBack(heap_[0]);
+            heap_[0] = heap_.back();
+            heap_.popBack();
+            if (!heap_.empty())
+                heapifyDown(0);
+        }
+
+        size_t n = sorted.size();
+        for (size_t i = 0; i < n / 2; ++i) {
+            GlobalResult temp = sorted[i];
+            sorted[i] = sorted[n - 1 - i];
+            sorted[n - 1 - i] = temp;
+        }
+        return sorted;
+    }
 };
 
 struct WorkerArgs {
@@ -84,7 +160,7 @@ void *fetch_from_worker(void *args) {
             if (space_pos != ::string::npos) {
                 ::string url = line.substr(0, space_pos);
                 double score = atoi(line.substr(space_pos + 1).c_str());
-                wa->local_results.push_back({url, score});
+                wa->local_results.pushBack({url, score});
             }
         }
     }
@@ -157,30 +233,22 @@ void *handle_frontend(void *args) {
         pthread_join(threads[i], nullptr);
     }
 
-    // merge results from all workers into a single list
-    ::vector<GlobalResult> all_results;
+    // Merge results and get global top 10
+    GlobalTopKHeap top_k(10);
     for (const auto &w : workers) {
         for (const auto &res : w.local_results) {
-            all_results.push_back(res);
+            top_k.push({res.url, res.score});
         }
     }
 
-    // TODO: Implement a more efficient Top-K selection algorithm instead of sorting the entire list
-    // TODO: Implement a custom sorting function if needed instead of std::sort
-    // std::sort(all_results.begin(), all_results.end(),
-    //           [](const GlobalResult &a, const GlobalResult &b) { return a.score > b.score; });
-
-    // TODO: Change the hardcoded 10
-    if (all_results.size() > 10) {
-        all_results.resize(10);
-    }
+    ::vector<GlobalResult> final_results = top_k.extractSorted();
 
     // Manually format the JSON response
     ::string json = "{\n  \"query\": \"" + query + "\",\n  \"results\": [\n";
-    for (size_t i = 0; i < all_results.size(); ++i) {
-        json += "    {\"url\": \"" + all_results[i].url +
-                "\", \"score\": " + to_string(all_results[i].score) + "}";
-        if (i < all_results.size() - 1)
+    for (size_t i = 0; i < final_results.size(); ++i) {
+        json += "    {\"url\": \"" + final_results[i].url +
+                "\", \"score\": " + to_string(final_results[i].score) + "}";
+        if (i < final_results.size() - 1)
             json += ",\n";
         else
             json += "\n";
