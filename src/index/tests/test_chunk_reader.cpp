@@ -5,6 +5,7 @@
 #include "../src/lib/disk_chunk_writer.h"
 #include "../src/lib/in_memory_index.h"
 #include <iostream>
+#include <fcntl.h>
 #include <unistd.h>
 
 #define TEST_ASSERT(condition, message)                                                            \
@@ -15,6 +16,48 @@
         }                                                                                          \
     } while (false)
 
+static DocumentFeatures makeFeatures(uint32_t seed) {
+    DocumentFeatures features;
+    features.flags = kFeaturesPresent | kHttps;
+    features.base_domain_length = 7 + seed;
+    features.url_length = 20 + seed;
+    features.path_length = 5 + seed;
+    features.path_depth = 1 + seed;
+    features.query_param_count = seed;
+    features.numeric_path_char_count = 2 + seed;
+    features.domain_hyphen_count = seed;
+    features.latin_alpha_count = 9 + seed;
+    features.total_alpha_count = 12 + seed;
+    features.outgoing_link_count = 3 + seed;
+    features.outgoing_anchor_word_count = 4 + seed;
+    features.raw_tld = seed == 0 ? "com" : "edu";
+    return features;
+}
+
+static void assertFeaturesEqual(const DocumentFeatures &actual, const DocumentFeatures &expected) {
+    TEST_ASSERT(actual.flags == expected.flags, "Feature flags should round-trip");
+    TEST_ASSERT(actual.raw_tld == expected.raw_tld, "Raw TLD should round-trip");
+    TEST_ASSERT(actual.base_domain_length == expected.base_domain_length,
+                "Base domain length should round-trip");
+    TEST_ASSERT(actual.url_length == expected.url_length, "URL length should round-trip");
+    TEST_ASSERT(actual.path_length == expected.path_length, "Path length should round-trip");
+    TEST_ASSERT(actual.path_depth == expected.path_depth, "Path depth should round-trip");
+    TEST_ASSERT(actual.query_param_count == expected.query_param_count,
+                "Query param count should round-trip");
+    TEST_ASSERT(actual.numeric_path_char_count == expected.numeric_path_char_count,
+                "Numeric path chars should round-trip");
+    TEST_ASSERT(actual.domain_hyphen_count == expected.domain_hyphen_count,
+                "Domain hyphen count should round-trip");
+    TEST_ASSERT(actual.latin_alpha_count == expected.latin_alpha_count,
+                "Latin alpha count should round-trip");
+    TEST_ASSERT(actual.total_alpha_count == expected.total_alpha_count,
+                "Total alpha count should round-trip");
+    TEST_ASSERT(actual.outgoing_link_count == expected.outgoing_link_count,
+                "Outgoing link count should round-trip");
+    TEST_ASSERT(actual.outgoing_anchor_word_count == expected.outgoing_anchor_word_count,
+                "Outgoing anchor word count should round-trip");
+}
+
 void test_open_and_mmap() {
     std::cout << "Running test_open_and_mmap...\n";
     const char *test_file = "test_chunk_reader.idx";
@@ -23,7 +66,7 @@ void test_open_and_mmap() {
     // 1. Create a valid chunk file to read
     InMemoryIndex mem_index;
     mem_index.addToken({"test", 0});
-    mem_index.finishDocument({1, "http://test.com", 1, 0, 0});
+    mem_index.finishDocument({1, "http://test.com", 1, 0, 0, 0, {}});
     flushIndexChunk(mem_index, test_file);
 
     // 2. Test the reader
@@ -45,6 +88,28 @@ void test_open_and_mmap() {
     unlink(test_file);
 }
 
+void test_reject_old_version() {
+    std::cout << "Running test_reject_old_version...\n";
+    const char *test_file = "test_chunk_reader_bad_version.idx";
+    unlink(test_file);
+
+    int fd = open(test_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    TEST_ASSERT(fd >= 0, "Should create bad-version chunk");
+
+    FileHeader header;
+    header.version = 2;
+    ssize_t written = write(fd, &header, sizeof(FileHeader));
+    TEST_ASSERT(written == static_cast<ssize_t>(sizeof(FileHeader)),
+                "Should write the header bytes");
+    close(fd);
+
+    DiskChunkReader reader;
+    TEST_ASSERT(!reader.open(test_file), "Reader should reject the old chunk version");
+
+    unlink(test_file);
+    std::cout << "test_reject_old_version PASSED.\n";
+}
+
 void test_create_isr() {
     std::cout << "Running test_create_isr...\n";
     const char *test_file = "test_chunk_reader_isr.idx";
@@ -54,7 +119,7 @@ void test_create_isr() {
     InMemoryIndex mem_index;
     mem_index.addToken({"cat", 5});
     mem_index.addToken({"cat", 10});
-    mem_index.finishDocument({12, "http://cat.com", 2, 0, 0});
+    mem_index.finishDocument({12, "http://cat.com", 2, 0, 0, 0, {}});
     flushIndexChunk(mem_index, test_file);
 
     // 2. Open reader
@@ -85,10 +150,12 @@ void test_get_document() {
     // 1. Setup a chunk with two documents
     InMemoryIndex mem_index;
     mem_index.addToken({"cat", 0});
-    mem_index.finishDocument({1, "http://cat.com", 1, 0, 0});
+    DocumentFeatures cat_features = makeFeatures(0);
+    mem_index.finishDocument({1, "http://cat.com", 1, 0, 0, 4, cat_features});
 
     mem_index.addToken({"dog", 2});
-    mem_index.finishDocument({3, "http://dog.com", 1, 0, 2});
+    DocumentFeatures dog_features = makeFeatures(1);
+    mem_index.finishDocument({3, "http://dog.com", 1, 0, 2, 5, dog_features});
 
     flushIndexChunk(mem_index, test_file);
 
@@ -101,13 +168,17 @@ void test_get_document() {
     TEST_ASSERT(doc0.has_value(), "Doc 0 should exist");
     TEST_ASSERT(doc0->url == "http://cat.com", "Doc 0 URL should match");
     TEST_ASSERT(doc0->start_location == 0, "Doc 0 start location should be 0");
+    TEST_ASSERT(doc0->seed_distance == 4, "Doc 0 seed distance should round-trip");
     TEST_ASSERT(doc0->word_count == 1, "Doc 0 word count should be 1");
+    assertFeaturesEqual(doc0->features, cat_features);
 
     // 4. Test retrieving Doc 1
     auto doc1 = reader.getDocument(1);
     TEST_ASSERT(doc1.has_value(), "Doc 1 should exist");
     TEST_ASSERT(doc1->url == "http://dog.com", "Doc 1 URL should match");
     TEST_ASSERT(doc1->start_location == 2, "Doc 1 start location should be 2");
+    TEST_ASSERT(doc1->seed_distance == 5, "Doc 1 seed distance should round-trip");
+    assertFeaturesEqual(doc1->features, dog_features);
 
     // 5. Test Out of Bounds
     auto doc2 = reader.getDocument(2);
@@ -119,6 +190,7 @@ void test_get_document() {
 
 int main() {
     test_open_and_mmap();
+    test_reject_old_version();
     test_create_isr();
     test_get_document();
     std::cout << "All Chunk Reader tests passed!\n";

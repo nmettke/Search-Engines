@@ -73,16 +73,26 @@ uint64_t DiskChunkWriter::writeDocumentTable(const ::vector<DocumentRecord> &doc
         doc_offsets[i] = static_cast<uint64_t>(writer.currentOffset()) - doctable_start;
 
         writer.writeString16(doc.url);
+        writer.writeString16(doc.features.raw_tld);
 
-        DocumentRecordDisk disk_record;
+        DocumentRecordDisk disk_record{};
         disk_record.start_location = doc.start_location;
         disk_record.end_location = doc.end_location;
         disk_record.word_count = doc.word_count;
         disk_record.title_word_count = doc.title_word_count;
-        disk_record.suffix_type = doc.suffix_type;
-        disk_record.path_depth = doc.path_depth;
-        disk_record.url_length = doc.url_length;
         disk_record.seed_distance = doc.seed_distance;
+        disk_record.features.flags = doc.features.flags;
+        disk_record.features.base_domain_length = doc.features.base_domain_length;
+        disk_record.features.url_length = doc.features.url_length;
+        disk_record.features.path_length = doc.features.path_length;
+        disk_record.features.path_depth = doc.features.path_depth;
+        disk_record.features.query_param_count = doc.features.query_param_count;
+        disk_record.features.numeric_path_char_count = doc.features.numeric_path_char_count;
+        disk_record.features.domain_hyphen_count = doc.features.domain_hyphen_count;
+        disk_record.features.latin_alpha_count = doc.features.latin_alpha_count;
+        disk_record.features.total_alpha_count = doc.features.total_alpha_count;
+        disk_record.features.outgoing_link_count = doc.features.outgoing_link_count;
+        disk_record.features.outgoing_anchor_word_count = doc.features.outgoing_anchor_word_count;
 
         writer.writePOD(disk_record);
     }

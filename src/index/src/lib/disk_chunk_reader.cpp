@@ -125,6 +125,7 @@ std::optional<DocumentRecord> DiskChunkReader::getDocument(uint32_t doc_id) cons
     BufferReader reader(doctable_ptr + doc_offset);
 
     ::string_view url_view = reader.readString16();
+    ::string_view raw_tld_view = reader.readString16();
     const DocumentRecordDisk *disk_rec = reader.readPOD<DocumentRecordDisk>();
 
     DocumentRecord doc;
@@ -133,10 +134,20 @@ std::optional<DocumentRecord> DiskChunkReader::getDocument(uint32_t doc_id) cons
     doc.end_location = disk_rec->end_location;
     doc.word_count = disk_rec->word_count;
     doc.title_word_count = disk_rec->title_word_count;
-    doc.suffix_type = disk_rec->suffix_type;
-    doc.path_depth = disk_rec->path_depth;
-    doc.url_length = disk_rec->url_length;
     doc.seed_distance = disk_rec->seed_distance;
+    doc.features.flags = disk_rec->features.flags;
+    doc.features.base_domain_length = disk_rec->features.base_domain_length;
+    doc.features.url_length = disk_rec->features.url_length;
+    doc.features.path_length = disk_rec->features.path_length;
+    doc.features.path_depth = disk_rec->features.path_depth;
+    doc.features.query_param_count = disk_rec->features.query_param_count;
+    doc.features.numeric_path_char_count = disk_rec->features.numeric_path_char_count;
+    doc.features.domain_hyphen_count = disk_rec->features.domain_hyphen_count;
+    doc.features.latin_alpha_count = disk_rec->features.latin_alpha_count;
+    doc.features.total_alpha_count = disk_rec->features.total_alpha_count;
+    doc.features.outgoing_link_count = disk_rec->features.outgoing_link_count;
+    doc.features.outgoing_anchor_word_count = disk_rec->features.outgoing_anchor_word_count;
+    doc.features.raw_tld = ::string(raw_tld_view);
 
     return doc;
 }
@@ -152,6 +163,7 @@ std::optional<DocumentRecord> DiskChunkReader::getDocumentByLocation(uint32_t lo
     for (uint32_t i = 0; i < header_.num_documents; ++i) {
         // Read cleanly!
         ::string_view url_view = reader.readString16();
+        ::string_view raw_tld_view = reader.readString16();
         const DocumentRecordDisk *disk_rec = reader.readPOD<DocumentRecordDisk>();
 
         if (location >= disk_rec->start_location && location <= disk_rec->end_location) {
@@ -161,10 +173,20 @@ std::optional<DocumentRecord> DiskChunkReader::getDocumentByLocation(uint32_t lo
             doc.end_location = disk_rec->end_location;
             doc.word_count = disk_rec->word_count;
             doc.title_word_count = disk_rec->title_word_count;
-            doc.suffix_type = disk_rec->suffix_type;
-            doc.path_depth = disk_rec->path_depth;
-            doc.url_length = disk_rec->url_length;
             doc.seed_distance = disk_rec->seed_distance;
+            doc.features.flags = disk_rec->features.flags;
+            doc.features.base_domain_length = disk_rec->features.base_domain_length;
+            doc.features.url_length = disk_rec->features.url_length;
+            doc.features.path_length = disk_rec->features.path_length;
+            doc.features.path_depth = disk_rec->features.path_depth;
+            doc.features.query_param_count = disk_rec->features.query_param_count;
+            doc.features.numeric_path_char_count = disk_rec->features.numeric_path_char_count;
+            doc.features.domain_hyphen_count = disk_rec->features.domain_hyphen_count;
+            doc.features.latin_alpha_count = disk_rec->features.latin_alpha_count;
+            doc.features.total_alpha_count = disk_rec->features.total_alpha_count;
+            doc.features.outgoing_link_count = disk_rec->features.outgoing_link_count;
+            doc.features.outgoing_anchor_word_count = disk_rec->features.outgoing_anchor_word_count;
+            doc.features.raw_tld = ::string(raw_tld_view);
             return doc;
         }
     }

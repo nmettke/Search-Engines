@@ -72,7 +72,9 @@ void test_normalization() {
     Tokenizer tokenizer;
 
     HtmlParser mock_doc;
-    mock_doc.base = "http://test.com";
+    mock_doc.base = "http://base.example.com";
+    mock_doc.sourceUrl = "https://crawl.example.com/articles/42?a=1&b=2";
+    mock_doc.seedDistance = 7;
     mock_doc.words = {"HELLO", "world!", "!@#", "real-time", "universities"};
 
     TokenizedDocument out = tokenizer.processDocument(mock_doc);
@@ -100,6 +102,14 @@ void test_normalization() {
 
     // check stemming
     TEST_ASSERT(out.tokens[5].term == "univers", "Should stem to univers");
+    TEST_ASSERT(out.doc_end.url == mock_doc.sourceUrl, "Should store the crawled source URL");
+    TEST_ASSERT(out.doc_end.seed_distance == mock_doc.seedDistance,
+                "Should preserve crawl seed distance");
+    TEST_ASSERT((out.doc_end.features.flags & kFeaturesPresent) != 0,
+                "Should mark that document features are present");
+    TEST_ASSERT((out.doc_end.features.flags & kHttps) != 0, "Should record https source URLs");
+    TEST_ASSERT(out.doc_end.features.raw_tld == "com", "Should persist the normalized raw TLD");
+    TEST_ASSERT(out.doc_end.features.query_param_count == 2, "Should count query parameters");
 
     std::cout << "test_normalization PASSED.\n";
 }

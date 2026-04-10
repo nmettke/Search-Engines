@@ -27,24 +27,24 @@ void setup_test_index() {
     mem_index.addToken({"cat", 0});
     mem_index.addToken({"dog", 1});
     mem_index.addToken({"bird", 2});
-    mem_index.finishDocument({3, "doc0", 3, 0, 0});
+    mem_index.finishDocument({3, "doc0", 3, 0, 0, 0, {}});
 
     // Doc 1: "cat fish bird"
     mem_index.addToken({"cat", 4});
     mem_index.addToken({"fish", 5});
     mem_index.addToken({"bird", 6});
-    mem_index.finishDocument({7, "doc1", 3, 0, 4});
+    mem_index.finishDocument({7, "doc1", 3, 0, 4, 0, {}});
 
     // Doc 2: "dog bird"
     mem_index.addToken({"dog", 8});
     mem_index.addToken({"bird", 9});
-    mem_index.finishDocument({10, "doc2", 2, 0, 8});
+    mem_index.finishDocument({10, "doc2", 2, 0, 8, 0, {}});
 
     // Doc 3: "cat dog fish"
     mem_index.addToken({"cat", 11});
     mem_index.addToken({"dog", 12});
     mem_index.addToken({"fish", 13});
-    mem_index.finishDocument({14, "doc3", 3, 0, 11});
+    mem_index.finishDocument({14, "doc3", 3, 0, 11, 0, {}});
 
     flushIndexChunk(mem_index, TEST_FILE);
 }

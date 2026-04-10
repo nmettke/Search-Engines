@@ -82,6 +82,8 @@ void *CrawlerWorkerThread(void *arg) {
             break;
 
         HtmlParser parsed(page.cstr(), page.size());
+        parsed.sourceUrl = item->link;
+        parsed.seedDistance = static_cast<uint8_t>(item->getSeedDistance());
         vector<string> discoveredLinks;
 
         // push to index queue

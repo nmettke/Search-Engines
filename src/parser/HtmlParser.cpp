@@ -54,6 +54,27 @@ static const char *englishStopWords[] = {"the",  "of", "and",  "to",   "in",  "i
                                          "be",   "at", "this", "from", "or",  "an"};
 static const size_t numStopWords = 20;
 
+AlphaStats HtmlParser::alphaStats() const {
+    size_t latinCount = 0;
+    size_t totalAlpha = 0;
+
+    countAlpha(words, latinCount, totalAlpha);
+    countAlpha(titleWords, latinCount, totalAlpha);
+
+    AlphaStats stats;
+    stats.latin_alpha_count = static_cast<uint32_t>(latinCount);
+    stats.total_alpha_count = static_cast<uint32_t>(totalAlpha);
+    return stats;
+}
+
+uint32_t HtmlParser::outgoingAnchorWordCount() const {
+    uint32_t total = 0;
+    for (const auto &link : links) {
+        total += static_cast<uint32_t>(link.anchorText.size());
+    }
+    return total;
+}
+
 bool HtmlParser::isEnglish(double threshold) const {
     // Tier 1: HTML lang attribute — most reliable, instant
     if (!htmlLang.empty()) {
@@ -80,10 +101,8 @@ bool HtmlParser::isEnglish(double threshold) const {
     }
 
     // Tier 3: Latin character percentage — fallback for pages with few words
-    size_t latinCount = 0, totalAlpha = 0;
-    countAlpha(words, latinCount, totalAlpha);
-    countAlpha(titleWords, latinCount, totalAlpha);
-    if (totalAlpha < 50)
+    AlphaStats stats = alphaStats();
+    if (stats.total_alpha_count < 50)
         return true;
-    return static_cast<double>(latinCount) / totalAlpha >= threshold;
+    return static_cast<double>(stats.latin_alpha_count) / stats.total_alpha_count >= threshold;
 }
