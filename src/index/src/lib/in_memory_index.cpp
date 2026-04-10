@@ -22,7 +22,7 @@ void InMemoryIndex::finishDocument(const DocEndOutput &doc_end) {
     addToken(TokenOutput{docEndToken, doc_end.location});
     _documents.push_back(DocumentRecord{doc_end.url, doc_end.doc_start_loc, doc_end.location,
                                         doc_end.word_count, doc_end.title_word_count,
-                                        doc_end.suffix_type, doc_end.path_depth,
-                                        doc_end.url_length, doc_end.seed_distance});
+                                        doc_end.suffix_type, doc_end.path_depth, doc_end.url_length,
+                                        doc_end.seed_distance});
     _terms_seen.clear();
 }
