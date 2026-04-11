@@ -100,6 +100,9 @@ class HtmlParser {
     bool sawCloseHtml = false;
     bool truncated = false;
 
+    // Language detection: extracted from <html lang="...">
+    ::string htmlLang;
+
     bool inDiscardSection() const { return !openSections.empty(); }
 
     // if the current position matches a specific closing tag -> return nullptr if not closing tag +
@@ -402,12 +405,15 @@ class HtmlParser {
             handleEmbed(tagEnd, close);
             break;
         case DesiredAction::Discard: {
-            // Track structural tags for broken HTML detection
             size_t tagLen = tagEnd - tagStart;
             if (tagLen == 4 && strncasecmp(tagStart, "body", 4) == 0 && !isClosing)
                 sawBodyTag = true;
-            if (tagLen == 4 && strncasecmp(tagStart, "html", 4) == 0 && isClosing)
-                sawCloseHtml = true;
+            if (tagLen == 4 && strncasecmp(tagStart, "html", 4) == 0) {
+                if (isClosing)
+                    sawCloseHtml = true;
+                else if (htmlLang.empty())
+                    htmlLang = extractAttribute(tagEnd, close, "lang");
+            }
             break;
         }
         default:

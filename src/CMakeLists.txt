@@ -55,9 +55,11 @@ add_library(crawler_lib
     crawler/FrontierItem.cpp
     crawler/frontier.cpp
     crawler/url_dedup.cpp
+    crawler/UrlFilter.cpp
     crawler/checkpoint.cpp
     crawler/RobotsTxt.cpp
     crawler/RobotsCache.cpp
+    crawler/DelayedQueue.cpp
 )
 
 target_include_directories(crawler_lib
@@ -141,3 +143,16 @@ target_link_libraries(search_engine
 )
 
 target_compile_features(search_engine PUBLIC cxx_std_17)
+
+add_executable(search_engine_distributed
+    main_distributed.cpp
+)
+
+target_link_libraries(search_engine_distributed
+    PRIVATE
+        crawler_lib
+        index_lib
+        Threads::Threads
+)
+
+target_compile_features(search_engine_distributed PUBLIC cxx_std_17)

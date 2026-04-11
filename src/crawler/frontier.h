@@ -25,6 +25,10 @@ class Frontier {
     void push(const string &url);
     void pushMany(const vector<string> &urls);
 
+    // Push items that were previously popped and then deferred because of crawl delay... these
+    // items pending count was never decremented, so this method must not increment it.
+    void pushDeferred(const vector<FrontierItem> &items);
+
     std::optional<FrontierItem> pop();
 
     void taskDone();
