@@ -80,8 +80,12 @@ size_t countQueryParams(const ::string &path) {
         return 0;
     }
 
-    size_t query_end = path.size();
     size_t fragment_pos = path.find('#');
+    if (fragment_pos != ::string::npos && fragment_pos < question_pos) {
+        return 0;
+    }
+
+    size_t query_end = path.size();
     if (fragment_pos != ::string::npos && fragment_pos > question_pos) {
         query_end = fragment_pos;
     }
