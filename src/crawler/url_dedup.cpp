@@ -46,6 +46,11 @@ UrlBloomFilter UrlBloomFilter::deserializeFromStream(FILE *f) {
 
 namespace {
 
+static const char *kAllowedTlds[] = {
+    "com", "org", "gov", "edu", "ca", "co.uk", "uk", "au", "net",
+};
+static constexpr std::size_t kAllowedTldCount = sizeof(kAllowedTlds) / sizeof(kAllowedTlds[0]);
+
 string trim(const string &input) {
     std::size_t first = 0;
     while (first < input.size() && std::isspace(static_cast<unsigned char>(input[first]))) {
@@ -65,6 +70,91 @@ string toLower(string value) {
         ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     }
     return value;
+}
+
+bool hostHasAllowedTld(const string &host) {
+    if (host.empty()) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < kAllowedTldCount; ++i) {
+        const char *tld = kAllowedTlds[i];
+        std::size_t tldLen = std::strlen(tld);
+
+        if (host.size() < tldLen) {
+            continue;
+        }
+
+        std::size_t suffixStart = host.size() - tldLen;
+        bool suffixMatches = true;
+        for (std::size_t j = 0; j < tldLen; ++j) {
+            if (host[suffixStart + j] != tld[j]) {
+                suffixMatches = false;
+                break;
+            }
+        }
+
+        if (!suffixMatches) {
+            continue;
+        }
+
+        if (host.size() == tldLen) {
+            return true;
+        }
+
+        if (host[suffixStart - 1] == '.') {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool hasAllowedTld(const string &normalizedUrl) {
+    std::size_t schemePos = normalizedUrl.find("://");
+    if (schemePos == string::npos) {
+        return false;
+    }
+
+    string rest = normalizedUrl.substr(schemePos + 3);
+    if (rest.empty()) {
+        return false;
+    }
+
+    std::size_t hostEnd = rest.find_first_of("/?");
+    string hostPort = hostEnd == string::npos ? rest : rest.substr(0, hostEnd);
+    if (hostPort.empty()) {
+        return false;
+    }
+
+    // Strip optional userinfo (user:pass@host).
+    std::size_t atPos = hostPort.find('@');
+    if (atPos != string::npos) {
+        hostPort = hostPort.substr(atPos + 1);
+    }
+
+    if (hostPort.empty()) {
+        return false;
+    }
+
+    // Exclude IPv6 literals and host:port forms that do not end in the allowed TLDs.
+    if (hostPort[0] == '[') {
+        return false;
+    }
+
+    std::size_t colonPos = string::npos;
+    for (std::size_t i = 0; i < hostPort.size(); ++i) {
+        if (hostPort[i] == ':') {
+            colonPos = i;
+        }
+    }
+    string host = colonPos == string::npos ? hostPort : hostPort.substr(0, colonPos);
+
+    while (!host.empty() && host[host.size() - 1] == '.') {
+        host.pop_back();
+    }
+
+    return hostHasAllowedTld(host);
 }
 
 } // namespace
@@ -207,6 +297,9 @@ bool UrlBloomFilter::checkAndInsert(const string &key) {
 bool shouldEnqueueUrl(const string &rawUrl, UrlBloomFilter &bloom, string &canonicalOut) {
     string normalizeOut = normalizeUrl(rawUrl);
     if (normalizeOut.empty()) {
+        return false;
+    }
+    if (!hasAllowedTld(normalizeOut)) {
         return false;
     }
     canonicalOut = normalizeOut;
