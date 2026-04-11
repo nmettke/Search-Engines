@@ -90,7 +90,7 @@ void test_reject_old_version() {
     int fd = open(test_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     TEST_ASSERT(fd >= 0, "Should create bad-version chunk");
 
-    FileHeader header;
+    FileHeader header{};
     header.version = 3;
     ssize_t written = write(fd, &header, sizeof(FileHeader));
     TEST_ASSERT(written == static_cast<ssize_t>(sizeof(FileHeader)),
