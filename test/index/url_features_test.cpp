@@ -23,3 +23,9 @@ TEST(UrlParseTest, DetectsHttpsPrefixWithoutAllocation) {
     EXPECT_FALSE(urlHasHttps("http://example.com"));
     EXPECT_FALSE(urlHasHttps("https:/broken"));
 }
+
+TEST(UrlParseTest, QueryParamCountIgnoresEmptySegments) {
+    EXPECT_EQ(urlQueryParamCount(parseUrl("https://example.com/path?")), 0u);
+    EXPECT_EQ(urlQueryParamCount(parseUrl("https://example.com/path?&x=1&&y=2&")), 2u);
+    EXPECT_EQ(urlQueryParamCount(parseUrl("https://example.com/path?x=1#frag&y=2")), 1u);
+}

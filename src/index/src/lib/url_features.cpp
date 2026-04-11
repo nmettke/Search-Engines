@@ -80,10 +80,20 @@ size_t countQueryParams(const ::string &path) {
         return 0;
     }
 
-    size_t param_count = 1;
-    for (size_t i = question_pos + 1; i < path.size(); ++i) {
-        if (path[i] == '&') {
-            ++param_count;
+    size_t query_end = path.size();
+    size_t fragment_pos = path.find('#');
+    if (fragment_pos != ::string::npos && fragment_pos > question_pos) {
+        query_end = fragment_pos;
+    }
+
+    size_t param_count = 0;
+    size_t segment_start = question_pos + 1;
+    for (size_t i = question_pos + 1; i <= query_end; ++i) {
+        if (i == query_end || path[i] == '&') {
+            if (i > segment_start) {
+                ++param_count;
+            }
+            segment_start = i + 1;
         }
     }
     return param_count;

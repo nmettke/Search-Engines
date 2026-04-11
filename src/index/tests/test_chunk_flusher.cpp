@@ -31,8 +31,6 @@ static DocumentFeatures makeFeatures(uint32_t seed) {
     features.query_param_count = seed;
     features.numeric_path_char_count = 1 + seed;
     features.domain_hyphen_count = seed;
-    features.latin_alpha_count = 8 + seed;
-    features.total_alpha_count = 9 + seed;
     features.outgoing_link_count = 2 + seed;
     features.outgoing_anchor_word_count = 3 + seed;
     features.raw_tld = seed == 0 ? "com" : "edu";

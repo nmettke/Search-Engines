@@ -26,8 +26,6 @@ static DocumentFeatures makeFeatures(uint32_t seed) {
     features.query_param_count = seed;
     features.numeric_path_char_count = 2 + seed;
     features.domain_hyphen_count = seed;
-    features.latin_alpha_count = 9 + seed;
-    features.total_alpha_count = 12 + seed;
     features.outgoing_link_count = 3 + seed;
     features.outgoing_anchor_word_count = 4 + seed;
     features.raw_tld = seed == 0 ? "com" : "edu";
@@ -48,10 +46,6 @@ static void assertFeaturesEqual(const DocumentFeatures &actual, const DocumentFe
                 "Numeric path chars should round-trip");
     TEST_ASSERT(actual.domain_hyphen_count == expected.domain_hyphen_count,
                 "Domain hyphen count should round-trip");
-    TEST_ASSERT(actual.latin_alpha_count == expected.latin_alpha_count,
-                "Latin alpha count should round-trip");
-    TEST_ASSERT(actual.total_alpha_count == expected.total_alpha_count,
-                "Total alpha count should round-trip");
     TEST_ASSERT(actual.outgoing_link_count == expected.outgoing_link_count,
                 "Outgoing link count should round-trip");
     TEST_ASSERT(actual.outgoing_anchor_word_count == expected.outgoing_anchor_word_count,
@@ -97,7 +91,7 @@ void test_reject_old_version() {
     TEST_ASSERT(fd >= 0, "Should create bad-version chunk");
 
     FileHeader header;
-    header.version = 2;
+    header.version = 3;
     ssize_t written = write(fd, &header, sizeof(FileHeader));
     TEST_ASSERT(written == static_cast<ssize_t>(sizeof(FileHeader)),
                 "Should write the header bytes");

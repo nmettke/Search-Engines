@@ -32,17 +32,6 @@ TEST(DocumentFeaturesTest, UrlStructureFieldsAreExtracted) {
     EXPECT_EQ(features.domain_hyphen_count, 1u);
 }
 
-TEST(DocumentFeaturesTest, AlphaCountsIncludeTitleAndBody) {
-    HtmlParser doc;
-    doc.words = {"Alpha"};
-    doc.titleWords = {u8"東京"};
-
-    DocumentFeatures features = extractDocumentFeatures(doc);
-
-    EXPECT_EQ(features.latin_alpha_count, 5u);
-    EXPECT_EQ(features.total_alpha_count, 7u);
-}
-
 TEST(DocumentFeaturesTest, OutgoingCountsUseLinksAndAnchorText) {
     HtmlParser doc;
 

@@ -27,8 +27,6 @@ static DocumentFeatures makeFeatures(uint32_t seed) {
     features.query_param_count = 1 + seed;
     features.numeric_path_char_count = 3 + seed;
     features.domain_hyphen_count = seed;
-    features.latin_alpha_count = 10 + seed;
-    features.total_alpha_count = 12 + seed;
     features.outgoing_link_count = 2 + seed;
     features.outgoing_anchor_word_count = 4 + seed;
     features.raw_tld = "com";
@@ -114,14 +112,14 @@ void test_write_document_table() {
     struct stat st;
     TEST_ASSERT(stat(test_file, &st) == 0, "File should exist");
 
-    TEST_ASSERT(sizeof(DocumentFeaturesDisk) == 48, "Feature block should be 48 bytes");
-    TEST_ASSERT(sizeof(DocumentRecordDisk) == 63, "Document record should be 63 bytes packed");
+    TEST_ASSERT(sizeof(DocumentFeaturesDisk) == 40, "Feature block should be 40 bytes");
+    TEST_ASSERT(sizeof(DocumentRecordDisk) == 55, "Document record should be 55 bytes packed");
 
     // Header: 4 bytes (num_documents)
     // Offsets array: 2 docs * 8 bytes each = 16 bytes
-    // Each doc: 2 (url_len) + 24 (url bytes) + 2 (tld_len) + 3 (tld bytes) + 63 bytes = 94 bytes
-    // Total expected: 4 + 16 + 94 + 94 = 208 bytes
-    TEST_ASSERT(st.st_size == 208,
+    // Each doc: 2 (url_len) + 24 (url bytes) + 2 (tld_len) + 3 (tld bytes) + 55 bytes = 86 bytes
+    // Total expected: 4 + 16 + 86 + 86 = 192 bytes
+    TEST_ASSERT(st.st_size == 192,
                 "Document table size should include the raw TLD and feature block");
 
     unlink(test_file);

@@ -29,8 +29,6 @@ struct DocumentFeatures {
     uint32_t query_param_count = 0;
     uint32_t numeric_path_char_count = 0;
     uint32_t domain_hyphen_count = 0;
-    uint32_t latin_alpha_count = 0;
-    uint32_t total_alpha_count = 0;
     uint32_t outgoing_link_count = 0;
     uint32_t outgoing_anchor_word_count = 0;
     ::string raw_tld;
@@ -45,8 +43,6 @@ struct __attribute__((packed)) DocumentFeaturesDisk {
     uint32_t query_param_count = 0;
     uint32_t numeric_path_char_count = 0;
     uint32_t domain_hyphen_count = 0;
-    uint32_t latin_alpha_count = 0;
-    uint32_t total_alpha_count = 0;
     uint32_t outgoing_link_count = 0;
     uint32_t outgoing_anchor_word_count = 0;
 };

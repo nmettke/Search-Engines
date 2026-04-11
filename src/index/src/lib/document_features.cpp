@@ -4,7 +4,6 @@
 DocumentFeatures extractDocumentFeatures(const HtmlParser &doc) {
     const ::string &document_url = doc.documentUrl();
     ParsedUrl parsed = parseUrl(document_url);
-    AlphaStats alpha = doc.alphaStats();
 
     DocumentFeatures features;
     features.flags = kFeaturesPresent;
@@ -31,8 +30,6 @@ DocumentFeatures extractDocumentFeatures(const HtmlParser &doc) {
     features.query_param_count = urlQueryParamCount(parsed);
     features.numeric_path_char_count = urlNumericPathCharCount(parsed);
     features.domain_hyphen_count = urlDomainHyphenCount(parsed);
-    features.latin_alpha_count = alpha.latin_alpha_count;
-    features.total_alpha_count = alpha.total_alpha_count;
     features.outgoing_link_count = static_cast<uint32_t>(doc.links.size());
     features.outgoing_anchor_word_count = doc.outgoingAnchorWordCount();
     features.raw_tld = parsed.tld;

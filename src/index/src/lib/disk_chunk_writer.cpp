@@ -89,8 +89,6 @@ uint64_t DiskChunkWriter::writeDocumentTable(const ::vector<DocumentRecord> &doc
         disk_record.features.query_param_count = doc.features.query_param_count;
         disk_record.features.numeric_path_char_count = doc.features.numeric_path_char_count;
         disk_record.features.domain_hyphen_count = doc.features.domain_hyphen_count;
-        disk_record.features.latin_alpha_count = doc.features.latin_alpha_count;
-        disk_record.features.total_alpha_count = doc.features.total_alpha_count;
         disk_record.features.outgoing_link_count = doc.features.outgoing_link_count;
         disk_record.features.outgoing_anchor_word_count = doc.features.outgoing_anchor_word_count;
 

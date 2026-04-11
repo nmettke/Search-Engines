@@ -143,8 +143,6 @@ std::optional<DocumentRecord> DiskChunkReader::getDocument(uint32_t doc_id) cons
     doc.features.query_param_count = disk_rec->features.query_param_count;
     doc.features.numeric_path_char_count = disk_rec->features.numeric_path_char_count;
     doc.features.domain_hyphen_count = disk_rec->features.domain_hyphen_count;
-    doc.features.latin_alpha_count = disk_rec->features.latin_alpha_count;
-    doc.features.total_alpha_count = disk_rec->features.total_alpha_count;
     doc.features.outgoing_link_count = disk_rec->features.outgoing_link_count;
     doc.features.outgoing_anchor_word_count = disk_rec->features.outgoing_anchor_word_count;
     doc.features.raw_tld = ::string(raw_tld_view);
@@ -182,8 +180,6 @@ std::optional<DocumentRecord> DiskChunkReader::getDocumentByLocation(uint32_t lo
             doc.features.query_param_count = disk_rec->features.query_param_count;
             doc.features.numeric_path_char_count = disk_rec->features.numeric_path_char_count;
             doc.features.domain_hyphen_count = disk_rec->features.domain_hyphen_count;
-            doc.features.latin_alpha_count = disk_rec->features.latin_alpha_count;
-            doc.features.total_alpha_count = disk_rec->features.total_alpha_count;
             doc.features.outgoing_link_count = disk_rec->features.outgoing_link_count;
             doc.features.outgoing_anchor_word_count = disk_rec->features.outgoing_anchor_word_count;
             doc.features.raw_tld = ::string(raw_tld_view);
