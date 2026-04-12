@@ -1,5 +1,6 @@
 // Main file, should combine Crawler and Index for the distributed design.
 
+#include "./crawler/DelayedQueue.h"
 #include "./crawler/RobotsCache.h"
 #include "./crawler/UrlFilter.h"
 #include "./crawler/checkpoint.h"
@@ -35,6 +36,7 @@
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <thread>
+#include <time.h>
 #include <unistd.h>
 
 std::atomic<bool> shouldStop{false};
@@ -83,7 +85,15 @@ Checkpoint *checkpoint = nullptr;
 std::atomic<size_t> urlsCrawled{0};
 UrlBloomFilter bloom(1000000, 0.0001);
 UrlFilter urlFilter;
+RobotsCache *robotsCache = nullptr;
+DelayedQueue *delayedQueue = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
+
+static int64_t nowMillis() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
 size_t anchorFlushIntervalSeconds = 30;
 
 static bool shouldOwnUrl(const string &normalizedUrl) {
@@ -223,8 +233,26 @@ void *CrawlerWorkerThread(void *) {
 
         struct TaskCompletionGuard {
             Frontier &frontier;
-            ~TaskCompletionGuard() { frontier.taskDone(); }
+            bool active = true;
+            ~TaskCompletionGuard() {
+                if (active)
+                    frontier.taskDone();
+            }
+            void dismiss() { active = false; }
         } taskCompletionGuard{*f};
+
+        RobotCheckResult check = robotsCache->checkAndReserve(item->link);
+
+        if (check.status == RobotCheckStatus::DISALLOWED) {
+            std::cerr << "Blocked by robots.txt: " << item->link << '\n';
+            continue;
+        }
+
+        if (check.status == RobotCheckStatus::DELAYED) {
+            delayedQueue->push(*item, check.readyAtMs);
+            taskCompletionGuard.dismiss();
+            continue;
+        }
 
         string page = readURL(item->link);
         if (shouldStop) {
@@ -278,6 +306,19 @@ void *CrawlerWorkerThread(void *) {
         }
     }
 
+    return nullptr;
+}
+
+void *DelayedQueueThread(void *) {
+    while (!shouldStop) {
+        sleep(1);
+        if (shouldStop)
+            break;
+        vector<FrontierItem> ready = delayedQueue->drainReady(nowMillis());
+        if (ready.size() > 0) {
+            f->pushDeferred(ready);
+        }
+    }
     return nullptr;
 }
 
@@ -707,9 +748,11 @@ int main() {
     cpConfig.directory = "src/crawler";
     checkpoint = new Checkpoint(cpConfig);
     q = new IndexQueue();
+    robotsCache = new RobotsCache();
+    delayedQueue = new DelayedQueue();
     anchorIndex = new HashTable<string, AnchorPosting>(anchorKeyEqual, anchorKeyHash);
 
-    peer_address = {"test 1", "test 2", "test 3"};
+    peer_address = {""};
     machine_id = parseEnv("SEARCH_MACHINE_ID", 0);
     numLinkThreshold = parseEnv("SEARCH_BATCH_THRESHOLD", numLinkThreshold.load());
     anchorFlushIntervalSeconds = parseEnv("SEARCH_ANCHOR_FLUSH_SECS", anchorFlushIntervalSeconds);
@@ -783,6 +826,7 @@ int main() {
 
     pthread_t senderThread{};
     pthread_t receiverThread{};
+    pthread_t dqThread{};
     // pthread_t anchorThread{};
     bool senderStarted = false;
     bool receiverStarted = false;
@@ -794,6 +838,8 @@ int main() {
     for (size_t i = 0; i < indexThreadCount; ++i) {
         pthread_create(&indexThreads[i], nullptr, IndexWorkerThread, nullptr);
     }
+
+    pthread_create(&dqThread, nullptr, DelayedQueueThread, nullptr);
 
     if (peer_address.size() > 1) {
         // start network threads only if we have multi-machine
@@ -825,6 +871,7 @@ int main() {
         pthread_join(receiverThread, nullptr);
     }
 
+    pthread_join(dqThread, nullptr);
     // pthread_join(anchorThread, nullptr);
 
     checkpoint->save(*f, bloom, urlsCrawled.load());
@@ -837,6 +884,8 @@ int main() {
     }
 
     delete anchorIndex;
+    delete robotsCache;
+    delete delayedQueue;
     delete f;
     delete q;
     delete checkpoint;
