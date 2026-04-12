@@ -87,6 +87,12 @@ class HtmlParser {
     ::vector<Link> links;
     ::string base;
 
+    // Static ranking signals — set by crawler before pushing to index queue
+    uint8_t suffixType = 0; // 0=OTHER,1=COM,2=EDU,3=GOV,4=ORG,5=NET
+    uint8_t pathDepth = 0;
+    uint16_t urlLength = 0;
+    uint8_t seedDistance = 0;
+
   private:
     // discard section tags
     std::stack<::string> openSections;

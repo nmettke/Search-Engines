@@ -79,6 +79,10 @@ uint64_t DiskChunkWriter::writeDocumentTable(const ::vector<DocumentRecord> &doc
         disk_record.end_location = doc.end_location;
         disk_record.word_count = doc.word_count;
         disk_record.title_word_count = doc.title_word_count;
+        disk_record.suffix_type = doc.suffix_type;
+        disk_record.path_depth = doc.path_depth;
+        disk_record.url_length = doc.url_length;
+        disk_record.seed_distance = doc.seed_distance;
 
         writer.writePOD(disk_record);
     }

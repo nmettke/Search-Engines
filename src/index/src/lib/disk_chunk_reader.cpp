@@ -133,6 +133,10 @@ std::optional<DocumentRecord> DiskChunkReader::getDocument(uint32_t doc_id) cons
     doc.end_location = disk_rec->end_location;
     doc.word_count = disk_rec->word_count;
     doc.title_word_count = disk_rec->title_word_count;
+    doc.suffix_type = disk_rec->suffix_type;
+    doc.path_depth = disk_rec->path_depth;
+    doc.url_length = disk_rec->url_length;
+    doc.seed_distance = disk_rec->seed_distance;
 
     return doc;
 }
@@ -157,6 +161,10 @@ std::optional<DocumentRecord> DiskChunkReader::getDocumentByLocation(uint32_t lo
             doc.end_location = disk_rec->end_location;
             doc.word_count = disk_rec->word_count;
             doc.title_word_count = disk_rec->title_word_count;
+            doc.suffix_type = disk_rec->suffix_type;
+            doc.path_depth = disk_rec->path_depth;
+            doc.url_length = disk_rec->url_length;
+            doc.seed_distance = disk_rec->seed_distance;
             return doc;
         }
     }

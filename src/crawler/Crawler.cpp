@@ -64,6 +64,10 @@ void *WorkerThread(void *arg) {
             break;
 
         HtmlParser parsed(page.cstr(), page.size());
+        parsed.suffixType = static_cast<uint8_t>(item->getSuffix());
+        parsed.pathDepth = static_cast<uint8_t>(item->getPathDepth());
+        parsed.urlLength = static_cast<uint16_t>(item->link.size());
+        parsed.seedDistance = static_cast<uint8_t>(item->getSeedDistance());
 
         if (parsed.isBroken() || !parsed.isEnglish()) {
             continue;

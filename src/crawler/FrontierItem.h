@@ -18,6 +18,10 @@ class FrontierItem {
 
     double getScore() const;
 
+    Suffix getSuffix() const { return suffix; }
+    size_t getPathDepth() const { return pathDepth; }
+    size_t getSeedDistance() const { return seedDistance; }
+
     string link;
 
   private:
