@@ -39,6 +39,24 @@ TEST(UrlDedupShouldEnqueueTest, RejectsInvalidUrls) {
     EXPECT_FALSE(shouldEnqueueUrl("   ", bloom, canonical));
 }
 
+TEST(UrlDedupShouldEnqueueTest, EnforcesAllowedTlds) {
+    UrlBloomFilter bloom(1000, 0.01);
+    string canonical;
+
+    EXPECT_TRUE(shouldEnqueueUrl("https://example.com/path", bloom, canonical));
+    EXPECT_TRUE(shouldEnqueueUrl("https://service.gov/info", bloom, canonical));
+    EXPECT_TRUE(shouldEnqueueUrl("https://uni.edu", bloom, canonical));
+    EXPECT_TRUE(shouldEnqueueUrl("https://news.ca/article", bloom, canonical));
+    EXPECT_TRUE(shouldEnqueueUrl("https://city.co.uk/home", bloom, canonical));
+    EXPECT_TRUE(shouldEnqueueUrl("https://example.uk", bloom, canonical));
+    EXPECT_TRUE(shouldEnqueueUrl("https://site.au", bloom, canonical));
+    EXPECT_TRUE(shouldEnqueueUrl("https://mirror.net/file", bloom, canonical));
+
+    EXPECT_FALSE(shouldEnqueueUrl("https://example.io/path", bloom, canonical));
+    EXPECT_FALSE(shouldEnqueueUrl("https://example.dev/path", bloom, canonical));
+    EXPECT_FALSE(shouldEnqueueUrl("https://example.xyz/path", bloom, canonical));
+}
+
 TEST(UrlDedupBloomFilterTest, ContainsAfterInsert) {
     UrlBloomFilter bloom(1000, 0.01);
     string canonical;
