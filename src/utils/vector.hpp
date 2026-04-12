@@ -386,6 +386,27 @@ template <typename T> class vector {
 
     bool empty() const { return size_ == 0; }
 
+    void resize(size_t newSize) {
+        if (newSize < size_) {
+            destroyRange(data_ + newSize, data_ + size_);
+            size_ = newSize;
+        } else if (newSize > size_) {
+            if (newSize > capacity_) {
+                reserve(newSize);
+            }
+            T *p = data_ + size_;
+            T *e = data_ + newSize;
+            for (; p != e; ++p) {
+                new (p) T();
+            }
+            size_ = newSize;
+        }
+    }
+
+    T back() { return data_[size_ - 1]; }
+
+    T back() const { return data_[size_ - 1]; }
+
   private:
     T *data_;
     size_t size_;
