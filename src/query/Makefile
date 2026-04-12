@@ -52,6 +52,7 @@ lint:
 
 clean:
 	rm -f dummy_index worker_node broker_server
+	rm -rf chunk1 chunk2
 	rm -f *.idx
 
 # ─── Help ──────────────────────────────────────────────────

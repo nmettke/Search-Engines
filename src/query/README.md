@@ -8,7 +8,7 @@ make create_dummy_index
 ```
 make worker_node
 
-./worker_node <port> <index_file>
+./worker_node <port> <index_dir>
 ```
 
 ```
@@ -34,8 +34,8 @@ make broker_server
 
 2. Run two worker in separate terminal
 ```
-./worker_node 8081 chunk_0001.idx
-./worker_node 8082 chunk_0002.idx
+./worker_node 8081 chunk1
+./worker_node 8082 chunk2
 ```
 
 3. Start broker server
@@ -47,4 +47,6 @@ make broker_server
 
 
 ## TODOs
-- Change worker to handle a directory of files, not one (Every worker should manage two sets of files: body_chunks/ and anchor_chunks/)
+- Implement two-tier searching (Every worker should search anchor_chunks/ first then search body_chunks/).
+- load the config using config files.
+- implement ranking.
