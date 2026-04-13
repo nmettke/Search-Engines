@@ -9,6 +9,7 @@
 #include <cstdio>
 
 ::string normalizeUrl(const ::string &rawUrl);
+::string resolveUrl(const ::string &baseUrl, const ::string &rawHref);
 
 class UrlBloomFilter {
   public:

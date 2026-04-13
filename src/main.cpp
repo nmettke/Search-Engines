@@ -86,29 +86,31 @@ void *CrawlerWorkerThread(void *arg) {
         parsed.seedDistance = static_cast<uint8_t>(item->getSeedDistance());
         vector<string> discoveredLinks;
 
-        // push to index queue
-        q->push(parsed);
-
         for (const Link &link : parsed.links) {
-            if (link.URL.find("http") != link.URL.npos) {
-                size_t hashto = hashString(link.URL.cstr()) % num_machine;
-                if (hashto != machine_id.load()) {
-                    batch_lock.lock();
-                    batches[hashto].pushBack(link);
+            string resolved = resolveUrl(parsed.documentUrl(), link.URL);
+            if (resolved.empty()) continue;
+            if (resolved.find("http") == resolved.npos) continue;
 
-                    if (batches[hashto].size() >= numLinkThreshold.load()) {
-                        batch_cv.notify_one();
-                    }
+            size_t hashto = hashString(resolved.cstr()) % num_machine;
+            if (hashto != machine_id.load()) {
+                batch_lock.lock();
+                batches[hashto].pushBack(Link(resolved));
 
-                    batch_lock.unlock();
-                    continue;
+                if (batches[hashto].size() >= numLinkThreshold.load()) {
+                    batch_cv.notify_one();
                 }
-                string canonical;
-                if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
-                    discoveredLinks.pushBack(canonical);
-                }
+
+                batch_lock.unlock();
+                continue;
+            }
+            string canonical;
+            if (shouldEnqueueUrl(resolved, bloom, canonical)) {
+                discoveredLinks.pushBack(canonical);
             }
         }
+
+        // push to index queue after link extraction to avoid corrupting parsed.links
+        q->push(parsed);
 
         f->pushMany(discoveredLinks);
         ++urlsCrawled;

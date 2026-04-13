@@ -263,11 +263,12 @@ void *CrawlerWorkerThread(void *) {
         parsed.sourceUrl = item->link;
         parsed.seedDistance = static_cast<uint8_t>(item->getSeedDistance());
         appendAnchorTerms(item->link, parsed.titleWords, true);
-        q->push(parsed);
 
         vector<string> discoveredLinks;
         for (const Link &link : parsed.links) {
-            string normalizedOut = normalizeUrl(link.URL);
+            string resolved = resolveUrl(parsed.documentUrl(), link.URL);
+            if (resolved.empty()) continue;
+            string normalizedOut = normalizeUrl(resolved);
             if (normalizedOut.empty() || !urlFilter.isAllowed(normalizedOut)) {
                 continue;
             }
@@ -294,6 +295,9 @@ void *CrawlerWorkerThread(void *) {
                 discoveredLinks.pushBack(normalizedOut);
             }
         }
+
+        // push to index queue after link extraction to avoid corrupting parsed.links
+        q->push(parsed);
 
         f->pushMany(discoveredLinks);
         ++urlsCrawled;

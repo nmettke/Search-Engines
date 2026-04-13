@@ -159,6 +159,83 @@ bool hasAllowedTld(const string &normalizedUrl) {
 
 } // namespace
 
+string resolveUrl(const string &baseUrl, const string &rawHref) {
+    string href = trim(rawHref);
+    if (href.empty()) {
+        return "";
+    }
+
+    // Already absolute
+    if (href.find("://") != string::npos) {
+        return href;
+    }
+
+    // Skip junk schemes
+    if (href.size() >= 11 && strncasecmp(href.cstr(), "javascript:", 11) == 0) {
+        return "";
+    }
+    if (href.size() >= 7 && strncasecmp(href.cstr(), "mailto:", 7) == 0) {
+        return "";
+    }
+    if (href.size() >= 5 && strncasecmp(href.cstr(), "data:", 5) == 0) {
+        return "";
+    }
+
+    // Fragment-only
+    if (href[0] == '#') {
+        return "";
+    }
+
+    // Parse base URL to extract scheme, host, path
+    string base = trim(baseUrl);
+    std::size_t schemeEnd = base.find("://");
+    if (schemeEnd == string::npos) {
+        return "";
+    }
+    string scheme = base.substr(0, schemeEnd);
+    string rest = base.substr(schemeEnd + 3);
+
+    std::size_t hostEnd = rest.find('/');
+    string host = hostEnd == string::npos ? rest : rest.substr(0, hostEnd);
+    string basePath = hostEnd == string::npos ? "/" : rest.substr(hostEnd);
+
+    if (host.empty()) {
+        return "";
+    }
+
+    // Protocol-relative: //host/path
+    if (href.size() >= 2 && href[0] == '/' && href[1] == '/') {
+        return scheme + ":" + href;
+    }
+
+    // Absolute path: /path
+    if (href[0] == '/') {
+        return scheme + "://" + host + href;
+    }
+
+    // Query-only: ?key=val
+    if (href[0] == '?') {
+        // Strip query/fragment from basePath
+        std::size_t qPos = basePath.find('?');
+        if (qPos != string::npos) {
+            basePath = basePath.substr(0, qPos);
+        }
+        std::size_t fPos = basePath.find('#');
+        if (fPos != string::npos) {
+            basePath = basePath.substr(0, fPos);
+        }
+        return scheme + "://" + host + basePath + href;
+    }
+
+    // Relative path: append to directory of base
+    std::size_t lastSlash = string::npos;
+    for (std::size_t i = 0; i < basePath.size(); ++i) {
+        if (basePath[i] == '/') lastSlash = i;
+    }
+    string dir = lastSlash != string::npos ? basePath.substr(0, lastSlash + 1) : "/";
+    return scheme + "://" + host + dir + href;
+}
+
 string normalizeUrl(const string &rawUrl) {
     string cleaned = trim(rawUrl);
     if (cleaned.empty()) {
