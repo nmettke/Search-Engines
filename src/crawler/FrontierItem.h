@@ -12,9 +12,7 @@ class FrontierItem {
     string serializeToLine() const;
     static FrontierItem deserializeFromLine(const string &line);
 
-    void markBroken();
     void markFailed();
-    void markNonEnglish();
 
     double getScore() const;
 
@@ -26,7 +24,7 @@ class FrontierItem {
 
   private:
     FrontierItem(const string &link, Suffix suffix, size_t baseLength, size_t seedDistance,
-                 size_t pathDepth, bool failed, bool broken, bool english);
+                 size_t pathDepth, bool failed);
 
     Suffix suffix = Suffix::OTHER;
     size_t baseLength = 0;
@@ -34,8 +32,6 @@ class FrontierItem {
     size_t pathDepth = 0;
 
     bool failed = false;
-    bool broken = false;
-    bool english = true;
 
     void parseURL(const string &url);
 };

@@ -32,6 +32,37 @@ bool UrlFilter::isAllowed(const string &url) const {
     if (!hasCrawlableExtension(url))
         return false;
 
+    // Reject heavily percent-encoded URLs before host policy checks.
+    static constexpr size_t kMaxPercentSigns = 8;
+    static constexpr size_t kMinTailLengthForDensity = 24;
+    static constexpr double kMaxPercentDensity = 0.10;
+
+    size_t schemeEnd = url.find("://");
+    if (schemeEnd != string::npos) {
+        string rest = url.substr(schemeEnd + 3);
+        size_t hostEnd = rest.find_first_of("/?");
+        if (hostEnd != string::npos) {
+            string tail = rest.substr(hostEnd);
+            size_t percentCount = 0;
+            for (size_t i = 0; i < tail.size(); ++i) {
+                if (tail[i] == '%') {
+                    ++percentCount;
+                }
+            }
+
+            if (percentCount > kMaxPercentSigns) {
+                if (tail.size() < kMinTailLengthForDensity) {
+                    return false;
+                }
+                double density =
+                    static_cast<double>(percentCount) / static_cast<double>(tail.size());
+                if (density > kMaxPercentDensity) {
+                    return false;
+                }
+            }
+        }
+    }
+
     string host = extractHost(url);
     if (host.empty())
         return true;
