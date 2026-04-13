@@ -39,36 +39,52 @@ bool splitHostPort(const std::string &peer, std::string &host, std::string &port
 int connectToPeer(const std::string &peer) {
     std::string host, port, err;
     if (!splitHostPort(peer, host, port, err)) {
-        std::cerr << "Invalid peer address: " << peer << " — " << err << '\n';
+        std::cerr << "[send] invalid peer address: " << peer << " — " << err << '\n';
         return -1;
     }
+    std::cerr << "[send] parsed peer: host=\"" << host << "\" port=\"" << port << "\"\n";
 
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
+    std::cerr << "[send] resolving " << host << ":" << port << " (getaddrinfo)...\n" << std::flush;
     addrinfo *result = nullptr;
-    if (getaddrinfo(host.c_str(), port.c_str(), &hints, &result) != 0) {
-        std::cerr << "Failed to resolve peer " << peer << '\n';
+    int gai = getaddrinfo(host.c_str(), port.c_str(), &hints, &result);
+    if (gai != 0) {
+        std::cerr << "[send] getaddrinfo failed for " << peer << ": " << gai_strerror(gai) << '\n';
         return -1;
     }
+    std::cerr << "[send] resolve ok\n";
 
     int socketFd = -1;
+    int attempt = 0;
     for (addrinfo *rp = result; rp != nullptr; rp = rp->ai_next) {
+        attempt++;
+        const char *fam = (rp->ai_family == AF_INET)     ? "IPv4"
+                          : (rp->ai_family == AF_INET6) ? "IPv6"
+                                                        : "other";
+        std::cerr << "[send] trying endpoint #" << attempt << " (" << fam << "): socket()...\n"
+                  << std::flush;
         socketFd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (socketFd < 0) {
+            std::cerr << "[send] socket() failed: " << std::strerror(errno) << '\n';
             continue;
         }
+        std::cerr << "[send] connect() to " << peer << " (blocks until success/refused/timeout)...\n"
+                  << std::flush;
         if (connect(socketFd, rp->ai_addr, rp->ai_addrlen) == 0) {
+            std::cerr << "[send] TCP connected, fd=" << socketFd << '\n';
             break;
         }
+        std::cerr << "[send] connect() failed on this endpoint: " << std::strerror(errno) << '\n';
         close(socketFd);
         socketFd = -1;
     }
     freeaddrinfo(result);
 
     if (socketFd < 0) {
-        std::cerr << "Failed to connect to peer " << peer << '\n';
+        std::cerr << "[send] giving up: no working route to peer " << peer << '\n';
     }
     return socketFd;
 }
@@ -76,52 +92,90 @@ int connectToPeer(const std::string &peer) {
 int openListeningSocket(const std::string &selfPeer) {
     std::string host, port, err;
     if (!splitHostPort(selfPeer, host, port, err)) {
-        std::cerr << "Invalid listen address: " << selfPeer << " — " << err << '\n';
+        std::cerr << "[listen] invalid bind address: " << selfPeer << " — " << err << '\n';
         return -1;
     }
+    std::cerr << "[listen] bind address: host=\"" << (host.empty() ? "(any)" : host) << "\" port=\""
+              << port << "\"\n";
 
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
+    std::cerr << "[listen] resolving bind target (getaddrinfo, AI_PASSIVE)...\n" << std::flush;
     addrinfo *result = nullptr;
-    if (getaddrinfo(host.empty() ? nullptr : host.c_str(), port.c_str(), &hints, &result) != 0) {
-        std::cerr << "Failed to resolve listen address " << selfPeer << '\n';
+    int gai = getaddrinfo(host.empty() ? nullptr : host.c_str(), port.c_str(), &hints, &result);
+    if (gai != 0) {
+        std::cerr << "[listen] getaddrinfo failed for " << selfPeer << ": " << gai_strerror(gai)
+                  << '\n';
         return -1;
     }
+    std::cerr << "[listen] resolve ok, trying bind()+listen()...\n" << std::flush;
 
     int listenFd = -1;
+    int attempt = 0;
     for (addrinfo *rp = result; rp != nullptr; rp = rp->ai_next) {
+        attempt++;
+        const char *fam = (rp->ai_family == AF_INET)     ? "IPv4"
+                          : (rp->ai_family == AF_INET6) ? "IPv6"
+                                                        : "other";
+        std::cerr << "[listen] endpoint #" << attempt << " (" << fam << "): socket()...\n";
         listenFd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (listenFd < 0) {
+            std::cerr << "[listen] socket() failed: " << std::strerror(errno) << '\n';
             continue;
         }
         int opt = 1;
         setsockopt(listenFd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-        if (bind(listenFd, rp->ai_addr, rp->ai_addrlen) == 0 && listen(listenFd, 32) == 0) {
-            break;
+        if (bind(listenFd, rp->ai_addr, rp->ai_addrlen) != 0) {
+            std::cerr << "[listen] bind() failed: " << std::strerror(errno) << '\n';
+            close(listenFd);
+            listenFd = -1;
+            continue;
         }
-        close(listenFd);
-        listenFd = -1;
+        if (listen(listenFd, 32) != 0) {
+            std::cerr << "[listen] listen() failed: " << std::strerror(errno) << '\n';
+            close(listenFd);
+            listenFd = -1;
+            continue;
+        }
+        std::cerr << "[listen] bound and listening on " << selfPeer << ", listen fd=" << listenFd
+                  << '\n';
+        break;
     }
     freeaddrinfo(result);
 
-    if (listenFd >= 0) {
-        std::cerr << "Listening on " << selfPeer << '\n';
+    if (listenFd < 0) {
+        std::cerr << "[listen] failed: could not bind any address for " << selfPeer << '\n';
     }
     return listenFd;
 }
 
 bool sendAll(int fd, const char *data, size_t len, const std::string &peer) {
+    const size_t total = len;
+    size_t sentSoFar = 0;
+    size_t nextProgressLog = 0;
+    const size_t kLogEveryBytes = 1024 * 1024;
+
     while (len > 0) {
         ssize_t sent = send(fd, data, len, 0);
         if (sent < 0) {
-            std::cerr << "send failed to " << peer << ": " << std::strerror(errno) << '\n';
+            std::cerr << "[send] send() failed to " << peer << " after " << sentSoFar << "/"
+                      << total << " bytes: " << std::strerror(errno) << '\n';
             return false;
         }
         data += static_cast<size_t>(sent);
         len -= static_cast<size_t>(sent);
+        sentSoFar += static_cast<size_t>(sent);
+
+        if (sentSoFar == total || sentSoFar >= nextProgressLog) {
+            std::cerr << "[send] stream progress: " << sentSoFar << "/" << total << " bytes\n"
+                      << std::flush;
+            while (nextProgressLog <= sentSoFar) {
+                nextProgressLog += kLogEveryBytes;
+            }
+        }
     }
     return true;
 }
@@ -154,7 +208,12 @@ int runListen(const std::string &addr) {
     signal(SIGINT, onSignal);
     signal(SIGTERM, onSignal);
 
+    std::cerr << "[listen] main loop: waiting for TCP connections (1s select timeout; Ctrl+C to "
+                 "exit)...\n"
+              << std::flush;
+
     int connCount = 0;
+    int idleSelectTicks = 0;
     while (!g_stop) {
         fd_set readSet;
         FD_ZERO(&readSet);
@@ -166,40 +225,69 @@ int runListen(const std::string &addr) {
         int ready = select(listenFd + 1, &readSet, nullptr, nullptr, &timeout);
         if (ready < 0) {
             if (errno == EINTR) {
+                if (g_stop) {
+                    std::cerr << "[listen] select interrupted (shutting down)\n";
+                }
                 continue;
             }
-            std::cerr << "select: " << std::strerror(errno) << '\n';
+            std::cerr << "[listen] select failed: " << std::strerror(errno) << '\n';
             break;
         }
         if (ready == 0) {
+            idleSelectTicks++;
+            if (idleSelectTicks % 30 == 0) {
+                std::cerr << "[listen] still waiting (no inbound connection yet; ~" << idleSelectTicks
+                          << "s of idle select)...\n"
+                          << std::flush;
+            }
             continue;
         }
 
+        std::cerr << "[listen] select: listen socket readable — calling accept()...\n"
+                  << std::flush;
         int clientFd = accept(listenFd, nullptr, nullptr);
         if (clientFd < 0) {
             if (errno == EINTR) {
                 continue;
             }
-            std::cerr << "accept: " << std::strerror(errno) << '\n';
+            std::cerr << "[listen] accept failed: " << std::strerror(errno) << '\n';
             continue;
         }
+        idleSelectTicks = 0;
 
         connCount++;
+        std::cerr << "[listen] accepted connection #" << connCount << ", client fd=" << clientFd
+                  << "; reading until peer closes...\n"
+                  << std::flush;
+
         std::string payload;
         char buf[4096];
+        size_t recvTotal = 0;
+        size_t nextRecvLog = 0;
+        const size_t kRecvLogEvery = 1024 * 1024;
         while (true) {
             ssize_t n = recv(clientFd, buf, sizeof(buf), 0);
             if (n == 0) {
+                std::cerr << "[listen] peer closed connection (EOF) after " << recvTotal
+                          << " payload bytes\n";
                 break;
             }
             if (n < 0) {
                 if (errno == EINTR) {
                     continue;
                 }
-                std::cerr << "recv: " << std::strerror(errno) << '\n';
+                std::cerr << "[listen] recv failed: " << std::strerror(errno) << '\n';
                 break;
             }
             payload.append(buf, static_cast<size_t>(n));
+            recvTotal += static_cast<size_t>(n);
+            if (recvTotal >= nextRecvLog) {
+                std::cerr << "[listen] recv progress: " << recvTotal << " bytes so far...\n"
+                          << std::flush;
+                while (nextRecvLog <= recvTotal) {
+                    nextRecvLog += kRecvLogEvery;
+                }
+            }
         }
         close(clientFd);
 
@@ -209,27 +297,32 @@ int runListen(const std::string &addr) {
                 lines++;
             }
         }
-        std::cerr << "[connection " << connCount << "] received " << payload.size() << " bytes, "
-                  << lines << " newline-terminated lines\n";
+        std::cerr << "[listen] [connection " << connCount << "] done: " << payload.size()
+                  << " bytes total, " << lines << " newline-terminated lines\n";
         if (!payload.empty() && payload.size() <= 240) {
-            std::cerr << "payload:\n" << payload;
+            std::cerr << "[listen] payload:\n" << payload;
         } else if (!payload.empty()) {
-            std::cerr << "first 120 bytes:\n"
+            std::cerr << "[listen] first 120 bytes:\n"
                       << std::string(payload.data(), std::min(payload.size(), size_t{120})) << "...\n";
         }
+        std::cerr << "[listen] ready for next connection.\n" << std::flush;
     }
 
     close(listenFd);
-    std::cerr << "Listener shut down.\n";
+    std::cerr << "[listen] listener shut down.\n";
     return 0;
 }
 
 int runSend(const std::string &peer, size_t lineCount) {
+    std::cerr << "[send] starting: will send " << lineCount << " synthetic lines to " << peer << '\n'
+              << std::flush;
+
     int fd = connectToPeer(peer);
     if (fd < 0) {
         return 1;
     }
 
+    std::cerr << "[send] building payload in memory...\n" << std::flush;
     std::string payload;
     payload.reserve(lineCount * 64);
     for (size_t i = 0; i < lineCount; ++i) {
@@ -246,13 +339,16 @@ int runSend(const std::string &peer, size_t lineCount) {
         payload += '\n';
     }
 
+    std::cerr << "[send] payload size " << payload.size() << " bytes; calling send() loop...\n"
+              << std::flush;
     if (!sendAll(fd, payload.data(), payload.size(), peer)) {
         close(fd);
         return 1;
     }
+    std::cerr << "[send] all bytes acknowledged by kernel send(); closing socket...\n";
     close(fd);
-    std::cerr << "Sent " << lineCount << " lines (" << payload.size() << " bytes) to " << peer
-              << '\n';
+    std::cerr << "[send] done: " << lineCount << " lines (" << payload.size() << " bytes) to "
+              << peer << '\n';
     return 0;
 }
 
@@ -267,6 +363,8 @@ int main(int argc, char **argv) {
     std::string mode = argv[1];
     std::string addr = argv[2];
 
+    std::cerr << "[main] socket_stream_test mode=\"" << mode << "\" address=\"" << addr << "\"\n";
+
     if (mode == "listen") {
         return runListen(addr);
     }
@@ -276,11 +374,12 @@ int main(int argc, char **argv) {
             char *end = nullptr;
             unsigned long v = std::strtoul(argv[3], &end, 10);
             if (end == argv[3] || *end != '\0' || v == 0) {
-                std::cerr << "Invalid line count: " << argv[3] << '\n';
+                std::cerr << "[main] invalid line count: " << argv[3] << '\n';
                 return 1;
             }
             lines = static_cast<size_t>(v);
         }
+        std::cerr << "[main] line count=" << lines << '\n';
         return runSend(addr, lines);
     }
 
