@@ -23,6 +23,7 @@
 #include <arpa/inet.h>
 #include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -95,11 +96,13 @@ unsigned int cores = std::thread::hardware_concurrency();
 static std::atomic<time_t> lastCheckpointTime{0};
 static constexpr int checkpointIntervalSecs = 600; // 10 minutes
 mutex crawlLogLock;
+bool debug = false;
 
 static void logCrawled(size_t count, const string &url) {
     lock_guard guard(crawlLogLock);
-    (void)count;
-    (void)url;
+    if (debug) {
+        std::cerr << "Crawled [" << count << "] " << url << '\n';
+    }
 }
 
 static int64_t nowMillis() {
@@ -473,6 +476,9 @@ static bool hasReadyBatch() {
     return false;
 }
 
+static constexpr size_t sendBatchRetryCount = 3;
+static constexpr int sendBatchRetryBaseDelayMs = 100;
+
 static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
     // Common network connection code to send formatted payload of batched links
     if (batch.size() == 0) {
@@ -549,8 +555,34 @@ static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
     }
 
     close(socketFd);
-    // std::cout << "Send Batch Successful\n";
+
+    if (debug) {
+        std::cout << "Send Batch Successful\n";
+    }
+
     return true;
+}
+
+static bool sendBatchToPeerWithRetry(const string &peer, const vector<Link> &batch) {
+    for (size_t attempt = 0; attempt <= sendBatchRetryCount; ++attempt) {
+        if (sendBatchToPeer(peer, batch)) {
+            return true;
+        }
+
+        if (attempt == sendBatchRetryCount) {
+            std::cout << "Send Batch Failed; Give up\n";
+            break;
+        }
+
+        if (debug) {
+            std::cout << "Send Batch Failed; Retrying\n";
+        }
+
+        const int delayMs = sendBatchRetryBaseDelayMs * (2 * attempt);
+        std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+    }
+
+    return false;
 }
 
 void *SendToMachineThread(void *) {
@@ -599,17 +631,14 @@ void *SendToMachineThread(void *) {
                 continue;
             }
 
-            if (!sendBatchToPeer(peer_address[i], readyBatches[i])) {
-                // We add batch back to memory if send failed
-                // batch_lock.lock();
-                // for (const Link &link : readyBatches[i]) {
-                //     batches[i].pushBack(link);
-                // }
-                // batch_lock.unlock();
-                // batch_cv.notify_one();
-
-                // We throw failed message to make sure retry don't clog memory
-                // std::cout << "Throw away batch\n";
+            if (!sendBatchToPeerWithRetry(peer_address[i], readyBatches[i])) {
+                // Put failed batch back without notifying batch_cv so it only
+                // retries once real new URLs make the batch ready again.
+                batch_lock.lock();
+                for (Link &link : readyBatches[i]) {
+                    batches[i].pushBack(std::move(link));
+                }
+                batch_lock.unlock();
             }
         }
     }
@@ -915,8 +944,8 @@ int main(int argc, char **argv) {
     // anchorFlushIntervalSeconds = parseEnv("SEARCH_ANCHOR_FLUSH_SECS",
     // anchorFlushIntervalSeconds);
 
-    if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " <machine_id> <batch_threshold>\n";
+    if (argc != 3 && argc != 4) {
+        std::cerr << "Usage: " << argv[0] << " <machine_id> <batch_threshold> [debug]\n";
         return 1;
     }
 
@@ -929,6 +958,13 @@ int main(int argc, char **argv) {
 
     machine_id = parsedMachineId;
     numLinkThreshold = parsedBatchThreshold;
+    if (argc == 4) {
+        if (string(argv[3]) != "debug") {
+            std::cerr << "Optional third argument must be 'debug'\n";
+            return 1;
+        }
+        debug = true;
+    }
 
     if (anchorFlushIntervalSeconds == 0) {
         std::cerr << "Warning: Anchor flush is zero;\n";
