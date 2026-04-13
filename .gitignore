@@ -52,7 +52,7 @@ src/crawler/checkpoint.dat
 # For CMake
 build*/
 .DS_Store
-
+*/*/chunk*
 # For Vasu
 vasuBuild.sh
 *.vscode/*
