@@ -119,7 +119,7 @@ void *CrawlerWorkerThread(void *arg) {
 
         f->pushMany(discoveredLinks);
         ++urlsCrawled;
-        std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
+        // std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
 
         {
             time_t now = time(nullptr);

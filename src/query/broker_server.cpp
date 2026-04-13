@@ -128,7 +128,7 @@ void *fetch_from_worker(void *args) {
     timeout.tv_sec = 0;
     timeout.tv_usec = 500000;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    // std::cout << "[MASTER NODE] Broker HTTP Server listening on port 8080...\n";
 
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) >= 0) {
         ::string msg = wa->query + "\n";

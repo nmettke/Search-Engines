@@ -35,11 +35,8 @@ mutex crawlLogLock;
 
 static void logCrawled(size_t count, const string &url) {
     lock_guard guard(crawlLogLock);
-    if (url.empty()) {
-        std::cout << "Crawled [" << count << "] <EMPTY_URL>\n";
-        return;
-    }
-    std::cout << "Crawled [" << count << "] " << url << '\n';
+    (void)count;
+    (void)url;
 }
 
 void *WorkerThread(void *arg) {

@@ -162,7 +162,7 @@ int main(int argc, char **argv) {
                     QueryEngine *engine = new QueryEngine(*reader);
                     readers.push_back(reader);
                     engines.push_back(engine);
-                    std::cout << "Loaded chunk: " << file_name << "\n";
+                    // std::cout << "Loaded chunk: " << file_name << "\n";
                 } else {
                     delete reader;
                 }
@@ -204,8 +204,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    std::cout << "[WORKER NODE] Listening on port " << port << " for index directory: " << dir_path
-              << "\n";
+    // std::cout << "[WORKER NODE] Listening on port " << port << " for index directory: "
+    //           << dir_path << "\n";
 
     while (true) {
         struct sockaddr_in client_addr;

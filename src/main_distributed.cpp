@@ -97,11 +97,8 @@ mutex crawlLogLock;
 
 static void logCrawled(size_t count, const string &url) {
     lock_guard guard(crawlLogLock);
-    if (url.empty()) {
-        std::cout << "Crawled [" << count << "] <EMPTY_URL>\n";
-        return;
-    }
-    std::cout << "Crawled [" << count << "] " << url << '\n';
+    (void)count;
+    (void)url;
 }
 
 static int64_t nowMillis() {
@@ -486,7 +483,7 @@ static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
     }
 
     close(socketFd);
-    std::cout << "Send Batch Successful\n";
+    // std::cout << "Send Batch Successful\n";
     return true;
 }
 
@@ -546,7 +543,7 @@ void *SendToMachineThread(void *) {
                 // batch_cv.notify_one();
 
                 // We throw failed message to make sure retry don't clog memory
-                std::cout << "Throw away batch\n";
+                // std::cout << "Throw away batch\n";
             }
         }
     }
