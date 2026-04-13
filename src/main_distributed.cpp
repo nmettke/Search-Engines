@@ -534,16 +534,12 @@ void *SendToMachineThread(void *) {
             }
 
             if (!sendBatchToPeer(peer_address[i], readyBatches[i])) {
-                // We add batch back to memory if send failed
-                // batch_lock.lock();
-                // for (const Link &link : readyBatches[i]) {
-                //     batches[i].pushBack(link);
-                // }
-                // batch_lock.unlock();
-                // batch_cv.notify_one();
-
-                // We throw failed message to make sure retry don't clog memory
-                // std::cout << "Throw away batch\n";
+                batch_lock.lock();
+                for (const Link &link : readyBatches[i]) {
+                    batches[i].pushBack(link);
+                }
+                batch_lock.unlock();
+                batch_cv.notify_one();
             }
         }
     }
