@@ -339,6 +339,7 @@ void *IndexWorkerThread(void *) {
 
         // if (tokensProcessed >= 5000000) {
         if (docsProcessed >= 500) {
+            std::cout << "Start building index chunk \n";
             char buffer[64];
             std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
                           chunksWritten);
