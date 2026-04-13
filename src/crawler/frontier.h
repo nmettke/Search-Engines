@@ -42,6 +42,8 @@ class Frontier {
 
     bool empty() const;
 
+    bool hasInFlightWork() const;
+
     vector<FrontierItem> snapshot() const;
 
   private:

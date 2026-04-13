@@ -89,6 +89,16 @@ UrlFilter urlFilter;
 RobotsCache *robotsCache = nullptr;
 DelayedQueue *delayedQueue = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
+mutex crawlLogLock;
+
+static void logCrawled(size_t count, const string &url) {
+    lock_guard guard(crawlLogLock);
+    if (url.empty()) {
+        std::cout << "Crawled [" << count << "] <EMPTY_URL>\n";
+        return;
+    }
+    std::cout << "Crawled [" << count << "] " << url << '\n';
+}
 
 static int64_t nowMillis() {
     struct timespec ts;
@@ -297,8 +307,8 @@ void *CrawlerWorkerThread(void *) {
         }
 
         f->pushMany(discoveredLinks);
-        ++urlsCrawled;
-        std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
+        size_t crawled = ++urlsCrawled;
+        logCrawled(crawled, item->link);
 
         if (!shouldStop && (urlsCrawled.load() % 500) == 0) {
             checkpoint->save(*f, bloom, urlsCrawled.load());
@@ -568,7 +578,7 @@ static int openListeningSocket() {
     hints.ai_flags = AI_PASSIVE;
 
     addrinfo *result = nullptr;
-    //Bind to 0.0.0.0:8081
+    // Bind to 0.0.0.0:8081
     if (getaddrinfo(nullptr, port.c_str(), &hints, &result) != 0) {
         std::cerr << "Failed to resolve listen port for " << selfPeer << '\n';
         return -1;
