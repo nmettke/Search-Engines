@@ -479,8 +479,8 @@ static bool hasReadyBatch() {
     return false;
 }
 
-static constexpr size_t sendBatchRetryCount = 3;
-static constexpr int sendBatchRetryBaseDelayMs = 100;
+static constexpr size_t sendBatchRetryCount = 5;
+static constexpr int sendBatchRetryBaseDelayMs = 1000;
 
 static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
     // Common network connection code to send formatted payload of batched links
@@ -581,7 +581,7 @@ static bool sendBatchToPeerWithRetry(const string &peer, const vector<Link> &bat
             std::cout << "Send Batch Failed; Retrying\n";
         }
 
-        const int delayMs = sendBatchRetryBaseDelayMs * (2 * attempt);
+        const int delayMs = sendBatchRetryBaseDelayMs * (1 << attempt);
         std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
     }
 
@@ -637,11 +637,12 @@ void *SendToMachineThread(void *) {
             if (!sendBatchToPeerWithRetry(peer_address[i], readyBatches[i])) {
                 // Put failed batch back without notifying batch_cv so it only
                 // retries once real new URLs make the batch ready again.
-                batch_lock.lock();
-                for (Link &link : readyBatches[i]) {
-                    batches[i].pushBack(std::move(link));
-                }
-                batch_lock.unlock();
+                // batch_lock.lock();
+                // for (Link &link : readyBatches[i]) {
+                //     batches[i].pushBack(std::move(link));
+                // }
+                // batch_lock.unlock();
+                std::cerr << "Send Batch Failed; Give up\n";
             }
         }
     }
