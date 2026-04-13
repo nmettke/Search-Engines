@@ -110,7 +110,7 @@ void *CrawlerWorkerThread(void *arg) {
             }
         }
 
-        f->pushMany(discoveredLinks);
+        f->pushMany(discoveredLinks, item->getSeedDistance());
         ++urlsCrawled;
         std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
 

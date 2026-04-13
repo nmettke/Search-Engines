@@ -13,6 +13,11 @@ constexpr double nonEnglishWeight = 2.0;
 
 FrontierItem::FrontierItem(const string &url) : link(url), seedDistance(0) { parseURL(url); }
 
+FrontierItem::FrontierItem(const string &url, size_t parentDistance)
+    : link(url), seedDistance(parentDistance + 1) {
+    parseURL(url);
+}
+
 FrontierItem::FrontierItem(const string &url, const FrontierItem &parent)
     : seedDistance(parent.seedDistance + 1), broken(parent.broken), english(parent.english) {
     parseURL(url);

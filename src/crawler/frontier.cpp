@@ -45,24 +45,32 @@ vector<FrontierItem> Frontier::snapshot() const {
     return result;
 }
 
-void Frontier::push(const string &url) {
+void Frontier::push(const string &url, size_t parentDistance) {
     lock_guard guard(m);
     if (closed) {
         return;
     }
-    pq.emplace(url);
+    if (parentDistance > 0) {
+        pq.push(FrontierItem(url, parentDistance));
+    } else {
+        pq.emplace(url);
+    }
     ++pending;
     cv.notify_one();
 }
 
-void Frontier::pushMany(const vector<string> &urls) {
+void Frontier::pushMany(const vector<string> &urls, size_t parentDistance) {
     lock_guard guard(m);
     if (closed || urls.size() == 0) {
         return;
     }
 
     for (const string &url : urls) {
-        pq.emplace(url);
+        if (parentDistance > 0) {
+            pq.push(FrontierItem(url, parentDistance));
+        } else {
+            pq.emplace(url);
+        }
         ++pending;
     }
 

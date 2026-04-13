@@ -7,6 +7,7 @@ enum class Suffix { COM, EDU, GOV, ORG, NET, MIL, INT, OTHER };
 class FrontierItem {
   public:
     explicit FrontierItem(const string &url);
+    FrontierItem(const string &url, size_t parentDistance);
     FrontierItem(const string &url, const FrontierItem &parent);
 
     string serializeToLine() const;
