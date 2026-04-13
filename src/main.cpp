@@ -84,29 +84,34 @@ void *CrawlerWorkerThread(void *arg) {
         HtmlParser parsed(page.cstr(), page.size());
         parsed.sourceUrl = item->link;
         parsed.seedDistance = static_cast<uint8_t>(item->getSeedDistance());
-        vector<string> discoveredLinks;
+        vector<FrontierItem> discoveredLinks;
 
         // push to index queue
         q->push(parsed);
 
         for (const Link &link : parsed.links) {
-            if (link.URL.find("http") != link.URL.npos) {
-                size_t hashto = hashString(link.URL.cstr()) % num_machine;
-                if (hashto != machine_id.load()) {
-                    batch_lock.lock();
-                    batches[hashto].pushBack(link);
+            string resolved = absolutizeUrl(link.URL, item->link, parsed.base);
+            if (resolved.empty()) {
+                continue;
+            }
 
-                    if (batches[hashto].size() >= numLinkThreshold.load()) {
-                        batch_cv.notify_one();
-                    }
+            size_t hashto = hashString(resolved.cstr()) % num_machine;
+            if (hashto != machine_id.load()) {
+                Link routedLink(resolved);
+                routedLink.anchorText = link.anchorText;
+                batch_lock.lock();
+                batches[hashto].pushBack(routedLink);
 
-                    batch_lock.unlock();
-                    continue;
+                if (batches[hashto].size() >= numLinkThreshold.load()) {
+                    batch_cv.notify_one();
                 }
-                string canonical;
-                if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
-                    discoveredLinks.pushBack(canonical);
-                }
+
+                batch_lock.unlock();
+                continue;
+            }
+            string canonical;
+            if (shouldEnqueueUrl(resolved, bloom, canonical)) {
+                discoveredLinks.pushBack(FrontierItem(canonical, *item));
             }
         }
 
@@ -330,11 +335,14 @@ int main() {
     urlsCrawled = 0;
 
     size_t recoveredUrlCount = 0;
-    if (checkpoint->load(recoveredItems, bloom, recoveredUrlCount)) {
+    if (checkpoint->load(recoveredItems, bloom, recoveredUrlCount) && recoveredItems.size() > 0) {
         urlsCrawled = recoveredUrlCount;
         f = new Frontier(recoveredItems);
         std::cerr << "Recovered from checkpoint at " << urlsCrawled.load() << " URLs\n";
     } else {
+        if (recoveredUrlCount > 0 && recoveredItems.size() == 0) {
+            std::cerr << "Checkpoint has empty frontier; starting fresh from seed list\n";
+        }
         f = new Frontier("src/crawler/seedList.txt");
         std::cerr << "Starting fresh from seed list\n";
     }

@@ -1,7 +1,7 @@
 #include "FrontierItemHelper.h"
 
 Suffix stringToSuffix(const string &tld) {
-    if (tld == "com")
+    if (tld == "com" || tld == "com.au")
         return Suffix::COM;
     if (tld == "edu")
         return Suffix::EDU;
@@ -15,6 +15,9 @@ Suffix stringToSuffix(const string &tld) {
         return Suffix::MIL;
     if (tld == "int")
         return Suffix::INT;
+    // Regional TLDs map to ORG (institutional/community preference)
+    if (tld == "co.uk" || tld == "ca" || tld == "uk" || tld == "au")
+        return Suffix::ORG;
     return Suffix::OTHER;
 }
 
@@ -101,12 +104,35 @@ void parseHost(const string &host, Suffix &suffixOut, size_t &baseLengthOut) {
     for (size_t i = lastDot + 1; i < host.size(); ++i) {
         tld.pushBack(host[i]);
     }
-    suffixOut = stringToSuffix(tld);
 
-    if (secondLastDot == string::npos) {
-        baseLengthOut = lastDot;
+    // Handle two-part TLDs: check if this is a second-level TLD that needs the previous part
+    if ((tld == "uk" || tld == "au" || tld == "ca") && secondLastDot != string::npos) {
+        // Extract the two-part TLD (e.g., "co.uk" from "example.co.uk")
+        string tld2;
+        for (size_t i = secondLastDot + 1; i < host.size(); ++i) {
+            tld2.pushBack(host[i]);
+        }
+        suffixOut = stringToSuffix(tld2);
+        if (secondLastDot > 0) {
+            size_t thirdLastDot = string::npos;
+            for (size_t i = secondLastDot; i > 0; --i) {
+                if (host[i - 1] == '.') {
+                    thirdLastDot = i - 1;
+                    break;
+                }
+            }
+            baseLengthOut =
+                thirdLastDot == string::npos ? secondLastDot : secondLastDot - thirdLastDot - 1;
+        } else {
+            baseLengthOut = secondLastDot;
+        }
     } else {
-        baseLengthOut = lastDot - secondLastDot - 1;
+        suffixOut = stringToSuffix(tld);
+        if (secondLastDot == string::npos) {
+            baseLengthOut = lastDot;
+        } else {
+            baseLengthOut = lastDot - secondLastDot - 1;
+        }
     }
 }
 
@@ -128,4 +154,99 @@ size_t computePathDepth(const string &path) {
     }
 
     return depth;
+}
+
+double scorePathPatterns(const string &path) {
+    double score = 0.0;
+
+    if (path.size() == 0) {
+        return score;
+    }
+
+    string lowerPath;
+    for (size_t i = 0; i < path.size(); ++i) {
+        char c = path[i];
+        lowerPath.pushBack((c >= 'A' && c <= 'Z') ? (c - 'A' + 'a') : c);
+    }
+
+    // Boost home pages
+    if (path == "/" || path == "/index.html") {
+        score += 2.0;
+        return score;
+    }
+
+    // Penalize meta pages
+    if (lowerPath.find("/search") != string::npos || lowerPath.find("/filter") != string::npos ||
+        lowerPath.find("/tag/") != string::npos || lowerPath.find("/category/") != string::npos ||
+        lowerPath.find("/archive/") != string::npos || lowerPath.find("/date/") != string::npos) {
+        score -= 1.5;
+    }
+
+    // Penalize admin/auth pages
+    if (lowerPath.find("/admin") != string::npos || lowerPath.find("/login") != string::npos ||
+        lowerPath.find("/account") != string::npos || lowerPath.find("/settings") != string::npos) {
+        score -= 2.0;
+    }
+
+    // Penalize ads/tracking
+    if (lowerPath.find("/ads/") != string::npos || lowerPath.find("/tracking/") != string::npos ||
+        lowerPath.find("/analytics/") != string::npos) {
+        score -= 3.0;
+    }
+
+    // Boost content pages
+    if (lowerPath.find("/blog") != string::npos || lowerPath.find("/article") != string::npos ||
+        lowerPath.find("/news") != string::npos || lowerPath.find("/tutorial") != string::npos ||
+        lowerPath.find("/guide") != string::npos || lowerPath.find("/docs") != string::npos ||
+        lowerPath.find("/post") != string::npos) {
+        score += 1.0;
+    }
+
+    return score;
+}
+
+double scoreQueryStringComplexity(const string &url) {
+    // Find query string start
+    size_t queryPos = url.find("?");
+    if (queryPos == string::npos) {
+        return 0.0; // No query string
+    }
+
+    string queryString;
+    for (size_t i = queryPos + 1; i < url.size(); ++i) {
+        queryString.pushBack(url[i]);
+    }
+
+    // Count params (number of & characters + 1)
+    size_t paramCount = 1;
+    for (size_t i = 0; i < queryString.size(); ++i) {
+        if (queryString[i] == '&') {
+            ++paramCount;
+        }
+    }
+
+    // Penalize 3+ params or long query string
+    if (paramCount >= 3 || queryString.size() > 100) {
+        return -0.5;
+    }
+
+    return 0.0;
+}
+
+double scoreSubdomainSignals(const string &host) {
+    string lowerHost;
+    for (size_t i = 0; i < host.size(); ++i) {
+        char c = host[i];
+        lowerHost.pushBack((c >= 'A' && c <= 'Z') ? (c - 'A' + 'a') : c);
+    }
+
+    // Penalize tracking/ad/mail subdomains
+    if (lowerHost.find("ads.") == 0 || lowerHost.find("tracking.") == 0 ||
+        lowerHost.find("mail.") == 0 || lowerHost.find("smtp.") == 0 ||
+        lowerHost.find("ftp.") == 0) {
+        return -2.0;
+    }
+
+    // Neutral for www, en, blog, news subdomains
+    return 0.0;
 }

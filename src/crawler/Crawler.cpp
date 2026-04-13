@@ -71,14 +71,13 @@ void *WorkerThread(void *arg) {
             continue;
         }
 
-        vector<string> discoveredLinks;
+        vector<FrontierItem> discoveredLinks;
 
         for (const Link &link : parsed.links) {
-            if (link.URL.find("http") != link.URL.npos) {
-                string canonical;
-                if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
-                    discoveredLinks.pushBack(canonical);
-                }
+            string resolved = absolutizeUrl(link.URL, item->link, parsed.base);
+            string canonical;
+            if (shouldEnqueueUrl(resolved, bloom, canonical)) {
+                discoveredLinks.pushBack(FrontierItem(canonical, *item));
             }
         }
 
@@ -132,11 +131,14 @@ int main() {
     vector<FrontierItem> recoveredItems;
     size_t loadedCount = 0;
 
-    if (checkpoint->load(recoveredItems, bloom, loadedCount)) {
+    if (checkpoint->load(recoveredItems, bloom, loadedCount) && recoveredItems.size() > 0) {
         urlsCrawled = loadedCount;
         f = new Frontier(recoveredItems);
         std::cerr << "Recovered from checkpoint at " << loadedCount << " URLs\n";
     } else {
+        if (loadedCount > 0 && recoveredItems.size() == 0) {
+            std::cerr << "Checkpoint has empty frontier; starting fresh from seed list\n";
+        }
         f = new Frontier("src/crawler/seedList.txt");
         std::cerr << "Starting fresh from seed list\n";
     }

@@ -266,9 +266,9 @@ void *CrawlerWorkerThread(void *) {
         appendAnchorTerms(item->link, parsed.titleWords, true);
         q->push(parsed);
 
-        vector<string> discoveredLinks;
+        vector<FrontierItem> discoveredLinks;
         for (const Link &link : parsed.links) {
-            string normalizedOut = normalizeUrl(link.URL);
+            string normalizedOut = absolutizeUrl(link.URL, item->link, parsed.base);
             if (normalizedOut.empty() || !urlFilter.isAllowed(normalizedOut)) {
                 continue;
             }
@@ -292,7 +292,7 @@ void *CrawlerWorkerThread(void *) {
             // and add to frontier if not seen
             appendAnchorTerms(normalizedOut, link.anchorText, false);
             if (bloom.checkAndInsert(normalizedOut)) {
-                discoveredLinks.pushBack(normalizedOut);
+                discoveredLinks.pushBack(FrontierItem(normalizedOut, *item));
             }
         }
 
@@ -662,7 +662,7 @@ void *ReceiveFromMachineThread(void *) {
         }
 
         // decode payload based on our encoding method into vector of urls and anchors
-        vector<string> discoveredLinks;
+        vector<FrontierItem> discoveredLinks;
         size_t lineStart = 0;
         while (lineStart < payload.size()) {
             size_t lineEnd = findCharFrom(payload, '\n', lineStart);
@@ -694,7 +694,7 @@ void *ReceiveFromMachineThread(void *) {
                     shouldOwnUrl(normalizedOut)) {
                     appendAnchorTerms(normalizedOut, anchorWords, false);
                     if (bloom.checkAndInsert(normalizedOut)) {
-                        discoveredLinks.pushBack(normalizedOut);
+                        discoveredLinks.pushBack(FrontierItem(normalizedOut));
                     }
                 }
             }
@@ -846,8 +846,33 @@ int main() {
             }
         }
 
-        f = new Frontier(std::move(ownedRecoveredItems));
-        std::cerr << "Recovered from checkpoint at " << urlsCrawled.load() << " URLs\n";
+        if (ownedRecoveredItems.size() > 0) {
+            f = new Frontier(std::move(ownedRecoveredItems));
+            std::cerr << "Recovered from checkpoint at " << urlsCrawled.load() << " URLs\n";
+        } else {
+            std::cerr << "Checkpoint has empty frontier for this machine; starting fresh from seed "
+                         "list\n";
+
+            std::ifstream seedList("src/crawler/seedList.txt");
+            if (!seedList.is_open()) {
+                throw std::runtime_error("seed list could not be opened");
+            }
+
+            vector<FrontierItem> ownedSeedItems;
+            std::string line;
+            while (std::getline(seedList, line)) {
+                string normalizeOut = normalizeUrl(string(line.c_str()));
+                if (normalizeOut.empty() || !urlFilter.isAllowed(normalizeOut) ||
+                    !shouldOwnUrl(normalizeOut)) {
+                    continue;
+                }
+                ownedSeedItems.pushBack(FrontierItem(normalizeOut));
+            }
+
+            f = new Frontier(std::move(ownedSeedItems));
+            urlsCrawled = 0;
+            std::cerr << "Starting fresh from seed list\n";
+        }
     } else {
         // We filter to ensure we should own link on the seed list
         std::ifstream seedList("src/crawler/seedList.txt");
