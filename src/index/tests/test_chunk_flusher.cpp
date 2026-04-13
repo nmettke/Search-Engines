@@ -18,7 +18,7 @@ void flushIndexChunk(const InMemoryIndex &mem_index, const ::string &filename);
         }                                                                                          \
     } while (false)
 
-static DocumentFeatures makeFeatures(uint32_t seed) {
+static DocumentFeatures makeFeatures(uint8_t seed) {
     DocumentFeatures features;
     features.flags = kFeaturesPresent;
     if (seed == 0) {

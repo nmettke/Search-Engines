@@ -16,7 +16,7 @@
         }                                                                                          \
     } while (false)
 
-static DocumentFeatures makeFeatures(uint32_t seed) {
+static DocumentFeatures makeFeatures(uint8_t seed) {
     DocumentFeatures features;
     features.flags = kFeaturesPresent | kHttps;
     features.base_domain_length = 7 + seed;

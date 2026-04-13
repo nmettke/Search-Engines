@@ -17,10 +17,10 @@ struct ParsedUrl {
 
 ParsedUrl parseUrl(const ::string &url);
 
-uint32_t urlBaseDomainLength(const ParsedUrl &parsed);
-uint32_t urlPathLength(const ParsedUrl &parsed);
-uint32_t urlPathDepth(const ParsedUrl &parsed);
-uint32_t urlQueryParamCount(const ParsedUrl &parsed);
-uint32_t urlNumericPathCharCount(const ParsedUrl &parsed);
-uint32_t urlDomainHyphenCount(const ParsedUrl &parsed);
+uint8_t urlBaseDomainLength(const ParsedUrl &parsed);
+uint16_t urlPathLength(const ParsedUrl &parsed);
+uint8_t urlPathDepth(const ParsedUrl &parsed);
+uint8_t urlQueryParamCount(const ParsedUrl &parsed);
+uint8_t urlNumericPathCharCount(const ParsedUrl &parsed);
+uint8_t urlDomainHyphenCount(const ParsedUrl &parsed);
 bool urlHasHttps(const ::string &url);
