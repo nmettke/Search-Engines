@@ -479,7 +479,7 @@ static bool hasReadyBatch() {
     return false;
 }
 
-static constexpr size_t sendBatchRetryCount = 10;
+static constexpr size_t sendBatchRetryCount = 5;
 static constexpr int sendBatchRetryBaseDelayMs = 1000;
 
 static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
