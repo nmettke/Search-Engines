@@ -17,7 +17,7 @@
         }                                                                                          \
     } while (false)
 
-static DocumentFeatures makeFeatures(uint32_t seed) {
+static DocumentFeatures makeFeatures(uint8_t seed) {
     DocumentFeatures features;
     features.flags = kFeaturesPresent | kHttps;
     features.base_domain_length = 7 + seed;
@@ -112,14 +112,14 @@ void test_write_document_table() {
     struct stat st;
     TEST_ASSERT(stat(test_file, &st) == 0, "File should exist");
 
-    TEST_ASSERT(sizeof(DocumentFeaturesDisk) == 40, "Feature block should be 40 bytes");
-    TEST_ASSERT(sizeof(DocumentRecordDisk) == 55, "Document record should be 55 bytes packed");
+    TEST_ASSERT(sizeof(DocumentFeaturesDisk) == 14, "Feature block should be 14 bytes");
+    TEST_ASSERT(sizeof(DocumentRecordDisk) == 29, "Document record should be 29 bytes packed");
 
     // Header: 4 bytes (num_documents)
     // Offsets array: 2 docs * 8 bytes each = 16 bytes
-    // Each doc: 2 (url_len) + 24 (url bytes) + 2 (tld_len) + 3 (tld bytes) + 55 bytes = 86 bytes
-    // Total expected: 4 + 16 + 86 + 86 = 192 bytes
-    TEST_ASSERT(st.st_size == 192,
+    // Each doc: 2 (url_len) + 24 (url bytes) + 2 (tld_len) + 3 (tld bytes) + 29 bytes = 60 bytes
+    // Total expected: 4 + 16 + 60 + 60 = 140 bytes
+    TEST_ASSERT(st.st_size == 140,
                 "Document table size should include the raw TLD and feature block");
 
     unlink(test_file);

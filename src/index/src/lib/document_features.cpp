@@ -1,5 +1,7 @@
 #include "document_features.h"
 #include "url_features.h"
+#include <algorithm>
+#include <climits>
 
 DocumentFeatures extractDocumentFeatures(const HtmlParser &doc) {
     const ::string &document_url = doc.documentUrl();
@@ -24,14 +26,17 @@ DocumentFeatures extractDocumentFeatures(const HtmlParser &doc) {
     }
 
     features.base_domain_length = urlBaseDomainLength(parsed);
-    features.url_length = static_cast<uint32_t>(document_url.size());
+    features.url_length =
+        static_cast<uint16_t>(std::min(document_url.size(), static_cast<size_t>(UINT16_MAX)));
     features.path_length = urlPathLength(parsed);
     features.path_depth = urlPathDepth(parsed);
     features.query_param_count = urlQueryParamCount(parsed);
     features.numeric_path_char_count = urlNumericPathCharCount(parsed);
     features.domain_hyphen_count = urlDomainHyphenCount(parsed);
-    features.outgoing_link_count = static_cast<uint32_t>(doc.links.size());
-    features.outgoing_anchor_word_count = doc.outgoingAnchorWordCount();
+    features.outgoing_link_count =
+        static_cast<uint16_t>(std::min(doc.links.size(), static_cast<size_t>(UINT16_MAX)));
+    features.outgoing_anchor_word_count = static_cast<uint16_t>(
+        std::min(static_cast<uint32_t>(UINT16_MAX), doc.outgoingAnchorWordCount()));
     features.raw_tld = parsed.tld;
 
     return features;
