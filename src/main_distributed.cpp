@@ -555,7 +555,6 @@ static int openListeningSocket() {
         return -1;
     }
 
-    string host = selfPeer.substr(0, colon);
     string port = selfPeer.substr(colon + 1);
     if (port.empty()) {
         std::cerr << "Invalid listen address for machine " << machine_id.load() << ": " << selfPeer
@@ -569,8 +568,9 @@ static int openListeningSocket() {
     hints.ai_flags = AI_PASSIVE;
 
     addrinfo *result = nullptr;
-    if (getaddrinfo(host.empty() ? nullptr : host.c_str(), port.c_str(), &hints, &result) != 0) {
-        std::cerr << "Failed to resolve listen address " << selfPeer << '\n';
+    //Bind to 0.0.0.0:8081
+    if (getaddrinfo(nullptr, port.c_str(), &hints, &result) != 0) {
+        std::cerr << "Failed to resolve listen port for " << selfPeer << '\n';
         return -1;
     }
 
@@ -595,7 +595,8 @@ static int openListeningSocket() {
     freeaddrinfo(result);
 
     if (listenFd >= 0) {
-        std::cerr << "Listening for batches on " << selfPeer << '\n';
+        std::cerr << "Listening for batches on 0.0.0.0:" << port << " (configured as " << selfPeer
+                  << ")\n";
     }
     return listenFd;
 }
