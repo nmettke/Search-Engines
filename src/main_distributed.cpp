@@ -89,6 +89,8 @@ UrlFilter urlFilter;
 RobotsCache *robotsCache = nullptr;
 DelayedQueue *delayedQueue = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
+static std::atomic<time_t> lastCheckpointTime{0};
+static constexpr int checkpointIntervalSecs = 600; // 10 minutes
 mutex crawlLogLock;
 
 static void logCrawled(size_t count, const string &url) {
@@ -310,9 +312,16 @@ void *CrawlerWorkerThread(void *) {
         size_t crawled = ++urlsCrawled;
         logCrawled(crawled, item->link);
 
-        if (!shouldStop && (urlsCrawled.load() % 500) == 0) {
-            checkpoint->save(*f, bloom, urlsCrawled.load());
-            flushAnchorIndexToDisk(false);
+        {
+            time_t now = time(nullptr);
+            time_t last = lastCheckpointTime.load();
+            if (!shouldStop && (now - last) >= checkpointIntervalSecs) {
+                if (lastCheckpointTime.compare_exchange_strong(last, now)) {
+                    checkpoint->save(*f, bloom, urlsCrawled.load());
+                    flushAnchorIndexToDisk(false);
+                    std::cerr << "Checkpoint saved at " << urlsCrawled.load() << " URLs\n";
+                }
+            }
         }
     }
 
@@ -916,6 +925,8 @@ int main() {
     // pthread_t anchorThread{};
     bool senderStarted = false;
     bool receiverStarted = false;
+
+    lastCheckpointTime = time(nullptr);
 
     for (size_t i = 0; i < crawlerThreadCount; ++i) {
         pthread_create(&crawlerThreads[i], nullptr, CrawlerWorkerThread, nullptr);
