@@ -80,6 +80,8 @@ bool anchorEdited = false;
 size_t anchorFileCount = 0;
 const string anchorIndexDirectory("data/anchor_index");
 const string indexDirectory("data/body_index");
+const size_t FLUSHANCHORSIZE = 2500;
+const size_t FLUSHBODYTOKENSIZE = 25000000;
 
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint = nullptr;
@@ -302,6 +304,9 @@ void *CrawlerWorkerThread(void *) {
 
         if (!shouldStop && (urlsCrawled.load() % 500) == 0) {
             checkpoint->save(*f, bloom, urlsCrawled.load());
+        }
+
+        if (!shouldStop && (urlsCrawled.load() % FLUSHANCHORSIZE) == 0) {
             flushAnchorIndexToDisk(false);
         }
     }
@@ -335,10 +340,10 @@ void *IndexWorkerThread(void *) {
         }
         mem_index.finishDocument(tokenized.doc_end);
         ++docsProcessed;
-        // tokensProcessed += tokenized.tokens.size();
+        tokensProcessed += tokenized.tokens.size();
 
-        // if (tokensProcessed >= 5000000) {
-        if (docsProcessed >= 500) {
+        if (tokensProcessed >= FLUSHBODYTOKENSIZE) {
+            // if (docsProcessed >= 500) {
             std::cout << "Start building index chunk \n";
             char buffer[64];
             std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
@@ -356,6 +361,7 @@ void *IndexWorkerThread(void *) {
 
             mem_index = InMemoryIndex();
             docsProcessed = 0;
+            tokensProcessed = 0;
             ++chunksWritten;
         }
     }
@@ -516,12 +522,15 @@ void *SendToMachineThread(void *) {
 
             if (!sendBatchToPeer(peer_address[i], readyBatches[i])) {
                 // We add batch back to memory if send failed
-                batch_lock.lock();
-                for (const Link &link : readyBatches[i]) {
-                    batches[i].pushBack(link);
-                }
-                batch_lock.unlock();
-                batch_cv.notify_one();
+                // batch_lock.lock();
+                // for (const Link &link : readyBatches[i]) {
+                //     batches[i].pushBack(link);
+                // }
+                // batch_lock.unlock();
+                // batch_cv.notify_one();
+
+                // We throw failed message to make sure retry don't clog memory
+                std::cout << "Throw away batch\n";
             }
         }
     }
