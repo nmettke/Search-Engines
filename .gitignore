@@ -53,10 +53,12 @@ build*/
 .DS_Store
 
 # For Vasu
-vasuBuild.shsrc/crawler/checkpoint.dat
-src/crawler/checkpoint.dat.tmp
+vasuBuild.sh
 *.vscode/*
 
+# Crawler artifacts
+src/crawler/checkpoint.dat
+src/crawler/checkpoint.dat.tmp
 *.idx
-*.dat/*
+*.dat
 .env

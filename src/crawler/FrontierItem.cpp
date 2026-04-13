@@ -6,14 +6,14 @@
 constexpr double suffixWeight = 1.0;
 constexpr double baseLengthWeight = 0.1;
 constexpr double pathDepthWeight = 0.2;
-constexpr double seedDistanceWeight = 500;
+constexpr double seedDistanceWeight = 3.0;
 constexpr double failureWeight = 10.0;
 constexpr double nonEnglishWeight = 1.5;
 
 FrontierItem::FrontierItem(const string &url) : link(url), seedDistance(0) { parseURL(url); }
 
 FrontierItem::FrontierItem(const string &url, const FrontierItem &parent)
-    : seedDistance(parent.seedDistance + 1), broken(parent.broken), english(parent.english) {
+    : link(url), seedDistance(parent.seedDistance + 1), broken(parent.broken), english(parent.english) {
     parseURL(url);
 }
 
