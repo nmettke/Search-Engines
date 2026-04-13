@@ -12,20 +12,33 @@
 #include "../utils/string.hpp"
 #include "../utils/vector.hpp"
 
-struct ThreadArgs {
-    int client_socket;
-    ::vector<QueryEngine *> *engines;
+struct MetaRecord {
+    string url;
+    string title;
+    string snippet;
 };
 
-::string to_string(double score) {
+struct GlobalMatch {
+    int chunk_id;
+    uint32_t doc_id;
+    double score;
+};
+
+struct ThreadArgs {
+    int client_socket;
+    vector<QueryEngine *> *engines;
+    vector<vector<MetaRecord>> *all_meta;
+};
+
+string to_string(double score) {
     char buffer[64];
     snprintf(buffer, sizeof(buffer), "%.4f", score);
-    return ::string(buffer);
+    return string(buffer);
 }
 
 class TopKHeap {
   private:
-    ::vector<ScoredDocument> heap_;
+    vector<GlobalMatch> heap_;
     size_t k_;
 
     void heapifyUp(int index) {
@@ -64,7 +77,7 @@ class TopKHeap {
   public:
     TopKHeap(size_t k) : k_(k) { heap_.reserve(k + 1); }
 
-    void push(const ScoredDocument &item) {
+    void push(const GlobalMatch &item) {
         if (heap_.size() < k_) {
             heap_.push_back(item);
             heapifyUp(heap_.size() - 1);
@@ -74,8 +87,8 @@ class TopKHeap {
         }
     }
 
-    ::vector<ScoredDocument> extractSorted() {
-        ::vector<ScoredDocument> sorted_results;
+    vector<GlobalMatch> extractSorted() {
+        vector<GlobalMatch> sorted_results;
         while (!heap_.empty()) {
             sorted_results.push_back(heap_[0]);
             heap_[0] = heap_.back();
@@ -92,14 +105,14 @@ class TopKHeap {
 void *handle_master_connection(void *args) {
     ThreadArgs *t_args = (ThreadArgs *)args;
     int sock = t_args->client_socket;
-    ::vector<QueryEngine *> *engines = t_args->engines;
+    vector<QueryEngine *> *engines = t_args->engines;
 
     char buffer[1024];
     memset(buffer, 0, sizeof(buffer));
     ssize_t bytes_read = read(sock, buffer, sizeof(buffer) - 1);
 
     if (bytes_read > 0) {
-        ::string query(buffer);
+        string query(buffer);
 
         while (!query.empty() && (query.back() == '\n' || query.back() == '\r')) {
             query.pop_back();
@@ -108,18 +121,21 @@ void *handle_master_connection(void *args) {
         // TODO: Default value for K, can be modified to read from query if needed
         size_t K = 10;
         TopKHeap top_k_heap(K);
-        for (QueryEngine *engine : *engines) {
-            ::vector<ScoredDocument> chunk_matches = engine->search(query, K);
+        for (size_t i = 0; i < engines->size(); ++i) {
+            vector<ScoredDocument> chunk_matches = (*engines)[i]->search(query, K);
             for (const auto &match : chunk_matches) {
-                top_k_heap.push(match); // Keep only the best K across ALL files
+                top_k_heap.push({(int)i, match.doc_id, match.score});
             }
         }
-        ::vector<ScoredDocument> matches = top_k_heap.extractSorted();
+        vector<GlobalMatch> matches = top_k_heap.extractSorted();
 
         // Format the response: "url score\n"
-        ::string response = "";
+        string response = "";
         for (const auto &match : matches) {
-            response += match.doc.url + " " + to_string(match.score) + "\n";
+            MetaRecord &meta = (*t_args->all_meta)[match.chunk_id][match.doc_id];
+
+            response += meta.url + "\t" + meta.title + "\t" + meta.snippet + "\t" +
+                        to_string(match.score) + "\n";
         }
 
         response += "END_OF_RESULTS\n";
@@ -138,33 +154,60 @@ int main(int argc, char **argv) {
     }
 
     int port = std::stoi(argv[1]);
-    ::string dir_path = argv[2];
+    string dir_path = argv[2];
 
     // Ensure directory path doesn't end with a slash
     if (!dir_path.empty() && dir_path.back() == '/')
         dir_path.pop_back();
 
-    ::vector<DiskChunkReader *> readers;
-    ::vector<QueryEngine *> engines;
+    vector<DiskChunkReader *> readers;
+    vector<QueryEngine *> engines;
+    vector<vector<MetaRecord>> all_meta;
 
     DIR *dir;
     struct dirent *ent;
-    if ((dir = opendir(dir_path.c_str())) != nullptr) {
-        while ((ent = readdir(dir)) != nullptr) {
-            ::string file_name = ent->d_name;
+    string index_dir = dir_path + "/body_index";
+    string meta_dir = dir_path + "/meta";
 
-            // If the file ends with ".idx"
+    if ((dir = opendir(index_dir.c_str())) != nullptr) {
+        while ((ent = readdir(dir)) != nullptr) {
+            string file_name = ent->d_name;
+
             if (file_name.length() >= 4 && file_name.substr(file_name.length() - 4) == ".idx") {
-                ::string full_path = dir_path + "/" + file_name;
+                string base_name = file_name.substr(0, file_name.length() - 4);
+                string idx_path = index_dir + "/" + file_name;
+                string meta_path = meta_dir + "/" + base_name + ".meta";
 
                 DiskChunkReader *reader = new DiskChunkReader();
-                if (reader->open(full_path)) {
+                if (reader->open(idx_path)) {
                     QueryEngine *engine = new QueryEngine(*reader);
-                    readers.push_back(reader);
-                    engines.push_back(engine);
-                    // std::cout << "Loaded chunk: " << file_name << "\n";
-                } else {
-                    delete reader;
+                    readers.pushBack(reader);
+                    engines.pushBack(engine);
+
+                    vector<MetaRecord> chunk_meta;
+                    FILE *fp = fopen(meta_path.c_str(), "r");
+                    if (fp) {
+                        char line[4096];
+                        while (fgets(line, sizeof(line), fp)) {
+                            string s(line);
+                            if (!s.empty() && s.back() == '\n')
+                                s.pop_back();
+
+                            size_t tab1 = s.find('\t');
+                            size_t tab2 = s.find('\t', tab1 + 1);
+
+                            if (tab1 != string::npos && tab2 != string::npos) {
+                                string url = s.substr(0, tab1);
+                                string title = s.substr(tab1 + 1, tab2 - tab1 - 1);
+                                string snippet = s.substr(tab2 + 1);
+                                chunk_meta.pushBack({url, title, snippet});
+                            }
+                        }
+                        fclose(fp);
+                    }
+                    all_meta.pushBack(chunk_meta);
+                    std::cout << "Loaded chunk: " << base_name << " (" << chunk_meta.size()
+                              << " docs)\n";
                 }
             }
         }
@@ -214,7 +257,7 @@ int main(int argc, char **argv) {
         int client_sock = accept(server_fd, (struct sockaddr *)&client_addr, &addr_len);
 
         if (client_sock >= 0) {
-            ThreadArgs *args = new ThreadArgs{client_sock, &engines};
+            ThreadArgs *args = new ThreadArgs{client_sock, &engines, &all_meta};
 
             pthread_t thread_id;
             if (pthread_create(&thread_id, nullptr, handle_master_connection, args) == 0) {

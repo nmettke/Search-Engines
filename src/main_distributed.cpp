@@ -81,6 +81,7 @@ bool anchorEdited = false;
 size_t anchorFileCount = 0;
 const string anchorIndexDirectory("data/anchor_index");
 const string indexDirectory("data/body_index");
+const string metaDirectory("data/meta");
 const size_t FLUSHANCHORSIZE = 2500;
 const size_t FLUSHBODYTOKENSIZE = 25000000;
 
@@ -343,13 +344,66 @@ void *DelayedQueueThread(void *) {
     return nullptr;
 }
 
+static void sanitizeMetaText(string &text) {
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '\t' || text[i] == '\n' || text[i] == '\r') {
+            text[i] = ' ';
+        }
+    }
+}
+
+string buildMetaLine(const HtmlParser &doc) {
+    string title = "";
+    for (size_t i = 0; i < doc.titleWords.size(); ++i) {
+        title += doc.titleWords[i];
+        title.pushBack(' ');
+    }
+    if (title.empty())
+        title = "Untitled";
+    sanitizeMetaText(title);
+
+    string snippet = "";
+    for (size_t i = 0; i < doc.words.size(); ++i) {
+        if (snippet.size() > 150)
+            break;
+        snippet += doc.words[i];
+        snippet.pushBack(' ');
+    }
+    if (snippet.empty())
+        snippet = "No content available.";
+    sanitizeMetaText(snippet);
+
+    string meta_line = doc.sourceUrl;
+    meta_line.pushBack('\t');
+    meta_line += title;
+    meta_line.pushBack('\t');
+    meta_line += snippet;
+    meta_line.pushBack('\n');
+
+    return meta_line;
+}
+
+void flushMetaData(const vector<string> &chunk_metadata, const string &meta_path) {
+    FILE *meta_fp = fopen(meta_path.c_str(), "w");
+    if (meta_fp) {
+        for (size_t i = 0; i < chunk_metadata.size(); ++i) {
+            fwrite(chunk_metadata[i].c_str(), 1, chunk_metadata[i].size(), meta_fp);
+        }
+        fclose(meta_fp);
+    }
+}
+
 void *IndexWorkerThread(void *) {
     Tokenizer tokenizer;
     size_t docsProcessed = 0;
     size_t chunksWritten = 0;
     size_t tokensProcessed = 0;
 
+    vector<string> chunk_metadata;
+
     while (std::optional<HtmlParser> doc = q->pop()) {
+        chunk_metadata.pushBack(buildMetaLine(*doc));
+
         auto tokenized = tokenizer.processDocument(*doc);
         for (const auto &tok : tokenized.tokens) {
             mem_index.addToken(tok);
@@ -366,8 +420,14 @@ void *IndexWorkerThread(void *) {
                           chunksWritten);
             const string path(buffer);
 
+            char meta_buffer[64];
+            std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta",
+                          metaDirectory.c_str(), chunksWritten);
+            const string meta_path(meta_buffer);
+
             try {
                 flushIndexChunk(mem_index, path);
+                flushMetaData(chunk_metadata, meta_path);
                 std::cout << "Successfully wrote chunk with " << docsProcessed
                           << " docs to: " << path << '\n';
             } catch (const std::exception &e) {
@@ -389,8 +449,14 @@ void *IndexWorkerThread(void *) {
                       chunksWritten);
         const string path(buffer);
 
+        char meta_buffer[64];
+        std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta", metaDirectory.c_str(),
+                      chunksWritten);
+        const string meta_path(meta_buffer);
+
         try {
             flushIndexChunk(mem_index, path);
+            flushMetaData(chunk_metadata, meta_path);
             std::cout << "Successfully wrote final chunk with " << docsProcessed
                       << " docs to: " << path << '\n';
         } catch (const std::exception &e) {
