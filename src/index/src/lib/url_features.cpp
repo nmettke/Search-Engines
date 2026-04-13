@@ -1,4 +1,5 @@
 #include "url_features.h"
+#include <climits>
 
 namespace {
 
@@ -229,26 +230,31 @@ ParsedUrl parseUrl(const ::string &url) {
     return result;
 }
 
-uint32_t urlBaseDomainLength(const ParsedUrl &parsed) {
-    return static_cast<uint32_t>(parsed.base_domain_length);
+uint8_t urlBaseDomainLength(const ParsedUrl &parsed) {
+    return static_cast<uint8_t>(
+        std::min(parsed.base_domain_length, static_cast<size_t>(UINT8_MAX)));
 }
 
-uint32_t urlPathLength(const ParsedUrl &parsed) {
-    return static_cast<uint32_t>(parsed.path.size());
+uint16_t urlPathLength(const ParsedUrl &parsed) {
+    return static_cast<uint16_t>(std::min(parsed.path.size(), static_cast<size_t>(UINT16_MAX)));
 }
 
-uint32_t urlPathDepth(const ParsedUrl &parsed) { return static_cast<uint32_t>(parsed.path_depth); }
-
-uint32_t urlQueryParamCount(const ParsedUrl &parsed) {
-    return static_cast<uint32_t>(parsed.query_param_count);
+uint8_t urlPathDepth(const ParsedUrl &parsed) {
+    return static_cast<uint8_t>(std::min(parsed.path_depth, static_cast<size_t>(UINT8_MAX)));
 }
 
-uint32_t urlNumericPathCharCount(const ParsedUrl &parsed) {
-    return static_cast<uint32_t>(parsed.numeric_path_char_count);
+uint8_t urlQueryParamCount(const ParsedUrl &parsed) {
+    return static_cast<uint8_t>(std::min(parsed.query_param_count, static_cast<size_t>(UINT8_MAX)));
 }
 
-uint32_t urlDomainHyphenCount(const ParsedUrl &parsed) {
-    return static_cast<uint32_t>(parsed.domain_hyphen_count);
+uint8_t urlNumericPathCharCount(const ParsedUrl &parsed) {
+    return static_cast<uint8_t>(
+        std::min(parsed.numeric_path_char_count, static_cast<size_t>(UINT8_MAX)));
+}
+
+uint8_t urlDomainHyphenCount(const ParsedUrl &parsed) {
+    return static_cast<uint8_t>(
+        std::min(parsed.domain_hyphen_count, static_cast<size_t>(UINT8_MAX)));
 }
 
 bool urlHasHttps(const ::string &url) {
