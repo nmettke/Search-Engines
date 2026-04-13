@@ -462,6 +462,7 @@ static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
     }
 
     close(socketFd);
+    std::cout << "Send Batch Successful\n";
     return true;
 }
 
