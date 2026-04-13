@@ -78,7 +78,8 @@ HashTable<string, AnchorPosting> *anchorIndex = nullptr;
 mutex anchor_lock;
 bool anchorEdited = false;
 size_t anchorFileCount = 0;
-const string anchorIndexDirectory("src/index");
+const string anchorIndexDirectory("data/anchor_index");
+const string indexDirectory("data/body_index");
 
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint = nullptr;
@@ -336,7 +337,8 @@ void *IndexWorkerThread(void *) {
 
         if (docsProcessed >= 512) {
             char buffer[64];
-            std::snprintf(buffer, sizeof(buffer), "chunk_%zu.idx", chunksWritten);
+            std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
+                          chunksWritten);
             const string path(buffer);
 
             try {
@@ -357,7 +359,8 @@ void *IndexWorkerThread(void *) {
     // Write final partial chunk
     if (docsProcessed > 0) {
         char buffer[64];
-        std::snprintf(buffer, sizeof(buffer), "chunk_%zu.idx", chunksWritten);
+        std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
+                      chunksWritten);
         const string path(buffer);
 
         try {
