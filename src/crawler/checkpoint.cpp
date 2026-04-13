@@ -16,6 +16,11 @@ bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom, siz
     lock_guard guard(saveMutex_);
     vector<FrontierItem> items = frontier.snapshot();
 
+    if (items.size() == 0 && frontier.hasInFlightWork()) {
+        std::cerr << "Checkpoint skipped: frontier snapshot empty while work is in flight\n";
+        return false;
+    }
+
     FILE *f = fopen(tmpPath().c_str(), "wb");
     if (!f) {
         std::cerr << "Checkpoint: failed to open temp file\n";

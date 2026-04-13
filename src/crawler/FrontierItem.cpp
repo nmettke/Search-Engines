@@ -4,17 +4,17 @@
 #include <cstdlib>
 
 constexpr double suffixWeight = 1.0;
-constexpr double baseLengthWeight = 0.15;
-constexpr double pathDepthWeight = 0.75;
-constexpr double seedDistanceWeight = 1.0;
-constexpr double failureWeight = 5.0;
-constexpr double brokenSourceWeight = 3.0;
-constexpr double nonEnglishWeight = 2.0;
+constexpr double baseLengthWeight = 0.1;
+constexpr double pathDepthWeight = 0.2;
+constexpr double seedDistanceWeight = 3.0;
+constexpr double failureWeight = 10.0;
+constexpr double nonEnglishWeight = 1.5;
 
 FrontierItem::FrontierItem(const string &url) : link(url), seedDistance(0) { parseURL(url); }
 
 FrontierItem::FrontierItem(const string &url, const FrontierItem &parent)
-    : seedDistance(parent.seedDistance + 1), broken(parent.broken), english(parent.english) {
+    : link(url), seedDistance(parent.seedDistance + 1), broken(parent.broken),
+      english(parent.english) {
     parseURL(url);
 }
 
@@ -110,6 +110,7 @@ void FrontierItem::markNonEnglish() { english = false; }
 double FrontierItem::getScore() const {
     double score = 0.0;
 
+    // Base scoring
     score += suffixWeight * suffixScore(suffix);
 
     score -= baseLengthWeight * static_cast<double>(baseLength);
@@ -119,12 +120,26 @@ double FrontierItem::getScore() const {
     if (failed) {
         score -= failureWeight;
     }
-    if (broken) {
-        score -= brokenSourceWeight;
-    }
     if (!english) {
         score -= nonEnglishWeight;
     }
+
+    // Apply new heuristics
+    string rest;
+    string host;
+    string path;
+
+    extractRest(link, rest);
+    splitHostAndPath(rest, host, path);
+
+    // Path pattern scoring
+    score += scorePathPatterns(path);
+
+    // Query string complexity
+    score += scoreQueryStringComplexity(link);
+
+    // Subdomain signals
+    score += scoreSubdomainSignals(host);
 
     return score;
 }

@@ -1,6 +1,8 @@
 #include "Crawler.h"
 #include "checkpoint.h"
 #include "url_dedup.h"
+#include "utils/threads/lock_guard.hpp"
+#include "utils/threads/mutex.hpp"
 #include <atomic>
 #include <csignal>
 #include <iostream>
@@ -29,6 +31,16 @@ std::atomic<size_t> urlsCrawled{0};
 UrlBloomFilter bloom(1000000, 0.0001);
 RobotsCache *robotsCache = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
+mutex crawlLogLock;
+
+static void logCrawled(size_t count, const string &url) {
+    lock_guard guard(crawlLogLock);
+    if (url.empty()) {
+        std::cout << "Crawled [" << count << "] <EMPTY_URL>\n";
+        return;
+    }
+    std::cout << "Crawled [" << count << "] " << url << '\n';
+}
 
 void *WorkerThread(void *arg) {
     while (std::optional<FrontierItem> item = f->pop()) {
@@ -71,20 +83,19 @@ void *WorkerThread(void *arg) {
             continue;
         }
 
-        vector<string> discoveredLinks;
+        vector<FrontierItem> discoveredLinks;
 
         for (const Link &link : parsed.links) {
-            if (link.URL.find("http") != link.URL.npos) {
-                string canonical;
-                if (shouldEnqueueUrl(link.URL, bloom, canonical)) {
-                    discoveredLinks.pushBack(canonical);
-                }
+            string resolved = absolutizeUrl(link.URL, item->link, parsed.base);
+            string canonical;
+            if (shouldEnqueueUrl(resolved, bloom, canonical)) {
+                discoveredLinks.pushBack(FrontierItem(canonical, *item));
             }
         }
 
         f->pushMany(discoveredLinks);
-        ++urlsCrawled;
-        std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
+        size_t crawled = ++urlsCrawled;
+        logCrawled(crawled, item->link);
     }
 
     return nullptr;
@@ -132,11 +143,14 @@ int main() {
     vector<FrontierItem> recoveredItems;
     size_t loadedCount = 0;
 
-    if (checkpoint->load(recoveredItems, bloom, loadedCount)) {
+    if (checkpoint->load(recoveredItems, bloom, loadedCount) && recoveredItems.size() > 0) {
         urlsCrawled = loadedCount;
         f = new Frontier(recoveredItems);
         std::cerr << "Recovered from checkpoint at " << loadedCount << " URLs\n";
     } else {
+        if (loadedCount > 0 && recoveredItems.size() == 0) {
+            std::cerr << "Checkpoint has empty frontier; starting fresh from seed list\n";
+        }
         f = new Frontier("src/crawler/seedList.txt");
         std::cerr << "Starting fresh from seed list\n";
     }

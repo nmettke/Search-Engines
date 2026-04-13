@@ -152,8 +152,8 @@ TEST(FrontierItemHelperParseHostTest, MultiPartCountryCodeShowsCurrentHeuristicB
 
     parseHost("www.bbc.co.uk", suffix, baseLength);
 
-    EXPECT_EQ(suffix, Suffix::OTHER);
-    EXPECT_EQ(baseLength, 2);
+    EXPECT_EQ(suffix, Suffix::ORG);
+    EXPECT_EQ(baseLength, 3);
 }
 
 TEST(FrontierItemHelperComputePathDepthTest, EmptyPathHasDepthZero) {

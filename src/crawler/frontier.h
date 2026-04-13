@@ -23,7 +23,9 @@ class Frontier {
     ~Frontier() = default;
 
     void push(const string &url);
+    void push(const FrontierItem &item);
     void pushMany(const vector<string> &urls);
+    void pushMany(const vector<FrontierItem> &items);
 
     // Push items that were previously popped and then deferred because of crawl delay... these
     // items pending count was never decremented, so this method must not increment it.
@@ -39,6 +41,8 @@ class Frontier {
     size_t size() const;
 
     bool empty() const;
+
+    bool hasInFlightWork() const;
 
     vector<FrontierItem> snapshot() const;
 

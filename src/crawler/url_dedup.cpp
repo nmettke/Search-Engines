@@ -47,7 +47,7 @@ UrlBloomFilter UrlBloomFilter::deserializeFromStream(FILE *f) {
 namespace {
 
 static const char *kAllowedTlds[] = {
-    "com", "org", "gov", "edu", "ca", "co.uk", "uk", "au", "net",
+    "com", "org", "gov", "edu", "ca", "co.uk", "com.au", "uk", "au", "net", "mil", "int",
 };
 static constexpr std::size_t kAllowedTldCount = sizeof(kAllowedTlds) / sizeof(kAllowedTlds[0]);
 
@@ -157,7 +157,168 @@ bool hasAllowedTld(const string &normalizedUrl) {
     return hostHasAllowedTld(host);
 }
 
+bool hasAllowedFileExtension(const string &url) {
+    // Reject known bad extensions
+    const char *badExts[] = {".pdf",  ".doc", ".docx", ".xls", ".xlsx", ".zip",  ".exe", ".jpg",
+                             ".jpeg", ".png", ".gif",  ".bmp", ".svg",  ".webp", ".mp4", ".webm",
+                             ".avi",  ".mov", ".mkv",  ".flv", ".mp3",  ".wav",  ".aac", ".flac",
+                             ".m4a",  ".tar", ".gz",   ".rar", ".7z"};
+
+    size_t numBadExts = sizeof(badExts) / sizeof(badExts[0]);
+    string lowerUrl;
+    for (size_t i = 0; i < url.size(); ++i) {
+        char c = url[i];
+        lowerUrl.pushBack((c >= 'A' && c <= 'Z') ? (c - 'A' + 'a') : c);
+    }
+
+    for (size_t i = 0; i < numBadExts; ++i) {
+        size_t extLen = 0;
+        for (const char *p = badExts[i]; *p; ++p) {
+            ++extLen;
+        }
+
+        if (lowerUrl.size() >= extLen) {
+            bool matches = true;
+            for (size_t j = 0; j < extLen; ++j) {
+                if (lowerUrl[lowerUrl.size() - extLen + j] != badExts[i][j]) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool startsWith(const string &value, const char *prefix) {
+    std::size_t i = 0;
+    while (prefix[i] != '\0') {
+        if (i >= value.size() || value[i] != prefix[i]) {
+            return false;
+        }
+        ++i;
+    }
+    return true;
+}
+
+bool hasExplicitUnsupportedScheme(const string &value) {
+    std::size_t colonPos = value.find(':');
+    if (colonPos == string::npos) {
+        return false;
+    }
+    std::size_t firstSeparator = value.find_first_of("/?#");
+    return firstSeparator == string::npos || colonPos < firstSeparator;
+}
+
+string removeDotSegments(const string &path) {
+    vector<string> segments;
+    std::size_t i = 0;
+    while (i < path.size()) {
+        while (i < path.size() && path[i] == '/') {
+            ++i;
+        }
+        std::size_t start = i;
+        while (i < path.size() && path[i] != '/') {
+            ++i;
+        }
+        if (i == start) {
+            continue;
+        }
+        string seg = path.substr(start, i - start);
+        if (seg == ".") {
+            continue;
+        }
+        if (seg == "..") {
+            if (!segments.empty()) {
+                segments.popBack();
+            }
+            continue;
+        }
+        segments.pushBack(seg);
+    }
+
+    string normalized = "/";
+    for (std::size_t j = 0; j < segments.size(); ++j) {
+        if (j > 0) {
+            normalized.pushBack('/');
+        }
+        normalized += segments[j];
+    }
+
+    if (!path.empty() && path[path.size() - 1] == '/' && normalized[normalized.size() - 1] != '/') {
+        normalized.pushBack('/');
+    }
+    return normalized;
+}
+
 } // namespace
+
+string absolutizeUrl(const string &rawUrl, const string &sourceUrl, const string &baseUrl) {
+    string cleaned = trim(rawUrl);
+    if (cleaned.empty() || cleaned[0] == '#') {
+        return "";
+    }
+
+    if (startsWith(cleaned, "http://") || startsWith(cleaned, "https://")) {
+        return normalizeUrl(cleaned);
+    }
+
+    if (hasExplicitUnsupportedScheme(cleaned)) {
+        return "";
+    }
+
+    string context = normalizeUrl(baseUrl);
+    if (context.empty()) {
+        context = normalizeUrl(sourceUrl);
+    }
+    if (context.empty()) {
+        return "";
+    }
+
+    std::size_t schemePos = context.find("://");
+    if (schemePos == string::npos) {
+        return "";
+    }
+
+    string scheme = context.substr(0, schemePos);
+    string rest = context.substr(schemePos + 3);
+
+    std::size_t hostEnd = rest.find_first_of("/?");
+    string authority = hostEnd == string::npos ? rest : rest.substr(0, hostEnd);
+    string pathAndQuery = hostEnd == string::npos ? "/" : rest.substr(hostEnd);
+
+    std::size_t queryPos = pathAndQuery.find('?');
+    string path = queryPos == string::npos ? pathAndQuery : pathAndQuery.substr(0, queryPos);
+    if (path.empty()) {
+        path = "/";
+    }
+
+    if (startsWith(cleaned, "//")) {
+        return normalizeUrl(scheme + ":" + cleaned);
+    }
+
+    if (cleaned[0] == '?') {
+        return normalizeUrl(scheme + "://" + authority + path + cleaned);
+    }
+
+    string resolvedPath;
+    if (cleaned[0] == '/') {
+        resolvedPath = removeDotSegments(cleaned);
+    } else {
+        std::size_t slashPos = path.size();
+        while (slashPos > 0 && path[slashPos - 1] != '/') {
+            --slashPos;
+        }
+        string baseDir = slashPos == 0 ? "/" : path.substr(0, slashPos);
+        resolvedPath = removeDotSegments(baseDir + cleaned);
+    }
+
+    return normalizeUrl(scheme + "://" + authority + resolvedPath);
+}
 
 string normalizeUrl(const string &rawUrl) {
     string cleaned = trim(rawUrl);
@@ -300,6 +461,9 @@ bool shouldEnqueueUrl(const string &rawUrl, UrlBloomFilter &bloom, string &canon
         return false;
     }
     if (!hasAllowedTld(normalizeOut)) {
+        return false;
+    }
+    if (!hasAllowedFileExtension(normalizeOut)) {
         return false;
     }
     canonicalOut = normalizeOut;
