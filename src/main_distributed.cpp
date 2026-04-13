@@ -23,6 +23,7 @@
 #include <arpa/inet.h>
 #include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -407,6 +408,9 @@ static bool hasReadyBatch() {
     return false;
 }
 
+static constexpr size_t sendBatchRetryCount = 3;
+static constexpr int sendBatchRetryBaseDelayMs = 100;
+
 static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
     // Common network connection code to send formatted payload of batched links
     if (batch.size() == 0) {
@@ -487,6 +491,23 @@ static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
     return true;
 }
 
+static bool sendBatchToPeerWithRetry(const string &peer, const vector<Link> &batch) {
+    for (size_t attempt = 0; attempt <= sendBatchRetryCount; ++attempt) {
+        if (sendBatchToPeer(peer, batch)) {
+            return true;
+        }
+
+        if (attempt == sendBatchRetryCount) {
+            break;
+        }
+
+        const int delayMs = sendBatchRetryBaseDelayMs * (2 * attempt);
+        std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+    }
+
+    return false;
+}
+
 void *SendToMachineThread(void *) {
     while (true) {
         vector<vector<Link>> readyBatches;
@@ -533,17 +554,14 @@ void *SendToMachineThread(void *) {
                 continue;
             }
 
-            if (!sendBatchToPeer(peer_address[i], readyBatches[i])) {
-                // We add batch back to memory if send failed
-                // batch_lock.lock();
-                // for (const Link &link : readyBatches[i]) {
-                //     batches[i].pushBack(link);
-                // }
-                // batch_lock.unlock();
-                // batch_cv.notify_one();
-
-                // We throw failed message to make sure retry don't clog memory
-                // std::cout << "Throw away batch\n";
+            if (!sendBatchToPeerWithRetry(peer_address[i], readyBatches[i])) {
+                // Put failed batch back without notifying batch_cv so it only
+                // retries once real new URLs make the batch ready again.
+                batch_lock.lock();
+                for (Link &link : readyBatches[i]) {
+                    batches[i].pushBack(std::move(link));
+                }
+                batch_lock.unlock();
             }
         }
     }
