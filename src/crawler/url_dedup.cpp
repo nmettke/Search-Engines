@@ -230,7 +230,9 @@ string resolveUrl(const string &baseUrl, const string &rawHref) {
     // Relative path: append to directory of base
     std::size_t lastSlash = string::npos;
     for (std::size_t i = 0; i < basePath.size(); ++i) {
-        if (basePath[i] == '/') lastSlash = i;
+        if (basePath[i] == '/') {
+            lastSlash = i;
+        }
     }
     string dir = lastSlash != string::npos ? basePath.substr(0, lastSlash + 1) : "/";
     return scheme + "://" + host + dir + href;

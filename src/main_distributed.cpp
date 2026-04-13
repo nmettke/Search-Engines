@@ -267,7 +267,9 @@ void *CrawlerWorkerThread(void *) {
         vector<string> discoveredLinks;
         for (const Link &link : parsed.links) {
             string resolved = resolveUrl(parsed.documentUrl(), link.URL);
-            if (resolved.empty()) continue;
+            if (resolved.empty()) {
+                continue;
+            }
             string normalizedOut = normalizeUrl(resolved);
             if (normalizedOut.empty() || !urlFilter.isAllowed(normalizedOut)) {
                 continue;

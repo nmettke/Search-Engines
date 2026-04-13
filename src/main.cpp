@@ -88,8 +88,12 @@ void *CrawlerWorkerThread(void *arg) {
 
         for (const Link &link : parsed.links) {
             string resolved = resolveUrl(parsed.documentUrl(), link.URL);
-            if (resolved.empty()) continue;
-            if (resolved.find("http") == resolved.npos) continue;
+            if (resolved.empty()) {
+                continue;
+            }
+            if (resolved.find("http") == resolved.npos) {
+                continue;
+            }
 
             size_t hashto = hashString(resolved.cstr()) % num_machine;
             if (hashto != machine_id.load()) {
