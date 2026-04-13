@@ -168,3 +168,9 @@ target_link_libraries(search_engine_distributed
 )
 
 target_compile_features(search_engine_distributed PUBLIC cxx_std_17)
+
+# Standalone TCP stream harness (same host:port + send/recv patterns as main_distributed)
+add_executable(socket_stream_test
+    tools/socket_stream_test.cpp
+)
+target_compile_features(socket_stream_test PUBLIC cxx_std_17)
