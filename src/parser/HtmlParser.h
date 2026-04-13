@@ -512,6 +512,9 @@ class HtmlParser {
                 }
             }
         }
+
+        // Clear raw pointer so copies don't hold a stale reference into links vector
+        currentLink = nullptr;
     }
 
     HtmlParser(std::initializer_list<::string> words, std::initializer_list<::string> titleWords,
