@@ -22,12 +22,17 @@ ISR_AND     := $(LIB_DIR)/isr_and.cpp
 ISR_OR	  := $(LIB_DIR)/isr_or.cpp
 ISR_PHRASE   := $(LIB_DIR)/isr_phrase.cpp
 ISR_CONTAINER  := $(LIB_DIR)/isr_container.cpp
+DOC_FEATURES := $(LIB_DIR)/document_features.cpp
+URL_FEATURES := $(LIB_DIR)/url_features.cpp
+HTML_PARSER  := ../parser/HtmlParser.cpp
+UTF8         := ../utils/Utf8.cpp
 
 # All library sources (for main)
 ALL_LIB_SRCS := $(DISK_WRITER) $(VBYTE) $(IN_MEM_IDX) $(COMMON) \
                 $(FLUSHER) $(DISK_READER) $(TOKENIZER) $(SEEK_TABLE) \
 				$(QUERY_ENGINE) $(QUERY_TOKENIZER) $(QUERY_COMPILER) \
-				$(ISR) $(ISR_AND) $(ISR_OR) $(ISR_PHRASE) $(ISR_CONTAINER)
+				$(ISR) $(ISR_AND) $(ISR_OR) $(ISR_PHRASE) $(ISR_CONTAINER) \
+				$(DOC_FEATURES) $(URL_FEATURES) $(HTML_PARSER) $(UTF8)
 
 .PHONY: all main tests test clean lint help
 
