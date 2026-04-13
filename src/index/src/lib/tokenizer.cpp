@@ -67,9 +67,10 @@ TokenizedDocument Tokenizer::processDocument(const HtmlParser &doc) {
         ++next_location;
     }
 
-    out.doc_end = DocEndOutput{next_location, doc.documentUrl(), body_word_count,
-                               static_cast<uint16_t>(doc.titleWords.size()), doc_start,
-                               doc.seedDistance, features};
+    out.doc_end = DocEndOutput{next_location,   doc.documentUrl(),
+                               body_word_count, static_cast<uint16_t>(doc.titleWords.size()),
+                               doc_start,       doc.seedDistance,
+                               features};
     ++next_location; // shift one to account for #DocEnd
     return out;
 }
