@@ -97,8 +97,7 @@ mutex crawlLogLock;
 
 static void logCrawled(size_t count, const string &url) {
     lock_guard guard(crawlLogLock);
-    (void)count;
-    (void)url;
+    std::cerr << "Crawled [" << count << "] " << url << '\n';
 }
 
 static int64_t nowMillis() {
