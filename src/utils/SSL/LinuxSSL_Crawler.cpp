@@ -26,7 +26,7 @@ void cleanupSSL() {
     }
 }
 
-ParsedUrl::ParsedUrl(const char *url) {
+SslParsedUrl::SslParsedUrl(const char *url) {
     // Assumes url points to static text but
     // does not check.
 
@@ -79,7 +79,7 @@ ParsedUrl::ParsedUrl(const char *url) {
         Host = Path = p;
 }
 
-ParsedUrl::~ParsedUrl() { delete[] pathBuffer; }
+SslParsedUrl::~SslParsedUrl() { delete[] pathBuffer; }
 
 string readURL(string target_url) {
     if (!sslCtx) {
@@ -87,7 +87,7 @@ string readURL(string target_url) {
     }
 
     // Parse the URL.
-    ParsedUrl url(target_url.cstr());
+    SslParsedUrl url(target_url.cstr());
     if (!url.Host || !*url.Host) {
         return "";
     }
