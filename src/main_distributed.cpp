@@ -539,7 +539,7 @@ void *SendToMachineThread(void *) {
                     batches[i].pushBack(link);
                 }
                 batch_lock.unlock();
-                batch_cv.notify_one();
+                sleep(5);
             }
         }
     }
