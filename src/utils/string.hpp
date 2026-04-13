@@ -213,8 +213,42 @@ class string {
         return npos;
     }
 
+    size_t find(const char *substr, size_t pos) const {
+        if (substr == nullptr || substr[0] == '\0') {
+            return pos;
+        }
+
+        size_t sub_len = getLength(substr);
+
+        if (sub_len > _size) {
+            return npos;
+        }
+
+        for (size_t i = pos; i <= _size - sub_len; ++i) {
+            size_t j = 0;
+            while (j < sub_len && _buffer[i + j] == substr[j]) {
+                ++j;
+            }
+
+            if (j == sub_len) {
+                return i;
+            }
+        }
+
+        return npos;
+    }
+
     size_t find(char c) const {
         for (size_t i = 0; i < _size; ++i) {
+            if (_buffer[i] == c) {
+                return i;
+            }
+        }
+        return npos;
+    }
+
+    size_t find(char c, size_t pos) const {
+        for (size_t i = pos; i < _size; ++i) {
             if (_buffer[i] == c) {
                 return i;
             }

@@ -1,13 +1,14 @@
 // src/lib/query_engine.cpp
 #include "query_engine.h"
+#include "../../../utils/string.hpp"
+#include "../../../utils/vector.hpp"
 #include "query_compiler.h"
 #include "query_tokenizer.h"
-#include "utils/string.hpp"
-#include "utils/vector.hpp"
+#include <iostream>
 
 class TopKHeap {
   private:
-    ::vector<ScoredDocument> heap_;
+    vector<ScoredDocument> heap_;
     size_t k_;
 
     void heapifyUp(int index) {
@@ -56,8 +57,8 @@ class TopKHeap {
         }
     }
 
-    ::vector<ScoredDocument> extractSorted() {
-        ::vector<ScoredDocument> sorted_results;
+    vector<ScoredDocument> extractSorted() {
+        vector<ScoredDocument> sorted_results;
         while (!heap_.empty()) {
             sorted_results.push_back(heap_[0]);
             heap_[0] = heap_.back();
@@ -71,12 +72,12 @@ class TopKHeap {
     }
 };
 
-double QueryEngine::calculate_score(const DocumentRecord &doc, const ::string &query) const {
+double QueryEngine::calculate_score(const DocumentRecord &doc, const string &query) const {
     // TODO: Implement scoring logic
     return 1.0;
 }
 
-::vector<ScoredDocument> QueryEngine::search(const ::string &query, size_t K) const {
+vector<ScoredDocument> QueryEngine::search(const string &query, size_t K) const {
     TopKHeap top_k(K);
 
     auto tokens = QueryTokenizer::tokenize(query);
@@ -104,7 +105,7 @@ double QueryEngine::calculate_score(const DocumentRecord &doc, const ::string &q
 
         if (doc) {
             double score = calculate_score(*doc, query);
-            top_k.push({*doc, score});
+            top_k.push({doc_id, score});
         }
 
         root->seek(doc_end_loc + 1);
