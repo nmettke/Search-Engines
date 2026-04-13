@@ -1,5 +1,24 @@
 // Minimal TCP stream test using the same host:port and socket patterns as
 // main_distributed.cpp (sendBatchToPeer / openListeningSocket / recv loop).
+//
+// --- GCP defaults (cache-me-if-you-can) — edit if IPs change -----------------
+//   crawler-1 (sender)   external IP: 34.58.160.109
+//   crawler-3 (listener) external IP: 34.135.152.6
+//
+// Default listen bind is 0.0.0.0:8081 on crawler-3. Do NOT bind(34.135.152.6):
+// the public IP is not on the VM NIC; use 0.0.0.0 and connect from crawler-1
+// to 34.135.152.6:8081.
+//
+// If connect() hangs or listen never accepts, check in order:
+//   1) VPC firewall: ingress TCP 8081 to crawler-3, source 34.58.160.109/32
+//      (or the subnet used by crawler-1). "Allow internal" alone does not add
+//      arbitrary ports.
+//   2) Same-region / routing: both VMs must reach each other on that path.
+//   3) OS firewall on crawler-3: ufw status; iptables -L; allow 8081/tcp if
+//      a host firewall is enabled.
+//   4) Ephemeral external IPs change if the instance is recreated — update
+//      the constants below and firewall rules.
+// ----------------------------------------------------------------------------
 
 #include <arpa/inet.h>
 #include <atomic>
@@ -14,6 +33,12 @@
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+// File scope so main() and the anonymous-namespace helpers share the same defaults.
+constexpr const char kCrawler1ExternalIp[] = "34.58.160.109";
+constexpr const char kCrawler3ExternalIp[] = "34.135.152.6";
+constexpr const char kDefaultListenBind[] = "0.0.0.0:8081";
+constexpr const char kDefaultSendPeer[] = "34.135.152.6:8081";
 
 namespace {
 
@@ -183,20 +208,22 @@ bool sendAll(int fd, const char *data, size_t len, const std::string &peer) {
 void printUsage(const char *argv0) {
     std::cerr
         << "Usage:\n"
-        << "  " << argv0 << " listen <host:port>\n"
-        << "      Bind and accept connections (same as peer_address for this machine).\n"
-        << "      Reads each connection until the peer closes (like ReceiveFromMachineThread).\n"
-        << "      Repeat until SIGINT (Ctrl+C).\n\n"
-        << "  " << argv0 << " send <host:port> [lines]\n"
-        << "      Connect and stream `lines` synthetic batch lines (default 500).\n"
-        << "      Each line looks like: url<TAB>anchor1<TAB>anchor2<NEWLINE>\n"
-        << "      (same framing as sendBatchToPeer in main_distributed.cpp).\n\n"
-        << "Examples (two terminals):\n"
-        << "  " << argv0 << " listen 0.0.0.0:9000\n"
-        << "  " << argv0 << " send 127.0.0.1:9000 1000\n"
-        << "Remote:\n"
-        << "  " << argv0 << " listen 0.0.0.0:8081\n"
-        << "  " << argv0 << " send 203.0.113.10:8081 200\n";
+        << "  " << argv0 << " listen [host:port]\n"
+        << "      Default (crawler-3): " << kDefaultListenBind << " — bind all interfaces.\n"
+        << "      Reads each connection until the peer closes. Repeat until SIGINT.\n\n"
+        << "  " << argv0 << " send [host:port] [lines]\n"
+        << "      Default peer (crawler-1 → crawler-3): " << kDefaultSendPeer << "\n"
+        << "      Default line count: 500. If the first optional arg has no ':', it is "
+           "treated as line count only.\n"
+        << "      Each line: url<TAB>anchor1<TAB>anchor2<NEWLINE> (sendBatchToPeer format).\n\n"
+        << "GCP (see source header): crawler-1=" << kCrawler1ExternalIp
+        << " sender, crawler-3=" << kCrawler3ExternalIp << " listener.\n\n"
+        << "Examples:\n"
+        << "  " << argv0 << " listen\n"
+        << "  " << argv0 << " send\n"
+        << "  " << argv0 << " send 2000\n"
+        << "  " << argv0 << " listen 127.0.0.1:9000\n"
+        << "  " << argv0 << " send 127.0.0.1:9000 100\n";
 }
 
 int runListen(const std::string &addr) {
@@ -354,33 +381,77 @@ int runSend(const std::string &peer, size_t lineCount) {
 
 } // namespace
 
+static bool parseLineCount(const char *s, size_t *out) {
+    char *end = nullptr;
+    unsigned long v = std::strtoul(s, &end, 10);
+    if (end == s || *end != '\0' || v == 0) {
+        return false;
+    }
+    *out = static_cast<size_t>(v);
+    return true;
+}
+
 int main(int argc, char **argv) {
-    if (argc < 3) {
+    if (argc < 2) {
         printUsage(argv[0]);
         return 1;
     }
 
     std::string mode = argv[1];
-    std::string addr = argv[2];
-
-    std::cerr << "[main] socket_stream_test mode=\"" << mode << "\" address=\"" << addr << "\"\n";
 
     if (mode == "listen") {
+        if (argc > 3) {
+            std::cerr << "[main] too many arguments\n";
+            printUsage(argv[0]);
+            return 1;
+        }
+        const char *addr = (argc >= 3) ? argv[2] : kDefaultListenBind;
+        std::cerr << "[main] socket_stream_test mode=listen";
+        if (argc >= 3) {
+            std::cerr << " address=\"" << addr << "\" (override)\n";
+        } else {
+            std::cerr << " address=\"" << addr << "\" (default crawler-3 bind; clients use external "
+                      << kCrawler3ExternalIp << ")\n";
+        }
         return runListen(addr);
     }
+
     if (mode == "send") {
+        std::string peer = kDefaultSendPeer;
         size_t lines = 500;
-        if (argc >= 4) {
-            char *end = nullptr;
-            unsigned long v = std::strtoul(argv[3], &end, 10);
-            if (end == argv[3] || *end != '\0' || v == 0) {
-                std::cerr << "[main] invalid line count: " << argv[3] << '\n';
-                return 1;
+
+        if (argc >= 3) {
+            if (std::strchr(argv[2], ':') != nullptr) {
+                peer = argv[2];
+                if (argc >= 4) {
+                    if (!parseLineCount(argv[3], &lines)) {
+                        std::cerr << "[main] invalid line count: " << argv[3] << '\n';
+                        return 1;
+                    }
+                }
+            } else {
+                if (!parseLineCount(argv[2], &lines)) {
+                    std::cerr << "[main] expected line count or host:port, got: " << argv[2] << '\n';
+                    return 1;
+                }
             }
-            lines = static_cast<size_t>(v);
         }
-        std::cerr << "[main] line count=" << lines << '\n';
-        return runSend(addr, lines);
+        if (argc > 4) {
+            std::cerr << "[main] too many arguments\n";
+            printUsage(argv[0]);
+            return 1;
+        }
+
+        std::cerr << "[main] socket_stream_test mode=send peer=\"" << peer << "\"";
+        if (argc >= 3 && std::strchr(argv[2], ':') == nullptr) {
+            std::cerr << " (default peer " << kDefaultSendPeer << "; line count from argv)";
+        } else if (argc < 3) {
+            std::cerr << " (default; crawler-1 → crawler-3)";
+        }
+        std::cerr << " line_count=" << lines << '\n';
+        std::cerr << "[main] hint: ingress to crawler-3 must allow TCP from " << kCrawler1ExternalIp
+                  << " (see file header)\n";
+        return runSend(peer, lines);
     }
 
     printUsage(argv[0]);
