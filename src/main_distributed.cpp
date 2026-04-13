@@ -818,23 +818,38 @@ void *ReceiveFromMachineThread(void *) {
 //     return nullptr;
 // }
 
-static size_t parseEnv(const char *name, size_t fallback) {
-    // Try parsing env as unsigned long int, else return fallback
-    const char *raw = std::getenv(name);
+// static size_t parseEnv(const char *name, size_t fallback) {
+//     // Try parsing env as unsigned long int, else return fallback
+//     const char *raw = std::getenv(name);
+//     if (raw == nullptr || raw[0] == '\0') {
+//         return fallback;
+//     }
+//
+//     char *end = nullptr;
+//     unsigned long parsed = std::strtoul(raw, &end, 10);
+//     if (end == raw || (end != nullptr && *end != '\0')) {
+//         return fallback;
+//     }
+//
+//     return static_cast<size_t>(parsed);
+// }
+
+static bool parseSizeArg(const char *raw, size_t &value) {
     if (raw == nullptr || raw[0] == '\0') {
-        return fallback;
+        return false;
     }
 
     char *end = nullptr;
     unsigned long parsed = std::strtoul(raw, &end, 10);
     if (end == raw || (end != nullptr && *end != '\0')) {
-        return fallback;
+        return false;
     }
 
-    return static_cast<size_t>(parsed);
+    value = static_cast<size_t>(parsed);
+    return true;
 }
 
-int main() {
+int main(int argc, char **argv) {
     initSSL();
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
@@ -895,9 +910,25 @@ int main() {
         "34.9.119.101:8081",    // 43
     };
 
-    machine_id = 0;
-    numLinkThreshold = 512;
-    anchorFlushIntervalSeconds = 30;
+    // machine_id = parseEnv("SEARCH_MACHINE_ID", 0);
+    // numLinkThreshold = parseEnv("SEARCH_BATCH_THRESHOLD", numLinkThreshold.load());
+    // anchorFlushIntervalSeconds = parseEnv("SEARCH_ANCHOR_FLUSH_SECS",
+    // anchorFlushIntervalSeconds);
+
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " <machine_id> <batch_threshold>\n";
+        return 1;
+    }
+
+    size_t parsedMachineId = 0;
+    size_t parsedBatchThreshold = 0;
+    if (!parseSizeArg(argv[1], parsedMachineId) || !parseSizeArg(argv[2], parsedBatchThreshold)) {
+        std::cerr << "machine_id and batch_threshold must both be unsigned integers\n";
+        return 1;
+    }
+
+    machine_id = parsedMachineId;
+    numLinkThreshold = parsedBatchThreshold;
 
     if (anchorFlushIntervalSeconds == 0) {
         std::cerr << "Warning: Anchor flush is zero;\n";
