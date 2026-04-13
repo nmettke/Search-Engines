@@ -8,14 +8,16 @@
 
 const int buffLength = 10240;
 
-class ParsedUrl {
+// Named distinctly from index/url_features.h::ParsedUrl to avoid ODR/linker
+// collisions (same destructor symbol would otherwise delete[] wrong memory).
+class SslParsedUrl {
   public:
     const char *CompleteUrl;
     char *Service, *Host, *Port, *Path;
 
-    ParsedUrl(const char *url);
+    SslParsedUrl(const char *url);
 
-    ~ParsedUrl();
+    ~SslParsedUrl();
 
   private:
     char *pathBuffer;
