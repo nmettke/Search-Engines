@@ -335,9 +335,10 @@ void *IndexWorkerThread(void *) {
         }
         mem_index.finishDocument(tokenized.doc_end);
         ++docsProcessed;
-        tokensProcessed += tokenized.tokens.size();
+        // tokensProcessed += tokenized.tokens.size();
 
-        if (tokensProcessed >= 5000000) {
+        // if (tokensProcessed >= 5000000) {
+        if (docsProcessed >= 500) {
             char buffer[64];
             std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
                           chunksWritten);
@@ -770,11 +771,11 @@ int main() {
         // "34.172.238.52:8081",   // 9
         // "35.226.71.48:8081",    // 10
         // "35.193.171.172:8081",  // 11
-        "34.31.154.209:8081",  // 12 Andrew
-        "35.239.255.145:8081", // 13
-        "34.61.8.145:8081",    // 14
-        "34.133.73.6:8081",    // 15
-        "34.135.5.27:8081",    // 16
+        "34.31.154.209:8081", // 12 Andrew
+        // "35.239.255.145:8081", // 13
+        // "34.61.8.145:8081",    // 14
+        // "34.133.73.6:8081",    // 15
+        // "34.135.5.27:8081",    // 16
         // "34.70.193.99:8081",    // 17 Anthony
         // "34.123.110.125:8081",  // 18
         // "104.154.225.51:8081",  // 19
