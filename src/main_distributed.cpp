@@ -320,6 +320,7 @@ void *CrawlerWorkerThread(void *) {
             time_t last = lastCheckpointTime.load();
             if (!shouldStop && (now - last) >= checkpointIntervalSecs) {
                 if (lastCheckpointTime.compare_exchange_strong(last, now)) {
+                    std::cout << "Starting checkpoint at " << crawled << " URLs\n";
                     checkpoint->save(*f, bloom, urlsCrawled.load());
                     // flushAnchorIndexToDisk(false);
                     std::cerr << "Checkpoint saved at " << urlsCrawled.load() << " URLs\n";
