@@ -7,8 +7,6 @@ while getopts "d" opt; do
 done
 
 if [ "$delete_data" = true ]; then
-    git pull
-    git reset --hard origin/main
     rm -rf data
     rm src/crawler/*.dat
 fi
@@ -17,8 +15,6 @@ mkdir data
 mkdir data/body_index
 mkdir data/anchor_index
 mkdir data/meta
-
-source .env
 
 mkdir build 
 cd build
