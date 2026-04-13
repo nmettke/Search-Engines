@@ -16,8 +16,6 @@ mkdir data/body_index
 mkdir data/anchor_index
 mkdir data/meta
 
-source .env
-
 mkdir build 
 cd build
 cmake ..

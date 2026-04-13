@@ -48,7 +48,13 @@ IndexQueue *q = nullptr;
 InMemoryIndex mem_index;
 
 std::atomic<size_t> numLinkThreshold{128};
-vector<vector<Link>> batches;
+struct RoutedLink {
+    string url;
+    vector<string> anchorText;
+    size_t seedDistance = 0;
+};
+
+vector<vector<RoutedLink>> batches;
 mutex batch_lock;
 std::atomic<size_t> machine_id{0};
 // peer address should never be empty, it should at least include self
@@ -278,20 +284,29 @@ void *CrawlerWorkerThread(void *) {
         HtmlParser parsed(page.cstr(), page.size());
         parsed.sourceUrl = item->link;
         parsed.seedDistance = static_cast<uint8_t>(item->getSeedDistance());
+
+        if (parsed.isBroken() || !parsed.isEnglish()) {
+            continue;
+        }
+
         appendAnchorTerms(item->link, parsed.titleWords, true);
         q->push(parsed);
 
         vector<FrontierItem> discoveredLinks;
         for (const Link &link : parsed.links) {
-            string normalizedOut = absolutizeUrl(link.URL, item->link, parsed.base);
-            if (normalizedOut.empty() || !urlFilter.isAllowed(normalizedOut)) {
+            string resolved = absolutizeUrl(link.URL, item->link, parsed.base);
+            string canonicalOut;
+            if (!passesUrlQualityChecks(resolved, canonicalOut) ||
+                !urlFilter.isAllowed(canonicalOut)) {
                 continue;
             }
 
-            size_t destinationMachine = hashString(normalizedOut.cstr()) % machineCount;
+            size_t destinationMachine = hashString(canonicalOut.cstr()) % machineCount;
             if (destinationMachine != machine_id.load()) {
                 // add to batch to send to another machine
-                Link routedLink(normalizedOut);
+                RoutedLink routedLink;
+                routedLink.url = canonicalOut;
+                routedLink.seedDistance = item->getSeedDistance() + 1;
                 routedLink.anchorText = link.anchorText;
 
                 batch_lock.lock();
@@ -305,9 +320,9 @@ void *CrawlerWorkerThread(void *) {
 
             // URL belongs to this machine, add to anchor term,
             // and add to frontier if not seen
-            appendAnchorTerms(normalizedOut, link.anchorText, false);
-            if (bloom.checkAndInsert(normalizedOut)) {
-                discoveredLinks.pushBack(FrontierItem(normalizedOut, *item));
+            appendAnchorTerms(canonicalOut, link.anchorText, false);
+            if (bloom.checkAndInsert(canonicalOut)) {
+                discoveredLinks.pushBack(FrontierItem(canonicalOut, *item));
             }
         }
 
@@ -482,7 +497,7 @@ static bool hasReadyBatch() {
 static constexpr size_t sendBatchRetryCount = 5;
 static constexpr int sendBatchRetryBaseDelayMs = 1000;
 
-static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
+static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch) {
     // Common network connection code to send formatted payload of batched links
     if (batch.size() == 0) {
         return true;
@@ -532,9 +547,11 @@ static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
     string payload;
     payload.reserve(batch.size() * 96); // heuristic. can be changed
 
-    // Write in format URL \t anchor \t ... \n
-    for (const Link &link : batch) {
-        payload += link.URL;
+    // Write in format URL \t seedDistance \t anchor \t ... \n
+    for (const RoutedLink &link : batch) {
+        payload += link.url;
+        payload.pushBack('\t');
+        payload += std::to_string(link.seedDistance).c_str();
         for (const string &word : link.anchorText) {
             payload.pushBack('\t');
             payload += word;
@@ -566,7 +583,7 @@ static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
     return true;
 }
 
-static bool sendBatchToPeerWithRetry(const string &peer, const vector<Link> &batch) {
+static bool sendBatchToPeerWithRetry(const string &peer, const vector<RoutedLink> &batch) {
     for (size_t attempt = 0; attempt <= sendBatchRetryCount; ++attempt) {
         if (sendBatchToPeer(peer, batch)) {
             return true;
@@ -590,7 +607,7 @@ static bool sendBatchToPeerWithRetry(const string &peer, const vector<Link> &bat
 
 void *SendToMachineThread(void *) {
     while (true) {
-        vector<vector<Link>> readyBatches;
+        vector<vector<RoutedLink>> readyBatches;
 
         batch_lock.lock();
         while (!shouldStop && !hasReadyBatch()) {
@@ -604,12 +621,12 @@ void *SendToMachineThread(void *) {
 
         // We consider batch ready if it is big enough or when process
         // stopped and there are remaining batches
-        readyBatches = vector<vector<Link>>(batches.size());
+        readyBatches = vector<vector<RoutedLink>>(batches.size());
         for (size_t i = 0; i < batches.size(); ++i) {
             if (batches[i].size() >= numLinkThreshold.load() ||
                 (shouldStop && batches[i].size() > 0)) {
                 readyBatches[i] = std::move(batches[i]);
-                batches[i] = vector<Link>();
+                batches[i] = vector<RoutedLink>();
             }
         }
 
@@ -623,14 +640,21 @@ void *SendToMachineThread(void *) {
             if (i == machine_id.load()) {
                 // batch of the local machine should always be empty, so
                 // shouldn't happen but still safeguarding
-                vector<string> localUrls;
-                for (const Link &link : readyBatches[i]) {
-                    appendAnchorTerms(link.URL, link.anchorText, false);
-                    if (bloom.checkAndInsert(link.URL)) {
-                        localUrls.pushBack(link.URL);
+                vector<FrontierItem> localLinks;
+                for (const RoutedLink &link : readyBatches[i]) {
+                    string canonicalOut;
+                    if (!passesUrlQualityChecks(link.url, canonicalOut) ||
+                        !urlFilter.isAllowed(canonicalOut)) {
+                        continue;
+                    }
+
+                    appendAnchorTerms(canonicalOut, link.anchorText, false);
+                    if (bloom.checkAndInsert(canonicalOut)) {
+                        localLinks.pushBack(
+                            FrontierItem::withSeedDistance(canonicalOut, link.seedDistance));
                     }
                 }
-                f->pushMany(localUrls);
+                f->pushMany(localLinks);
                 continue;
             }
 
@@ -658,6 +682,21 @@ static size_t findCharFrom(const string &value, char c, size_t start) {
         }
     }
     return string::npos;
+}
+
+static bool parseSizeField(const string &raw, size_t &value) {
+    if (raw.empty()) {
+        return false;
+    }
+
+    char *end = nullptr;
+    unsigned long parsed = std::strtoul(raw.c_str(), &end, 10);
+    if (end == raw.c_str() || (end != nullptr && *end != '\0')) {
+        return false;
+    }
+
+    value = static_cast<size_t>(parsed);
+    return true;
 }
 
 static int openListeningSocket() {
@@ -803,6 +842,22 @@ void *ReceiveFromMachineThread(void *) {
                 size_t fieldEnd = findCharFrom(line, '\t', 0);
                 string rawUrl = fieldEnd == string::npos ? line : line.substr(0, fieldEnd);
                 vector<string> anchorWords;
+                size_t receivedSeedDistance = 0;
+
+                // New payload format includes seed distance as second field.
+                // For backward compatibility with old payloads, if parsing fails,
+                // we treat the field as the first anchor word.
+                if (fieldEnd != string::npos) {
+                    size_t fieldStart = fieldEnd + 1;
+                    size_t secondFieldEnd = findCharFrom(line, '\t', fieldStart);
+                    size_t secondFieldLength = secondFieldEnd == string::npos
+                                                   ? line.size() - fieldStart
+                                                   : secondFieldEnd - fieldStart;
+                    string maybeSeedDistance = line.substr(fieldStart, secondFieldLength);
+                    if (parseSizeField(maybeSeedDistance, receivedSeedDistance)) {
+                        fieldEnd = secondFieldEnd;
+                    }
+                }
 
                 // add anchor text if tab char was found
                 while (fieldEnd != string::npos) {
@@ -816,12 +871,13 @@ void *ReceiveFromMachineThread(void *) {
                 }
 
                 // add the links to our frontier and anchor
-                string normalizedOut = normalizeUrl(rawUrl);
-                if (!normalizedOut.empty() && urlFilter.isAllowed(normalizedOut) &&
-                    shouldOwnUrl(normalizedOut)) {
-                    appendAnchorTerms(normalizedOut, anchorWords, false);
-                    if (bloom.checkAndInsert(normalizedOut)) {
-                        discoveredLinks.pushBack(FrontierItem(normalizedOut));
+                string canonicalOut;
+                if (passesUrlQualityChecks(rawUrl, canonicalOut) &&
+                    urlFilter.isAllowed(canonicalOut) && shouldOwnUrl(canonicalOut)) {
+                    appendAnchorTerms(canonicalOut, anchorWords, false);
+                    if (bloom.checkAndInsert(canonicalOut)) {
+                        discoveredLinks.pushBack(
+                            FrontierItem::withSeedDistance(canonicalOut, receivedSeedDistance));
                     }
                 }
             }
@@ -984,7 +1040,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    batches = vector<vector<Link>>(peer_address.size());
+    batches = vector<vector<RoutedLink>>(peer_address.size());
 
     vector<FrontierItem> recoveredItems;
     urlsCrawled = 0;
@@ -998,16 +1054,16 @@ int main(int argc, char **argv) {
 
         vector<FrontierItem> ownedRecoveredItems;
         for (const FrontierItem &item : recoveredItems) {
-            string normalizeOut = normalizeUrl(item.link);
-            if (normalizeOut.empty() || !urlFilter.isAllowed(normalizeOut) ||
-                !shouldOwnUrl(normalizeOut)) {
+            string canonicalOut;
+            if (!passesUrlQualityChecks(item.link, canonicalOut) ||
+                !urlFilter.isAllowed(canonicalOut) || !shouldOwnUrl(canonicalOut)) {
                 continue;
             }
 
-            if (normalizeOut == item.link) {
+            if (canonicalOut == item.link) {
                 ownedRecoveredItems.pushBack(item);
             } else {
-                ownedRecoveredItems.pushBack(FrontierItem(normalizeOut));
+                ownedRecoveredItems.pushBack(item.withLink(canonicalOut));
             }
         }
 
@@ -1026,12 +1082,12 @@ int main(int argc, char **argv) {
             vector<FrontierItem> ownedSeedItems;
             std::string line;
             while (std::getline(seedList, line)) {
-                string normalizeOut = normalizeUrl(string(line.c_str()));
-                if (normalizeOut.empty() || !urlFilter.isAllowed(normalizeOut) ||
-                    !shouldOwnUrl(normalizeOut)) {
+                string canonicalOut;
+                if (!passesUrlQualityChecks(string(line.c_str()), canonicalOut) ||
+                    !urlFilter.isAllowed(canonicalOut) || !shouldOwnUrl(canonicalOut)) {
                     continue;
                 }
-                ownedSeedItems.pushBack(FrontierItem(normalizeOut));
+                ownedSeedItems.pushBack(FrontierItem(canonicalOut));
             }
 
             f = new Frontier(std::move(ownedSeedItems));
@@ -1048,19 +1104,19 @@ int main(int argc, char **argv) {
         vector<FrontierItem> ownedSeedItems;
         std::string line;
         while (std::getline(seedList, line)) {
-            string normalizeOut = normalizeUrl(string(line.c_str()));
-            if (normalizeOut.empty() || !urlFilter.isAllowed(normalizeOut) ||
-                !shouldOwnUrl(normalizeOut)) {
+            string canonicalOut;
+            if (!passesUrlQualityChecks(string(line.c_str()), canonicalOut) ||
+                !urlFilter.isAllowed(canonicalOut) || !shouldOwnUrl(canonicalOut)) {
                 continue;
             }
-            ownedSeedItems.pushBack(FrontierItem(normalizeOut));
+            ownedSeedItems.pushBack(FrontierItem(canonicalOut));
         }
 
         f = new Frontier(std::move(ownedSeedItems));
         std::cerr << "Starting fresh from seed list\n";
     }
 
-    size_t crawlerThreadCount = cores * 3;
+    size_t crawlerThreadCount = cores * 10;
     size_t indexThreadCount = 1;
     vector<pthread_t> crawlerThreads(crawlerThreadCount);
     vector<pthread_t> indexThreads(indexThreadCount);

@@ -16,6 +16,18 @@ FrontierItem::FrontierItem(const string &url, const FrontierItem &parent)
     parseURL(url);
 }
 
+FrontierItem FrontierItem::withSeedDistance(const string &url, size_t seedDistance) {
+    FrontierItem item(url);
+    item.seedDistance = seedDistance;
+    return item;
+}
+
+FrontierItem FrontierItem::withLink(const string &url) const {
+    FrontierItem item = FrontierItem::withSeedDistance(url, seedDistance);
+    item.failed = failed;
+    return item;
+}
+
 FrontierItem::FrontierItem(const string &link, Suffix suffix, size_t baseLength,
                            size_t seedDistance, size_t pathDepth, bool failed)
     : link(link), suffix(suffix), baseLength(baseLength), seedDistance(seedDistance),

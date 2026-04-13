@@ -497,6 +497,17 @@ bool UrlBloomFilter::checkAndInsert(const string &key) {
 }
 
 bool shouldEnqueueUrl(const string &rawUrl, UrlBloomFilter &bloom, string &canonicalOut) {
+    if (!passesUrlQualityChecks(rawUrl, canonicalOut)) {
+        return false;
+    }
+
+    // Atomically check if URL is in bloom filter and insert it if not
+    // This avoids TOCTOU race condition where two threads could both think
+    // the URL is new and both add it to the frontier
+    return bloom.checkAndInsert(canonicalOut);
+}
+
+bool passesUrlQualityChecks(const string &rawUrl, string &canonicalOut) {
     string normalizeOut = normalizeUrl(rawUrl);
     if (normalizeOut.empty()) {
         return false;
@@ -510,9 +521,7 @@ bool shouldEnqueueUrl(const string &rawUrl, UrlBloomFilter &bloom, string &canon
     if (!hasReasonablePercentEncoding(normalizeOut)) {
         return false;
     }
+
     canonicalOut = normalizeOut;
-    // Atomically check if URL is in bloom filter and insert it if not
-    // This avoids TOCTOU race condition where two threads could both think
-    // the URL is new and both add it to the frontier
-    return bloom.checkAndInsert(normalizeOut);
+    return true;
 }
