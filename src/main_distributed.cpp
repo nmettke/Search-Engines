@@ -110,7 +110,7 @@ static int64_t nowMillis() {
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
-size_t anchorFlushIntervalSeconds = 30;
+// size_t anchorFlushIntervalSeconds = 30;
 
 static bool shouldOwnUrl(const string &normalizedUrl) {
     // Decide whether machine should own url based on hash
@@ -320,8 +320,9 @@ void *CrawlerWorkerThread(void *) {
             time_t last = lastCheckpointTime.load();
             if (!shouldStop && (now - last) >= checkpointIntervalSecs) {
                 if (lastCheckpointTime.compare_exchange_strong(last, now)) {
+                    std::cout << "Starting checkpoint at " << crawled << " URLs\n";
                     checkpoint->save(*f, bloom, urlsCrawled.load());
-                    flushAnchorIndexToDisk(false);
+                    // flushAnchorIndexToDisk(false);
                     std::cerr << "Checkpoint saved at " << urlsCrawled.load() << " URLs\n";
                 }
             }
@@ -428,6 +429,7 @@ void *IndexWorkerThread(void *) {
             try {
                 flushIndexChunk(mem_index, path);
                 flushMetaData(chunk_metadata, meta_path);
+                flushAnchorIndexToDisk(false);
                 std::cout << "Successfully wrote chunk with " << docsProcessed
                           << " docs to: " << path << '\n';
             } catch (const std::exception &e) {
@@ -457,6 +459,7 @@ void *IndexWorkerThread(void *) {
         try {
             flushIndexChunk(mem_index, path);
             flushMetaData(chunk_metadata, meta_path);
+            flushAnchorIndexToDisk(false);
             std::cout << "Successfully wrote final chunk with " << docsProcessed
                       << " docs to: " << path << '\n';
         } catch (const std::exception &e) {
@@ -777,6 +780,10 @@ void *ReceiveFromMachineThread(void *) {
 
         close(clientFd);
 
+        if (debug) {
+            std::cout << "Receive batch\n";
+        }
+
         if (payload.empty()) {
             continue;
         }
@@ -894,7 +901,6 @@ int main(int argc, char **argv) {
     anchorIndex = new HashTable<string, AnchorPosting>(anchorKeyEqual, anchorKeyHash);
 
     peer_address = {
-        "34.29.237.224:8081",  // 0  Ashmit
         "34.130.43.20:8081",   // 0  Ashmit
         "34.130.82.156:8081",  // 1
         "34.124.113.238:8081", // 2
@@ -968,9 +974,9 @@ int main(int argc, char **argv) {
         debug = true;
     }
 
-    if (anchorFlushIntervalSeconds == 0) {
-        std::cerr << "Warning: Anchor flush is zero;\n";
-    }
+    // if (anchorFlushIntervalSeconds == 0) {
+    //     std::cerr << "Warning: Anchor flush is zero;\n";
+    // }
 
     if (machine_id.load() >= peer_address.size()) {
         std::cerr << "Machine id " << machine_id.load()

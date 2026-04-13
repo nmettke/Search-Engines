@@ -7,11 +7,11 @@
 #include <limits>
 
 constexpr uint32_t magic = 0x49445831; // magic for writing chunk
-constexpr uint32_t version = 1;        // chunk file encoding version
+constexpr uint32_t version = 2;        // chunk file encoding version
 constexpr uint32_t ISRSentinel = std::numeric_limits<uint32_t>::max();
 constexpr const char *docEndToken = "#DocEnd";
 
-enum DocumentFeatureFlag : uint32_t {
+enum DocumentFeatureFlag : uint8_t {
     kFeaturesPresent = 1u << 0,
     kHttps = 1u << 1,
     kSawBodyTag = 1u << 2,
@@ -21,30 +21,30 @@ enum DocumentFeatureFlag : uint32_t {
 };
 
 struct DocumentFeatures {
-    uint32_t flags = 0;
-    uint32_t base_domain_length = 0;
-    uint32_t url_length = 0;
-    uint32_t path_length = 0;
-    uint32_t path_depth = 0;
-    uint32_t query_param_count = 0;
-    uint32_t numeric_path_char_count = 0;
-    uint32_t domain_hyphen_count = 0;
-    uint32_t outgoing_link_count = 0;
-    uint32_t outgoing_anchor_word_count = 0;
+    uint8_t flags = 0;
+    uint8_t base_domain_length = 0;
+    uint16_t url_length = 0;
+    uint16_t path_length = 0;
+    uint8_t path_depth = 0;
+    uint8_t query_param_count = 0;
+    uint8_t numeric_path_char_count = 0;
+    uint8_t domain_hyphen_count = 0;
+    uint16_t outgoing_link_count = 0;
+    uint16_t outgoing_anchor_word_count = 0;
     ::string raw_tld;
 };
 
 struct __attribute__((packed)) DocumentFeaturesDisk {
-    uint32_t flags = 0;
-    uint32_t base_domain_length = 0;
-    uint32_t url_length = 0;
-    uint32_t path_length = 0;
-    uint32_t path_depth = 0;
-    uint32_t query_param_count = 0;
-    uint32_t numeric_path_char_count = 0;
-    uint32_t domain_hyphen_count = 0;
-    uint32_t outgoing_link_count = 0;
-    uint32_t outgoing_anchor_word_count = 0;
+    uint8_t flags = 0;
+    uint8_t base_domain_length = 0;
+    uint16_t url_length = 0;
+    uint16_t path_length = 0;
+    uint8_t path_depth = 0;
+    uint8_t query_param_count = 0;
+    uint8_t numeric_path_char_count = 0;
+    uint8_t domain_hyphen_count = 0;
+    uint16_t outgoing_link_count = 0;
+    uint16_t outgoing_anchor_word_count = 0;
 };
 
 struct TokenOutput {
