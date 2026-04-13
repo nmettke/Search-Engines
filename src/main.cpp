@@ -59,6 +59,8 @@ Checkpoint *checkpoint;
 std::atomic<size_t> urlsCrawled{0};
 UrlBloomFilter bloom(1000000, 0.0001);
 unsigned int cores = std::thread::hardware_concurrency();
+static std::atomic<time_t> lastCheckpointTime{0};
+static constexpr int checkpointIntervalSecs = 600; // 10 minutes
 
 void *CrawlerWorkerThread(void *arg) {
     addr_lock.lock();
@@ -119,8 +121,15 @@ void *CrawlerWorkerThread(void *arg) {
         ++urlsCrawled;
         std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
 
-        if (!shouldStop && (urlsCrawled.load() % 500) == 0) {
-            checkpoint->save(*f, bloom, urlsCrawled.load());
+        {
+            time_t now = time(nullptr);
+            time_t last = lastCheckpointTime.load();
+            if (!shouldStop && (now - last) >= checkpointIntervalSecs) {
+                if (lastCheckpointTime.compare_exchange_strong(last, now)) {
+                    checkpoint->save(*f, bloom, urlsCrawled.load());
+                    std::cerr << "Checkpoint saved at " << urlsCrawled.load() << " URLs\n";
+                }
+            }
         }
     }
 
@@ -352,6 +361,8 @@ int main() {
     vector<pthread_t> crawlerThreads(CrawlerThreadCount);
     vector<pthread_t> indexThreads(IndexThreadCount);
     pthread_t senderThread; // singular sender thread for now
+
+    lastCheckpointTime = time(nullptr);
 
     for (size_t i = 0; i < CrawlerThreadCount; i++) {
         pthread_create(&crawlerThreads[i], nullptr, CrawlerWorkerThread, nullptr);
