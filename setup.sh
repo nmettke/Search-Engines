@@ -14,6 +14,7 @@ fi
 mkdir data
 mkdir data/body_index
 mkdir data/anchor_index
+mkdir data/meta
 
 source .env
 

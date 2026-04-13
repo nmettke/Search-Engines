@@ -10,7 +10,9 @@
 #include "../utils/vector.hpp"
 
 struct GlobalResult {
-    ::string url;
+    string url;
+    string title;
+    string snippet;
     double score;
 
     bool operator>(const GlobalResult &other) const { return score > other.score; }
@@ -95,22 +97,22 @@ class GlobalTopKHeap {
 };
 
 struct WorkerArgs {
-    ::string ip;
+    string ip;
     int port;
-    ::string query;
+    string query;
     ::vector<GlobalResult> local_results;
 };
 
-::string to_string(double score) {
+string to_string(double score) {
     char buffer[64];
     snprintf(buffer, sizeof(buffer), "%.4f", score);
-    return ::string(buffer);
+    return string(buffer);
 }
 
-::string to_string(size_t n) {
+string to_string(size_t n) {
     char buffer[64];
     snprintf(buffer, sizeof(buffer), "%zu", n);
-    return ::string(buffer);
+    return string(buffer);
 }
 
 void *fetch_from_worker(void *args) {
@@ -131,11 +133,11 @@ void *fetch_from_worker(void *args) {
     // std::cout << "[MASTER NODE] Broker HTTP Server listening on port 8080...\n";
 
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) >= 0) {
-        ::string msg = wa->query + "\n";
+        string msg = wa->query + "\n";
         send(sock, msg.c_str(), msg.size(), 0);
 
         char buffer[4096];
-        ::string raw_response = "";
+        string raw_response = "";
 
         while (true) {
             memset(buffer, 0, sizeof(buffer));
@@ -144,23 +146,29 @@ void *fetch_from_worker(void *args) {
                 break;
 
             raw_response += buffer;
-            if (raw_response.find("END_OF_RESULTS") != ::string::npos)
+            if (raw_response.find("END_OF_RESULTS") != string::npos)
                 break;
         }
 
         size_t pos = 0;
-        while ((pos = raw_response.find('\n')) != ::string::npos) {
-            ::string line = raw_response.substr(0, pos);
+        while ((pos = raw_response.find('\n')) != string::npos) {
+            string line = raw_response.substr(0, pos);
             raw_response.erase(0, pos + 1);
 
             if (line == "END_OF_RESULTS")
                 break;
 
-            size_t space_pos = line.find(' ');
-            if (space_pos != ::string::npos) {
-                ::string url = line.substr(0, space_pos);
-                double score = atoi(line.substr(space_pos + 1).c_str());
-                wa->local_results.pushBack({url, score});
+            size_t t1 = line.find('\t');
+            size_t t2 = line.find('\t', t1 + 1);
+            size_t t3 = line.find('\t', t2 + 1);
+
+            if (t1 != string::npos && t2 != string::npos && t3 != string::npos) {
+                string url = line.substr(0, t1);
+                string title = line.substr(t1 + 1, t2 - t1 - 1);
+                string snippet = line.substr(t2 + 1, t3 - t2 - 1);
+                double score = atoi(line.substr(t3 + 1).c_str());
+
+                wa->local_results.pushBack({url, title, snippet, score});
             }
         }
     }
@@ -172,8 +180,8 @@ struct ClientArgs {
     int socket;
 };
 
-::string url_decode(const ::string &src) {
-    ::string ret;
+string url_decode(const string &src) {
+    string ret;
     char ch;
     for (size_t i = 0; i < src.length(); i++) {
         if (src[i] == '%') {
@@ -198,22 +206,22 @@ void *handle_frontend(void *args) {
     char buffer[4096];
     memset(buffer, 0, sizeof(buffer));
     read(client_sock, buffer, sizeof(buffer) - 1);
-    ::string http_request(buffer);
+    string http_request(buffer);
 
     // Parse HTTP GET /search?q=cat HTTP/1.1
-    ::string query = "";
+    string query = "";
     size_t q_pos = http_request.find("GET /search?q=");
-    if (q_pos != ::string::npos) {
+    if (q_pos != string::npos) {
         size_t start = q_pos + 14;
         size_t end = http_request.substr(start).find(' ');
-        if (end != ::string::npos)
+        if (end != string::npos)
             end += start;
-        ::string raw_query = http_request.substr(start, end - start);
+        string raw_query = http_request.substr(start, end - start);
         query = url_decode(raw_query);
     }
 
     if (query.empty()) {
-        ::string response = "HTTP/1.1 400 Bad Request\r\n\r\nMissing query";
+        string response = "HTTP/1.1 400 Bad Request\r\n\r\nMissing query";
         send(client_sock, response.c_str(), response.size(), 0);
         close(client_sock);
         delete ca;
@@ -237,33 +245,36 @@ void *handle_frontend(void *args) {
     GlobalTopKHeap top_k(10);
     for (const auto &w : workers) {
         for (const auto &res : w.local_results) {
-            top_k.push({res.url, res.score});
+            top_k.push(res);
         }
     }
 
     ::vector<GlobalResult> final_results = top_k.extractSorted();
 
     // Manually format the JSON response
-    ::string json = "{\n  \"query\": \"" + query + "\",\n  \"results\": [\n";
+    string json = "{\n  \"query\": \"" + query + "\",\n  \"results\": [\n";
     for (size_t i = 0; i < final_results.size(); ++i) {
-        json += "    {\"url\": \"" + final_results[i].url +
-                "\", \"score\": " + to_string(final_results[i].score) + "}";
+        json += "    {\n";
+        json += "      \"url\": \"" + final_results[i].url + "\",\n";
+        json += "      \"title\": \"" + final_results[i].title + "\",\n";
+        json += "      \"snippet\": \"" + final_results[i].snippet + "\",\n";
+        json += "      \"score\": " + to_string(final_results[i].score) + "\n";
+        json += "    }";
         if (i < final_results.size() - 1)
-            json += ",\n";
-        else
-            json += "\n";
+            json += ",";
+        json += "\n";
     }
     json += "  ]\n}";
 
     // Manually format the HTTP Response Header with CORS allowed
-    ::string http_response = "HTTP/1.1 200 OK\r\n"
-                             "Content-Type: application/json\r\n"
-                             "Access-Control-Allow-Origin: *\r\n"
-                             "Content-Length: " +
-                             to_string(json.size()) +
-                             "\r\n"
-                             "\r\n" +
-                             json;
+    string http_response = "HTTP/1.1 200 OK\r\n"
+                           "Content-Type: application/json\r\n"
+                           "Access-Control-Allow-Origin: *\r\n"
+                           "Content-Length: " +
+                           to_string(json.size()) +
+                           "\r\n"
+                           "\r\n" +
+                           json;
 
     send(client_sock, http_response.c_str(), http_response.size(), 0);
 

@@ -80,6 +80,7 @@ bool anchorEdited = false;
 size_t anchorFileCount = 0;
 const string anchorIndexDirectory("data/anchor_index");
 const string indexDirectory("data/body_index");
+const string metaDirectory("data/meta");
 const size_t FLUSHANCHORSIZE = 2500;
 const size_t FLUSHBODYTOKENSIZE = 25000000;
 
@@ -340,13 +341,66 @@ void *DelayedQueueThread(void *) {
     return nullptr;
 }
 
+static void sanitizeMetaText(string &text) {
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '\t' || text[i] == '\n' || text[i] == '\r') {
+            text[i] = ' ';
+        }
+    }
+}
+
+string buildMetaLine(const HtmlParser &doc) {
+    string title = "";
+    for (size_t i = 0; i < doc.titleWords.size(); ++i) {
+        title += doc.titleWords[i];
+        title.pushBack(' ');
+    }
+    if (title.empty())
+        title = "Untitled";
+    sanitizeMetaText(title);
+
+    string snippet = "";
+    for (size_t i = 0; i < doc.words.size(); ++i) {
+        if (snippet.size() > 150)
+            break;
+        snippet += doc.words[i];
+        snippet.pushBack(' ');
+    }
+    if (snippet.empty())
+        snippet = "No content available.";
+    sanitizeMetaText(snippet);
+
+    string meta_line = doc.sourceUrl;
+    meta_line.pushBack('\t');
+    meta_line += title;
+    meta_line.pushBack('\t');
+    meta_line += snippet;
+    meta_line.pushBack('\n');
+
+    return meta_line;
+}
+
+void flushMetaData(const vector<string> &chunk_metadata, const string &meta_path) {
+    FILE *meta_fp = fopen(meta_path.c_str(), "w");
+    if (meta_fp) {
+        for (size_t i = 0; i < chunk_metadata.size(); ++i) {
+            fwrite(chunk_metadata[i].c_str(), 1, chunk_metadata[i].size(), meta_fp);
+        }
+        fclose(meta_fp);
+    }
+}
+
 void *IndexWorkerThread(void *) {
     Tokenizer tokenizer;
     size_t docsProcessed = 0;
     size_t chunksWritten = 0;
     size_t tokensProcessed = 0;
 
+    vector<string> chunk_metadata;
+
     while (std::optional<HtmlParser> doc = q->pop()) {
+        chunk_metadata.pushBack(buildMetaLine(*doc));
+
         auto tokenized = tokenizer.processDocument(*doc);
         for (const auto &tok : tokenized.tokens) {
             mem_index.addToken(tok);
@@ -363,8 +417,14 @@ void *IndexWorkerThread(void *) {
                           chunksWritten);
             const string path(buffer);
 
+            char meta_buffer[64];
+            std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta",
+                          metaDirectory.c_str(), chunksWritten);
+            const string meta_path(meta_buffer);
+
             try {
                 flushIndexChunk(mem_index, path);
+                flushMetaData(chunk_metadata, meta_path);
                 std::cout << "Successfully wrote chunk with " << docsProcessed
                           << " docs to: " << path << '\n';
             } catch (const std::exception &e) {
@@ -386,8 +446,14 @@ void *IndexWorkerThread(void *) {
                       chunksWritten);
         const string path(buffer);
 
+        char meta_buffer[64];
+        std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta", metaDirectory.c_str(),
+                      chunksWritten);
+        const string meta_path(meta_buffer);
+
         try {
             flushIndexChunk(mem_index, path);
+            flushMetaData(chunk_metadata, meta_path);
             std::cout << "Successfully wrote final chunk with " << docsProcessed
                       << " docs to: " << path << '\n';
         } catch (const std::exception &e) {
@@ -783,55 +849,55 @@ int main() {
     anchorIndex = new HashTable<string, AnchorPosting>(anchorKeyEqual, anchorKeyHash);
 
     peer_address = {
-        "34.29.237.224:8081",   // 0  Ashmit
-        "136.112.148.251:8081", // 1
-        "35.224.103.74:8081",   // 2
-        "136.116.201.85:8081",  // 3
-        "34.173.238.38:8081",   // 4
-        "35.188.109.235:8081",  // 5
-        "34.68.9.152:8081",     // 6
-        "136.112.239.151:8081", // 7  Will
-        "34.170.242.178:8081",  // 8
-        "34.172.238.52:8081",   // 9
-        "35.226.71.48:8081",    // 10
-        "35.193.171.172:8081",  // 11
-        "34.31.154.209:8081",   // 12 Andrew
-        "35.239.255.145:8081",  // 13
-        "34.61.8.145:8081",     // 14
-        "34.133.73.6:8081",     // 15
-        "34.135.5.27:8081",     // 16
-        "34.70.193.99:8081",    // 17 Anthony
-        "34.123.110.125:8081",  // 18
-        "104.154.225.51:8081",  // 19
-        "35.226.221.84:8081",   // 20
-        "136.119.115.108:8081", // 21
-        "34.67.230.213:8081",   // 22
-        "34.55.218.240:8081",   // 23
-        "34.68.198.19:8081",    // 24
-        "136.114.215.122:8081", // 25 Satvik
-        "34.55.5.248:8081",     // 26
-        "34.63.33.31:8081",     // 27
-        "34.30.203.75:8081",    // 28
-        "35.188.188.95:8081",   // 29
-        "34.171.171.179:8081",  // 30
-        "104.197.40.88:8081",   // 31
-        "34.58.160.109:8081",   // 32 Vasu
-        "34.134.205.94:8081",   // 33
-        "34.170.70.78:8081",    // 34
-        "34.136.157.247:8081",  // 35
-        "34.135.152.6:8081",    // 36
-        "104.154.42.191:8081",  // 37
-        "35.238.14.169:8081",   // 38
-        "34.45.219.149:8081",   // 39 Nate
-        "34.9.132.225:8081",    // 40
-        "34.9.191.70:8081",     // 41
-        "136.116.245.6:8081",   // 42
-        "34.9.119.101:8081",    // 43
+        "34.29.237.224:8081", // 0  Ashmit
+        // "136.112.148.251:8081", // 1
+        // "35.224.103.74:8081",   // 2
+        // "136.116.201.85:8081",  // 3
+        // "34.173.238.38:8081",   // 4
+        // "35.188.109.235:8081",  // 5
+        // "34.68.9.152:8081",     // 6
+        // "136.112.239.151:8081", // 7  Will
+        // "34.170.242.178:8081",  // 8
+        // "34.172.238.52:8081",   // 9
+        // "35.226.71.48:8081",    // 10
+        // "35.193.171.172:8081",  // 11
+        // "34.31.154.209:8081",   // 12 Andrew
+        // "35.239.255.145:8081",  // 13
+        // "34.61.8.145:8081",     // 14
+        // "34.133.73.6:8081",     // 15
+        // "34.135.5.27:8081",     // 16
+        // "34.70.193.99:8081",    // 17 Anthony
+        // "34.123.110.125:8081",  // 18
+        // "104.154.225.51:8081",  // 19
+        // "35.226.221.84:8081",   // 20
+        // "136.119.115.108:8081", // 21
+        // "34.67.230.213:8081",   // 22
+        // "34.55.218.240:8081",   // 23
+        // "34.68.198.19:8081",    // 24
+        // "136.114.215.122:8081", // 25 Satvik
+        // "34.55.5.248:8081",     // 26
+        // "34.63.33.31:8081",     // 27
+        // "34.30.203.75:8081",    // 28
+        // "35.188.188.95:8081",   // 29
+        // "34.171.171.179:8081",  // 30
+        // "104.197.40.88:8081",   // 31
+        // "34.58.160.109:8081",   // 32 Vasu
+        // "34.134.205.94:8081",   // 33
+        // "34.170.70.78:8081",    // 34
+        // "34.136.157.247:8081",  // 35
+        // "34.135.152.6:8081",    // 36
+        // "104.154.42.191:8081",  // 37
+        // "35.238.14.169:8081",   // 38
+        // "34.45.219.149:8081",   // 39 Nate
+        // "34.9.132.225:8081",    // 40
+        // "34.9.191.70:8081",     // 41
+        // "136.116.245.6:8081",   // 42
+        // "34.9.119.101:8081",    // 43
     };
 
-    machine_id = parseEnv("SEARCH_MACHINE_ID", 0);
-    numLinkThreshold = parseEnv("SEARCH_BATCH_THRESHOLD", numLinkThreshold.load());
-    anchorFlushIntervalSeconds = parseEnv("SEARCH_ANCHOR_FLUSH_SECS", anchorFlushIntervalSeconds);
+    machine_id = 0;
+    numLinkThreshold = 512;
+    anchorFlushIntervalSeconds = 30;
 
     if (anchorFlushIntervalSeconds == 0) {
         std::cerr << "Warning: Anchor flush is zero;\n";
