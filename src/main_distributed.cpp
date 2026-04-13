@@ -778,6 +778,10 @@ void *ReceiveFromMachineThread(void *) {
 
         close(clientFd);
 
+        if (debug) {
+            std::cout << "Receive batch\n";
+        }
+
         if (payload.empty()) {
             continue;
         }
