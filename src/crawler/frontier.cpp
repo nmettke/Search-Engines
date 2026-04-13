@@ -22,10 +22,14 @@ Frontier::Frontier(const string &seed_list_str) {
 
 Frontier::Frontier(vector<FrontierItem> items) {
     closed = false;
-    pending = items.size();
+    pending = 0;
 
     for (size_t i = 0; i < items.size(); ++i) {
+        if (items[i].link.empty()) {
+            continue;
+        }
         pq.push(items[i]);
+        ++pending;
     }
 
     if (pending == 0) {
@@ -47,7 +51,7 @@ vector<FrontierItem> Frontier::snapshot() const {
 
 void Frontier::push(const string &url) {
     lock_guard guard(m);
-    if (closed) {
+    if (closed || url.empty()) {
         return;
     }
     pq.emplace(url);
@@ -57,7 +61,7 @@ void Frontier::push(const string &url) {
 
 void Frontier::push(const FrontierItem &item) {
     lock_guard guard(m);
-    if (closed) {
+    if (closed || item.link.empty()) {
         return;
     }
     pq.push(item);
@@ -72,6 +76,9 @@ void Frontier::pushMany(const vector<string> &urls) {
     }
 
     for (const string &url : urls) {
+        if (url.empty()) {
+            continue;
+        }
         pq.emplace(url);
         ++pending;
     }
@@ -86,6 +93,9 @@ void Frontier::pushMany(const vector<FrontierItem> &items) {
     }
 
     for (const FrontierItem &item : items) {
+        if (item.link.empty()) {
+            continue;
+        }
         pq.push(item);
         ++pending;
     }
@@ -101,6 +111,9 @@ void Frontier::pushDeferred(const vector<FrontierItem> &items) {
     // we dont change pending here. deferred items were popped earlier but their task was never
     // marked done, so putting them back on the heap is a just requueue
     for (size_t i = 0; i < items.size(); ++i) {
+        if (items[i].link.empty()) {
+            continue;
+        }
         pq.push(items[i]);
     }
     cv.notify_all();
@@ -152,4 +165,9 @@ size_t Frontier::size() const {
 bool Frontier::empty() const {
     lock_guard guard(m);
     return pq.empty();
+}
+
+bool Frontier::hasInFlightWork() const {
+    lock_guard guard(m);
+    return pending > pq.size();
 }

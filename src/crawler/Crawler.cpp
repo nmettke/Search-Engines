@@ -1,6 +1,8 @@
 #include "Crawler.h"
 #include "checkpoint.h"
 #include "url_dedup.h"
+#include "utils/threads/lock_guard.hpp"
+#include "utils/threads/mutex.hpp"
 #include <atomic>
 #include <csignal>
 #include <iostream>
@@ -29,6 +31,16 @@ std::atomic<size_t> urlsCrawled{0};
 UrlBloomFilter bloom(1000000, 0.0001);
 RobotsCache *robotsCache = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
+mutex crawlLogLock;
+
+static void logCrawled(size_t count, const string &url) {
+    lock_guard guard(crawlLogLock);
+    if (url.empty()) {
+        std::cout << "Crawled [" << count << "] <EMPTY_URL>\n";
+        return;
+    }
+    std::cout << "Crawled [" << count << "] " << url << '\n';
+}
 
 void *WorkerThread(void *arg) {
     while (std::optional<FrontierItem> item = f->pop()) {
@@ -82,8 +94,8 @@ void *WorkerThread(void *arg) {
         }
 
         f->pushMany(discoveredLinks);
-        ++urlsCrawled;
-        std::cout << "Crawled [" << urlsCrawled << "] " << item->link << '\n';
+        size_t crawled = ++urlsCrawled;
+        logCrawled(crawled, item->link);
     }
 
     return nullptr;
