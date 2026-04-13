@@ -95,11 +95,13 @@ unsigned int cores = std::thread::hardware_concurrency();
 static std::atomic<time_t> lastCheckpointTime{0};
 static constexpr int checkpointIntervalSecs = 600; // 10 minutes
 mutex crawlLogLock;
+bool debug = false;
 
 static void logCrawled(size_t count, const string &url) {
     lock_guard guard(crawlLogLock);
-    (void)count;
-    (void)url;
+    if (debug) {
+        std::cerr << "Crawled [" << count << "] " << url << '\n';
+    }
 }
 
 static int64_t nowMillis() {
@@ -487,7 +489,11 @@ static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
     }
 
     close(socketFd);
-    // std::cout << "Send Batch Successful\n";
+
+    if (debug) {
+        std::cout << "Send Batch Successful\n";
+    }
+
     return true;
 }
 
@@ -498,7 +504,12 @@ static bool sendBatchToPeerWithRetry(const string &peer, const vector<Link> &bat
         }
 
         if (attempt == sendBatchRetryCount) {
+            std::cout << "Send Batch Failed; Give up\n";
             break;
+        }
+
+        if (debug) {
+            std::cout << "Send Batch Failed; Retrying\n";
         }
 
         const int delayMs = sendBatchRetryBaseDelayMs * (2 * attempt);
@@ -867,8 +878,8 @@ int main(int argc, char **argv) {
     // anchorFlushIntervalSeconds = parseEnv("SEARCH_ANCHOR_FLUSH_SECS",
     // anchorFlushIntervalSeconds);
 
-    if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " <machine_id> <batch_threshold>\n";
+    if (argc != 3 && argc != 4) {
+        std::cerr << "Usage: " << argv[0] << " <machine_id> <batch_threshold> [debug]\n";
         return 1;
     }
 
@@ -881,6 +892,13 @@ int main(int argc, char **argv) {
 
     machine_id = parsedMachineId;
     numLinkThreshold = parsedBatchThreshold;
+    if (argc == 4) {
+        if (string(argv[3]) != "debug") {
+            std::cerr << "Optional third argument must be 'debug'\n";
+            return 1;
+        }
+        debug = true;
+    }
 
     if (anchorFlushIntervalSeconds == 0) {
         std::cerr << "Warning: Anchor flush is zero;\n";
