@@ -194,6 +194,47 @@ bool hasAllowedFileExtension(const string &url) {
     return true;
 }
 
+bool hasReasonablePercentEncoding(const string &normalizedUrl) {
+    // Reject heavily encoded URLs (often non-content, tracking, or low-value paths).
+    static constexpr size_t kMaxPercentSigns = 8;
+    static constexpr size_t kMinTailLengthForDensity = 24;
+    static constexpr double kMaxPercentDensity = 0.10;
+
+    std::size_t schemePos = normalizedUrl.find("://");
+    if (schemePos == string::npos) {
+        return false;
+    }
+
+    string rest = normalizedUrl.substr(schemePos + 3);
+    std::size_t hostEnd = rest.find_first_of("/?");
+    if (hostEnd == string::npos) {
+        return true;
+    }
+
+    string tail = rest.substr(hostEnd);
+    if (tail.empty()) {
+        return true;
+    }
+
+    size_t percentCount = 0;
+    for (size_t i = 0; i < tail.size(); ++i) {
+        if (tail[i] == '%') {
+            ++percentCount;
+        }
+    }
+
+    if (percentCount <= kMaxPercentSigns) {
+        return true;
+    }
+
+    if (tail.size() < kMinTailLengthForDensity) {
+        return false;
+    }
+
+    double density = static_cast<double>(percentCount) / static_cast<double>(tail.size());
+    return density <= kMaxPercentDensity;
+}
+
 bool startsWith(const string &value, const char *prefix) {
     std::size_t i = 0;
     while (prefix[i] != '\0') {
@@ -464,6 +505,9 @@ bool shouldEnqueueUrl(const string &rawUrl, UrlBloomFilter &bloom, string &canon
         return false;
     }
     if (!hasAllowedFileExtension(normalizeOut)) {
+        return false;
+    }
+    if (!hasReasonablePercentEncoding(normalizeOut)) {
         return false;
     }
     canonicalOut = normalizeOut;
