@@ -7,6 +7,8 @@ while getopts "d" opt; do
 done
 
 if [ "$delete_data" = true ]; then
+    git pull
+    git reset --hard origin/main
     rm -rf data
     rm src/crawler/*.dat
 fi
