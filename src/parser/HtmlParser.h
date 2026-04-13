@@ -8,6 +8,7 @@
 #include "utils/string.hpp"
 #include "utils/vector.hpp"
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <stack>
 
@@ -77,8 +78,12 @@ class Link {
   public:
     ::string URL;
     ::vector<::string> anchorText;
-
     Link(::string URL) : URL(URL) {}
+};
+
+struct AlphaStats {
+    uint32_t latin_alpha_count = 0;
+    uint32_t total_alpha_count = 0;
 };
 
 class HtmlParser {
@@ -86,11 +91,7 @@ class HtmlParser {
     ::vector<::string> words, titleWords;
     ::vector<Link> links;
     ::string base;
-
-    // Static ranking signals — set by crawler before pushing to index queue
-    uint8_t suffixType = 0; // 0=OTHER,1=COM,2=EDU,3=GOV,4=ORG,5=NET
-    uint8_t pathDepth = 0;
-    uint16_t urlLength = 0;
+    ::string sourceUrl;
     uint8_t seedDistance = 0;
 
   private:
@@ -102,9 +103,9 @@ class HtmlParser {
     Link *currentLink = nullptr;
 
     // Structural integrity signals for isBroken()
-    bool sawBodyTag = false;
-    bool sawCloseHtml = false;
-    bool truncated = false;
+    bool sawBodyTag_ = false;
+    bool sawCloseHtml_ = false;
+    bool truncated_ = false;
 
     // Language detection: extracted from <html lang="...">
     ::string htmlLang;
@@ -413,10 +414,10 @@ class HtmlParser {
         case DesiredAction::Discard: {
             size_t tagLen = tagEnd - tagStart;
             if (tagLen == 4 && strncasecmp(tagStart, "body", 4) == 0 && !isClosing)
-                sawBodyTag = true;
+                sawBodyTag_ = true;
             if (tagLen == 4 && strncasecmp(tagStart, "html", 4) == 0) {
                 if (isClosing)
-                    sawCloseHtml = true;
+                    sawCloseHtml_ = true;
                 else if (htmlLang.empty())
                     htmlLang = extractAttribute(tagEnd, close, "lang");
             }
@@ -506,7 +507,7 @@ class HtmlParser {
                 if (*scan == '>')
                     break;
                 if (*scan == '<') {
-                    truncated = true;
+                    truncated_ = true;
                     break;
                 }
             }
@@ -517,6 +518,25 @@ class HtmlParser {
                std::initializer_list<Link> links, ::string base)
         : words(words), titleWords(titleWords), links(links), base(std::move(base)) {}
 
+    const ::string &documentUrl() const {
+        if (!sourceUrl.empty()) {
+            return sourceUrl;
+        }
+        return base;
+    }
+
+    AlphaStats alphaStats() const;
+
+    bool hasOpenDiscardSection() const { return !openSections.empty(); }
+
+    bool sawBodyTag() const { return sawBodyTag_; }
+
+    bool sawCloseHtmlTag() const { return sawCloseHtml_; }
+
+    bool wasTruncated() const { return truncated_; }
+
+    uint32_t outgoingAnchorWordCount() const;
+
     // Returns true if page has too many broken-HTML signals to be worth indexing.
     // Fires when 2+ of 5 signals are present to avoid false positives.
     bool isBroken() const {
@@ -525,11 +545,11 @@ class HtmlParser {
             ++score; // unclosed <script>/<style>/<svg>
         if (words.size() < 20)
             ++score; // near-empty page
-        if (!sawBodyTag)
+        if (!sawBodyTag_)
             ++score; // no <body> tag found
-        if (!sawCloseHtml)
+        if (!sawCloseHtml_)
             ++score; // no </html> — likely truncated
-        if (truncated)
+        if (truncated_)
             ++score; // buffer ends mid-tag
         return score >= 2;
     }

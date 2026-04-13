@@ -1,5 +1,6 @@
 // src/lib/tokenizer.cpp
 #include "tokenizer.h"
+#include "document_features.h"
 
 bool Tokenizer::isAlphaNumeric(unsigned char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
@@ -55,6 +56,7 @@ TokenizedDocument Tokenizer::processDocument(const HtmlParser &doc) {
     TokenizedDocument out;
     const uint32_t doc_start = next_location;
     uint32_t body_word_count = 0;
+    DocumentFeatures features = extractDocumentFeatures(doc);
 
     for (const ::string &raw_word : doc.words) {
         auto expanded = processToken(raw_word);
@@ -65,11 +67,10 @@ TokenizedDocument Tokenizer::processDocument(const HtmlParser &doc) {
         ++next_location;
     }
 
-    out.doc_end = DocEndOutput{next_location,   doc.base,
+    out.doc_end = DocEndOutput{next_location,   doc.documentUrl(),
                                body_word_count, static_cast<uint16_t>(doc.titleWords.size()),
-                               doc_start,       doc.suffixType,
-                               doc.pathDepth,   doc.urlLength,
-                               doc.seedDistance};
+                               doc_start,       doc.seedDistance,
+                               features};
     ++next_location; // shift one to account for #DocEnd
     return out;
 }

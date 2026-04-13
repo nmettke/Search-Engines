@@ -30,6 +30,10 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(googletest)
 
+# Prefer the fetched GoogleTest headers over any Homebrew/system install so the
+# test macros match the built gtest library ABI.
+include_directories(BEFORE SYSTEM ${googletest_SOURCE_DIR}/googletest/include)
+
 # -----------------------------
 # Add project directories
 # -----------------------------

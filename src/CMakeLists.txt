@@ -111,11 +111,22 @@ add_library(index_lib
     index/src/lib/Common.cpp
     index/src/lib/vbyte.cpp
     index/src/lib/seek_table.cpp
+    index/src/lib/document_features.cpp
     index/src/lib/in_memory_index.cpp
     index/src/lib/disk_chunk_writer.cpp
+    index/src/lib/disk_chunk_reader.cpp
     index/src/lib/chunk_flusher.cpp
     index/src/lib/indexQueue.cpp
     index/src/lib/tokenizer.cpp
+    index/src/lib/query_engine.cpp
+    index/src/lib/query_tokenizer.cpp
+    index/src/lib/query_compiler.cpp
+    index/src/lib/isr.cpp
+    index/src/lib/isr_and.cpp
+    index/src/lib/isr_or.cpp
+    index/src/lib/isr_phrase.cpp
+    index/src/lib/isr_container.cpp
+    index/src/lib/url_features.cpp
 )
 
 target_include_directories(index_lib
@@ -126,6 +137,7 @@ target_include_directories(index_lib
 
 target_link_libraries(index_lib
     PUBLIC
+        parser
         utils
 )
 
