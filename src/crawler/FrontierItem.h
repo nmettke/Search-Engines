@@ -8,6 +8,8 @@ class FrontierItem {
   public:
     explicit FrontierItem(const string &url);
     FrontierItem(const string &url, const FrontierItem &parent);
+    static FrontierItem withSeedDistance(const string &url, size_t seedDistance);
+    FrontierItem withLink(const string &url) const;
 
     string serializeToLine() const;
     static FrontierItem deserializeFromLine(const string &line);

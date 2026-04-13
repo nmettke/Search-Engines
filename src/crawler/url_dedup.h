@@ -36,3 +36,4 @@ class UrlBloomFilter {
 };
 
 bool shouldEnqueueUrl(const ::string &rawUrl, UrlBloomFilter &bloom, ::string &canonicalOut);
+bool passesUrlQualityChecks(const ::string &rawUrl, ::string &canonicalOut);

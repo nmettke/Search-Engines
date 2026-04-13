@@ -48,7 +48,13 @@ IndexQueue *q = nullptr;
 InMemoryIndex mem_index;
 
 std::atomic<size_t> numLinkThreshold{128};
-vector<vector<Link>> batches;
+struct RoutedLink {
+    string url;
+    vector<string> anchorText;
+    size_t seedDistance = 0;
+};
+
+vector<vector<RoutedLink>> batches;
 mutex batch_lock;
 std::atomic<size_t> machine_id{0};
 // peer address should never be empty, it should at least include self
@@ -278,20 +284,29 @@ void *CrawlerWorkerThread(void *) {
         HtmlParser parsed(page.cstr(), page.size());
         parsed.sourceUrl = item->link;
         parsed.seedDistance = static_cast<uint8_t>(item->getSeedDistance());
+
+        if (parsed.isBroken() || !parsed.isEnglish()) {
+            continue;
+        }
+
         appendAnchorTerms(item->link, parsed.titleWords, true);
         q->push(parsed);
 
         vector<FrontierItem> discoveredLinks;
         for (const Link &link : parsed.links) {
-            string normalizedOut = absolutizeUrl(link.URL, item->link, parsed.base);
-            if (normalizedOut.empty() || !urlFilter.isAllowed(normalizedOut)) {
+            string resolved = absolutizeUrl(link.URL, item->link, parsed.base);
+            string canonicalOut;
+            if (!passesUrlQualityChecks(resolved, canonicalOut) ||
+                !urlFilter.isAllowed(canonicalOut)) {
                 continue;
             }
 
-            size_t destinationMachine = hashString(normalizedOut.cstr()) % machineCount;
+            size_t destinationMachine = hashString(canonicalOut.cstr()) % machineCount;
             if (destinationMachine != machine_id.load()) {
                 // add to batch to send to another machine
-                Link routedLink(normalizedOut);
+                RoutedLink routedLink;
+                routedLink.url = canonicalOut;
+                routedLink.seedDistance = item->getSeedDistance() + 1;
                 routedLink.anchorText = link.anchorText;
 
                 batch_lock.lock();
@@ -305,9 +320,9 @@ void *CrawlerWorkerThread(void *) {
 
             // URL belongs to this machine, add to anchor term,
             // and add to frontier if not seen
-            appendAnchorTerms(normalizedOut, link.anchorText, false);
-            if (bloom.checkAndInsert(normalizedOut)) {
-                discoveredLinks.pushBack(FrontierItem(normalizedOut, *item));
+            appendAnchorTerms(canonicalOut, link.anchorText, false);
+            if (bloom.checkAndInsert(canonicalOut)) {
+                discoveredLinks.pushBack(FrontierItem(canonicalOut, *item));
             }
         }
 
@@ -482,7 +497,7 @@ static bool hasReadyBatch() {
 static constexpr size_t sendBatchRetryCount = 3;
 static constexpr int sendBatchRetryBaseDelayMs = 100;
 
-static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
+static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch) {
     // Common network connection code to send formatted payload of batched links
     if (batch.size() == 0) {
         return true;
@@ -532,9 +547,11 @@ static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
     string payload;
     payload.reserve(batch.size() * 96); // heuristic. can be changed
 
-    // Write in format URL \t anchor \t ... \n
-    for (const Link &link : batch) {
-        payload += link.URL;
+    // Write in format URL \t seedDistance \t anchor \t ... \n
+    for (const RoutedLink &link : batch) {
+        payload += link.url;
+        payload.pushBack('\t');
+        payload += std::to_string(link.seedDistance).c_str();
         for (const string &word : link.anchorText) {
             payload.pushBack('\t');
             payload += word;
@@ -566,7 +583,7 @@ static bool sendBatchToPeer(const string &peer, const vector<Link> &batch) {
     return true;
 }
 
-static bool sendBatchToPeerWithRetry(const string &peer, const vector<Link> &batch) {
+static bool sendBatchToPeerWithRetry(const string &peer, const vector<RoutedLink> &batch) {
     for (size_t attempt = 0; attempt <= sendBatchRetryCount; ++attempt) {
         if (sendBatchToPeer(peer, batch)) {
             return true;
@@ -590,7 +607,7 @@ static bool sendBatchToPeerWithRetry(const string &peer, const vector<Link> &bat
 
 void *SendToMachineThread(void *) {
     while (true) {
-        vector<vector<Link>> readyBatches;
+        vector<vector<RoutedLink>> readyBatches;
 
         batch_lock.lock();
         while (!shouldStop && !hasReadyBatch()) {
@@ -604,12 +621,12 @@ void *SendToMachineThread(void *) {
 
         // We consider batch ready if it is big enough or when process
         // stopped and there are remaining batches
-        readyBatches = vector<vector<Link>>(batches.size());
+        readyBatches = vector<vector<RoutedLink>>(batches.size());
         for (size_t i = 0; i < batches.size(); ++i) {
             if (batches[i].size() >= numLinkThreshold.load() ||
                 (shouldStop && batches[i].size() > 0)) {
                 readyBatches[i] = std::move(batches[i]);
-                batches[i] = vector<Link>();
+                batches[i] = vector<RoutedLink>();
             }
         }
 
@@ -623,14 +640,21 @@ void *SendToMachineThread(void *) {
             if (i == machine_id.load()) {
                 // batch of the local machine should always be empty, so
                 // shouldn't happen but still safeguarding
-                vector<string> localUrls;
-                for (const Link &link : readyBatches[i]) {
-                    appendAnchorTerms(link.URL, link.anchorText, false);
-                    if (bloom.checkAndInsert(link.URL)) {
-                        localUrls.pushBack(link.URL);
+                vector<FrontierItem> localLinks;
+                for (const RoutedLink &link : readyBatches[i]) {
+                    string canonicalOut;
+                    if (!passesUrlQualityChecks(link.url, canonicalOut) ||
+                        !urlFilter.isAllowed(canonicalOut)) {
+                        continue;
+                    }
+
+                    appendAnchorTerms(canonicalOut, link.anchorText, false);
+                    if (bloom.checkAndInsert(canonicalOut)) {
+                        localLinks.pushBack(
+                            FrontierItem::withSeedDistance(canonicalOut, link.seedDistance));
                     }
                 }
-                f->pushMany(localUrls);
+                f->pushMany(localLinks);
                 continue;
             }
 
@@ -638,7 +662,7 @@ void *SendToMachineThread(void *) {
                 // Put failed batch back without notifying batch_cv so it only
                 // retries once real new URLs make the batch ready again.
                 batch_lock.lock();
-                for (Link &link : readyBatches[i]) {
+                for (RoutedLink &link : readyBatches[i]) {
                     batches[i].pushBack(std::move(link));
                 }
                 batch_lock.unlock();
@@ -657,6 +681,21 @@ static size_t findCharFrom(const string &value, char c, size_t start) {
         }
     }
     return string::npos;
+}
+
+static bool parseSizeField(const string &raw, size_t &value) {
+    if (raw.empty()) {
+        return false;
+    }
+
+    char *end = nullptr;
+    unsigned long parsed = std::strtoul(raw.c_str(), &end, 10);
+    if (end == raw.c_str() || (end != nullptr && *end != '\0')) {
+        return false;
+    }
+
+    value = static_cast<size_t>(parsed);
+    return true;
 }
 
 static int openListeningSocket() {
@@ -802,6 +841,22 @@ void *ReceiveFromMachineThread(void *) {
                 size_t fieldEnd = findCharFrom(line, '\t', 0);
                 string rawUrl = fieldEnd == string::npos ? line : line.substr(0, fieldEnd);
                 vector<string> anchorWords;
+                size_t receivedSeedDistance = 0;
+
+                // New payload format includes seed distance as second field.
+                // For backward compatibility with old payloads, if parsing fails,
+                // we treat the field as the first anchor word.
+                if (fieldEnd != string::npos) {
+                    size_t fieldStart = fieldEnd + 1;
+                    size_t secondFieldEnd = findCharFrom(line, '\t', fieldStart);
+                    size_t secondFieldLength = secondFieldEnd == string::npos
+                                                   ? line.size() - fieldStart
+                                                   : secondFieldEnd - fieldStart;
+                    string maybeSeedDistance = line.substr(fieldStart, secondFieldLength);
+                    if (parseSizeField(maybeSeedDistance, receivedSeedDistance)) {
+                        fieldEnd = secondFieldEnd;
+                    }
+                }
 
                 // add anchor text if tab char was found
                 while (fieldEnd != string::npos) {
@@ -815,12 +870,13 @@ void *ReceiveFromMachineThread(void *) {
                 }
 
                 // add the links to our frontier and anchor
-                string normalizedOut = normalizeUrl(rawUrl);
-                if (!normalizedOut.empty() && urlFilter.isAllowed(normalizedOut) &&
-                    shouldOwnUrl(normalizedOut)) {
-                    appendAnchorTerms(normalizedOut, anchorWords, false);
-                    if (bloom.checkAndInsert(normalizedOut)) {
-                        discoveredLinks.pushBack(FrontierItem(normalizedOut));
+                string canonicalOut;
+                if (passesUrlQualityChecks(rawUrl, canonicalOut) &&
+                    urlFilter.isAllowed(canonicalOut) && shouldOwnUrl(canonicalOut)) {
+                    appendAnchorTerms(canonicalOut, anchorWords, false);
+                    if (bloom.checkAndInsert(canonicalOut)) {
+                        discoveredLinks.pushBack(
+                            FrontierItem::withSeedDistance(canonicalOut, receivedSeedDistance));
                     }
                 }
             }
@@ -900,50 +956,51 @@ int main(int argc, char **argv) {
     anchorIndex = new HashTable<string, AnchorPosting>(anchorKeyEqual, anchorKeyHash);
 
     peer_address = {
-        "34.130.43.20:8081",   // 0  Ashmit
-        "34.130.82.156:8081",  // 1
-        "34.124.113.238:8081", // 2
-        "34.130.64.46:8081",   // 3
-        "34.130.43.3:8081",    // 4
-        "34.130.137.49:8081",  // 5
-        "34.130.64.163:8081",  // 6
-        "34.130.229.83:8081",  // 7  Will
-        "34.130.16.28:8081",   // 8
-        "34.130.91.157:8081",  // 9
-        "34.130.93.78:8081",   // 10
-        "34.130.21.35:8081",   // 11
-        "34.130.79.253:8081",  // 12 Andrew
-        "34.130.0.117:8081",   // 13
-        "34.130.198.23:8081",  // 14
-        "34.130.157.28:8081",  // 15
-        "34.130.190.162:8081", // 16
-        "34.130.122.145:8081", // 17 Anthony
-        "34.130.29.159:8081",  // 18
-        "34.130.82.240:8081",  // 19
-        "34.130.157.196:8081", // 20
-        "34.130.214.145:8081", // 21
-        "34.130.119.2:8081",   // 22
-        "34.130.216.240:8081", // 23
-        "34.130.243.215:8081", // 24
-        "34.130.130.196:8081", // 25 Satvik
-        "34.130.230.21:8081",  // 26
-        "34.130.161.223:8081", // 27
-        "34.130.5.230:8081",   // 28
-        "34.130.138.190:8081", // 29
-        "34.130.249.128:8081", // 30
-        "34.130.93.208:8081",  // 31
-        "34.130.104.67:8081",  // 32 Vasu
-        "34.130.81.209:8081",  // 33
-        "34.130.117.222:8081", // 34
-        "34.130.62.205:8081",  // 35
-        "34.124.120.173:8081", // 36
-        "34.130.240.109:8081", // 37
-        "34.130.84.218:8081",  // 38
-        "34.45.219.149:8081",  // 39 Nate
-        "34.9.132.225:8081",   // 40
-        "34.9.191.70:8081",    // 41
-        "136.116.245.6:8081",  // 42
-        "34.9.119.101:8081",   // 43
+        "127.0.0.1:8081",
+        // "34.130.43.20:8081",   // 0  Ashmit
+        // "34.130.82.156:8081",  // 1
+        // "34.124.113.238:8081", // 2
+        // "34.130.64.46:8081",   // 3
+        // "34.130.43.3:8081",    // 4
+        // "34.130.137.49:8081",  // 5
+        // "34.130.64.163:8081",  // 6
+        // "34.130.229.83:8081",  // 7  Will
+        // "34.130.16.28:8081",   // 8
+        // "34.130.91.157:8081",  // 9
+        // "34.130.93.78:8081",   // 10
+        // "34.130.21.35:8081",   // 11
+        // "34.130.79.253:8081",  // 12 Andrew
+        // "34.130.0.117:8081",   // 13
+        // "34.130.198.23:8081",  // 14
+        // "34.130.157.28:8081",  // 15
+        // "34.130.190.162:8081", // 16
+        // "34.130.122.145:8081", // 17 Anthony
+        // "34.130.29.159:8081",  // 18
+        // "34.130.82.240:8081",  // 19
+        // "34.130.157.196:8081", // 20
+        // "34.130.214.145:8081", // 21
+        // "34.130.119.2:8081",   // 22
+        // "34.130.216.240:8081", // 23
+        // "34.130.243.215:8081", // 24
+        // "34.130.130.196:8081", // 25 Satvik
+        // "34.130.230.21:8081",  // 26
+        // "34.130.161.223:8081", // 27
+        // "34.130.5.230:8081",   // 28
+        // "34.130.138.190:8081", // 29
+        // "34.130.249.128:8081", // 30
+        // "34.130.93.208:8081",  // 31
+        // "34.130.104.67:8081",  // 32 Vasu
+        // "34.130.81.209:8081",  // 33
+        // "34.130.117.222:8081", // 34
+        // "34.130.62.205:8081",  // 35
+        // "34.124.120.173:8081", // 36
+        // "34.130.240.109:8081", // 37
+        // "34.130.84.218:8081",  // 38
+        // "34.45.219.149:8081",  // 39 Nate
+        // "34.9.132.225:8081",   // 40
+        // "34.9.191.70:8081",    // 41
+        // "136.116.245.6:8081",  // 42
+        // "34.9.119.101:8081",   // 43
     };
 
     // machine_id = parseEnv("SEARCH_MACHINE_ID", 0);
@@ -983,7 +1040,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    batches = vector<vector<Link>>(peer_address.size());
+    batches = vector<vector<RoutedLink>>(peer_address.size());
 
     vector<FrontierItem> recoveredItems;
     urlsCrawled = 0;
@@ -997,16 +1054,16 @@ int main(int argc, char **argv) {
 
         vector<FrontierItem> ownedRecoveredItems;
         for (const FrontierItem &item : recoveredItems) {
-            string normalizeOut = normalizeUrl(item.link);
-            if (normalizeOut.empty() || !urlFilter.isAllowed(normalizeOut) ||
-                !shouldOwnUrl(normalizeOut)) {
+            string canonicalOut;
+            if (!passesUrlQualityChecks(item.link, canonicalOut) ||
+                !urlFilter.isAllowed(canonicalOut) || !shouldOwnUrl(canonicalOut)) {
                 continue;
             }
 
-            if (normalizeOut == item.link) {
+            if (canonicalOut == item.link) {
                 ownedRecoveredItems.pushBack(item);
             } else {
-                ownedRecoveredItems.pushBack(FrontierItem(normalizeOut));
+                ownedRecoveredItems.pushBack(item.withLink(canonicalOut));
             }
         }
 
@@ -1025,12 +1082,12 @@ int main(int argc, char **argv) {
             vector<FrontierItem> ownedSeedItems;
             std::string line;
             while (std::getline(seedList, line)) {
-                string normalizeOut = normalizeUrl(string(line.c_str()));
-                if (normalizeOut.empty() || !urlFilter.isAllowed(normalizeOut) ||
-                    !shouldOwnUrl(normalizeOut)) {
+                string canonicalOut;
+                if (!passesUrlQualityChecks(string(line.c_str()), canonicalOut) ||
+                    !urlFilter.isAllowed(canonicalOut) || !shouldOwnUrl(canonicalOut)) {
                     continue;
                 }
-                ownedSeedItems.pushBack(FrontierItem(normalizeOut));
+                ownedSeedItems.pushBack(FrontierItem(canonicalOut));
             }
 
             f = new Frontier(std::move(ownedSeedItems));
@@ -1047,19 +1104,19 @@ int main(int argc, char **argv) {
         vector<FrontierItem> ownedSeedItems;
         std::string line;
         while (std::getline(seedList, line)) {
-            string normalizeOut = normalizeUrl(string(line.c_str()));
-            if (normalizeOut.empty() || !urlFilter.isAllowed(normalizeOut) ||
-                !shouldOwnUrl(normalizeOut)) {
+            string canonicalOut;
+            if (!passesUrlQualityChecks(string(line.c_str()), canonicalOut) ||
+                !urlFilter.isAllowed(canonicalOut) || !shouldOwnUrl(canonicalOut)) {
                 continue;
             }
-            ownedSeedItems.pushBack(FrontierItem(normalizeOut));
+            ownedSeedItems.pushBack(FrontierItem(canonicalOut));
         }
 
         f = new Frontier(std::move(ownedSeedItems));
         std::cerr << "Starting fresh from seed list\n";
     }
 
-    size_t crawlerThreadCount = cores * 3;
+    size_t crawlerThreadCount = cores * 10;
     size_t indexThreadCount = 1;
     vector<pthread_t> crawlerThreads(crawlerThreadCount);
     vector<pthread_t> indexThreads(indexThreadCount);
