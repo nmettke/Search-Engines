@@ -12,14 +12,14 @@ constexpr double failureWeight = 10.0;
 FrontierItem::FrontierItem(const string &url) : link(url), seedDistance(0) { parseURL(url); }
 
 FrontierItem::FrontierItem(const string &url, const FrontierItem &parent)
-        : link(url), seedDistance(parent.seedDistance + 1) {
+    : link(url), seedDistance(parent.seedDistance + 1) {
     parseURL(url);
 }
 
 FrontierItem::FrontierItem(const string &link, Suffix suffix, size_t baseLength,
-                                                     size_t seedDistance, size_t pathDepth, bool failed)
-        : link(link), suffix(suffix), baseLength(baseLength), seedDistance(seedDistance),
-            pathDepth(pathDepth), failed(failed) {}
+                           size_t seedDistance, size_t pathDepth, bool failed)
+    : link(link), suffix(suffix), baseLength(baseLength), seedDistance(seedDistance),
+      pathDepth(pathDepth), failed(failed) {}
 
 string FrontierItem::serializeToLine() const {
     char buf[32];
