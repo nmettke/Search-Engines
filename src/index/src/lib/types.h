@@ -7,7 +7,7 @@
 #include <limits>
 
 constexpr uint32_t magic = 0x49445831; // magic for writing chunk
-constexpr uint32_t version = 1;        // chunk file encoding version
+constexpr uint32_t version = 2;        // chunk file encoding version
 constexpr uint32_t ISRSentinel = std::numeric_limits<uint32_t>::max();
 constexpr const char *docEndToken = "#DocEnd";
 

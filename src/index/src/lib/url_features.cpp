@@ -1,4 +1,5 @@
 #include "url_features.h"
+#include <algorithm>
 #include <climits>
 
 namespace {

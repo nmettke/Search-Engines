@@ -1,5 +1,6 @@
 #include "document_features.h"
 #include "url_features.h"
+#include <algorithm>
 #include <climits>
 
 DocumentFeatures extractDocumentFeatures(const HtmlParser &doc) {
