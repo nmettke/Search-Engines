@@ -89,6 +89,7 @@ bool anchorIndexEdited = false;
 size_t anchorFlushFileCount = 0;
 const string anchorIndexDirectory("data/anchor_index");
 const string indexDirectory("data/body_index");
+const string titleIndexDirectory("data/title_index");
 const string metaDirectory("data/meta");
 const size_t FLUSHANCHORSIZE = 2500;
 const size_t FLUSHBODYTOKENSIZE = 5000000;
@@ -185,8 +186,13 @@ static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, const 
     }
 
     char buffer[128];
-    std::snprintf(buffer, sizeof(buffer), "%s/%s_%zu.idx", anchorIndexDirectory.c_str(), prefix,
-                  fileCount);
+    if (isTitle) {
+        std::snprintf(buffer, sizeof(buffer), "%s/%s_%zu.idx", titleIndexDirectory.c_str(), prefix,
+                      fileCount);
+    } else {
+        std::snprintf(buffer, sizeof(buffer), "%s/%s_%zu.idx", anchorIndexDirectory.c_str(), prefix,
+                      fileCount);
+    }
 
     const string indexPath(buffer);
     string tmpPath = indexPath + ".tmp";
