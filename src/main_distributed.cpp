@@ -457,6 +457,10 @@ void *IndexWorkerThread(void *) {
             tokensProcessed = 0;
             ++chunksWritten;
         }
+
+        if (docsProcessed % 2500 == 0) {
+            std::cout << "Processed" << docsProcessed << "documents\n";
+        }
     }
 
     // Write final partial chunk
