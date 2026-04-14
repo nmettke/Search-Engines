@@ -64,3 +64,4 @@ src/crawler/checkpoint.dat.tmp
 *.dat
 .env
 data/*
+Search_Engine_commmands/*

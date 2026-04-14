@@ -1091,7 +1091,7 @@ int main(int argc, char **argv) {
         }
 
         if (ownedRecoveredItems.size() > 0) {
-            f = new Frontier(std::move(ownedRecoveredItems));
+            f = new Frontier(std::move(ownedRecoveredItems), false);
             std::cerr << "Recovered from checkpoint at " << urlsCrawled.load() << " URLs\n";
         } else {
             std::cerr << "Checkpoint has empty frontier for this machine; starting fresh from seed "
@@ -1113,7 +1113,7 @@ int main(int argc, char **argv) {
                 ownedSeedItems.pushBack(FrontierItem(canonicalOut));
             }
 
-            f = new Frontier(std::move(ownedSeedItems));
+            f = new Frontier(std::move(ownedSeedItems), false);
             urlsCrawled = 0;
             std::cerr << "Starting fresh from seed list\n";
         }
@@ -1135,7 +1135,7 @@ int main(int argc, char **argv) {
             ownedSeedItems.pushBack(FrontierItem(canonicalOut));
         }
 
-        f = new Frontier(std::move(ownedSeedItems));
+        f = new Frontier(std::move(ownedSeedItems), false);
         std::cerr << "Starting fresh from seed list\n";
     }
 
