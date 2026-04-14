@@ -16,9 +16,9 @@
 
 class Frontier {
   public:
-    Frontier(const string &seed_list_str);
+    Frontier(const string &seed_list_str, bool autoCloseWhenDrained = true);
 
-    Frontier(vector<FrontierItem> items);
+    Frontier(vector<FrontierItem> items, bool autoCloseWhenDrained = true);
 
     ~Frontier() = default;
 
@@ -51,5 +51,6 @@ class Frontier {
     mutable mutex m;
     condition_variable cv;
     bool closed;
+    bool autoCloseWhenDrained;
     std::size_t pending;
 };

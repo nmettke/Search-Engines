@@ -1,12 +1,13 @@
 #include "frontier.h"
 
-Frontier::Frontier(const string &seed_list_str) {
+Frontier::Frontier(const string &seed_list_str, bool autoCloseWhenDrainedArg) {
     std::ifstream seedList(seed_list_str.c_str());
     if (!seedList.is_open()) {
         throw std::runtime_error("seedList could not be opened");
     }
 
     closed = false;
+    autoCloseWhenDrained = autoCloseWhenDrainedArg;
     pending = 0;
 
     std::string line;
@@ -15,13 +16,14 @@ Frontier::Frontier(const string &seed_list_str) {
         ++pending;
     }
 
-    if (pending == 0) {
+    if (pending == 0 && autoCloseWhenDrained) {
         closed = true;
     }
 }
 
-Frontier::Frontier(vector<FrontierItem> items) {
+Frontier::Frontier(vector<FrontierItem> items, bool autoCloseWhenDrainedArg) {
     closed = false;
+    autoCloseWhenDrained = autoCloseWhenDrainedArg;
     pending = 0;
 
     for (size_t i = 0; i < items.size(); ++i) {
@@ -32,7 +34,7 @@ Frontier::Frontier(vector<FrontierItem> items) {
         ++pending;
     }
 
-    if (pending == 0) {
+    if (pending == 0 && autoCloseWhenDrained) {
         closed = true;
     }
 }
@@ -144,7 +146,9 @@ void Frontier::taskDone() {
 
     --pending;
     if (pending == 0) {
-        closed = true;
+        if (autoCloseWhenDrained) {
+            closed = true;
+        }
         cv.notify_all();
     }
 }
