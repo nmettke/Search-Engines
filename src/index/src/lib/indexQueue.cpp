@@ -1,8 +1,10 @@
 #include "indexQueue.h"
 
-IndexQueue::IndexQueue() : closed(false), pending(0) {}
+IndexQueue::IndexQueue(std::size_t maxQueuedItemsArg)
+    : closed(false), pending(0), maxQueuedItems(maxQueuedItemsArg) {}
 
-IndexQueue::IndexQueue(vector<HtmlParser> items) : closed(false), pending(items.size()) {
+IndexQueue::IndexQueue(vector<HtmlParser> items, std::size_t maxQueuedItemsArg)
+    : closed(false), pending(items.size()), maxQueuedItems(maxQueuedItemsArg) {
     for (size_t i = 0; i < items.size(); ++i) {
         queue.push_front(std::move(items[i]));
     }
@@ -10,13 +12,16 @@ IndexQueue::IndexQueue(vector<HtmlParser> items) : closed(false), pending(items.
 
 void IndexQueue::push(HtmlParser &parsed) {
     m.lock();
+    while (!closed && queue.size() >= maxQueuedItems) {
+        cv.wait(m);
+    }
     if (closed) {
         m.unlock();
         return;
     }
     queue.emplace_front(parsed);
     ++pending;
-    cv.notify_one();
+    cv.notify_all();
     m.unlock();
 }
 
@@ -35,6 +40,7 @@ std::optional<HtmlParser> IndexQueue::pop() {
         if (pending > 0) {
             --pending;
         }
+        cv.notify_all();
         m.unlock();
         return val;
     }

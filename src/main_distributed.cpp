@@ -91,7 +91,11 @@ const string anchorIndexDirectory("data/anchor_index");
 const string indexDirectory("data/body_index");
 const string metaDirectory("data/meta");
 const size_t FLUSHANCHORSIZE = 2500;
-const size_t FLUSHBODYTOKENSIZE = 25000000;
+const size_t FLUSHBODYTOKENSIZE = 5000000;
+static constexpr size_t maxIndexQueueItems = 1024;
+static constexpr size_t crawlerThreadsPerCore = 100;
+static constexpr size_t fallbackCrawlerThreadCount = 8;
+static constexpr size_t maxCrawlerThreadCount = 800;
 
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint = nullptr;
@@ -455,12 +459,14 @@ void *IndexWorkerThread(void *) {
             }
 
             mem_index = InMemoryIndex();
+            chunk_metadata = vector<string>();
             docsProcessed = 0;
             tokensProcessed = 0;
             ++chunksWritten;
         }
 
-        if (docsProcessed % 2500 == 0) {
+        if (docsProcessed > 0 && docsProcessed % FLUSHANCHORSIZE == 0) {
+            flushAnchorIndexToDisk(false);
             std::cout << "Processed" << docsProcessed << "documents\n";
         }
     }
@@ -506,6 +512,7 @@ static constexpr int sendBatchConnectTimeoutSecs = 10;
 static constexpr int sendBatchSendTimeoutSecs = 15;
 static constexpr int receiveBatchRecvTimeoutSecs = 30;
 static constexpr size_t receiveWorkerThreadCount = 8;
+static constexpr size_t maxQueuedReceiveClientFds = 256;
 
 // Bounded handoff from the accept loop to a fixed pool of receive workers.
 // Replaces "spawn a detached pthread per accept()" so connection bursts or
@@ -1009,8 +1016,14 @@ void *ReceiveFromMachineThread(void *) {
         // notify_one wakes one idle worker; if all workers are busy the fd
         // stays in the queue until one frees up.
         receiveQueueMutex.lock();
+        if (clientFdQueue.size() >= maxQueuedReceiveClientFds) {
+            receiveQueueMutex.unlock();
+            std::cerr << "Receive queue full; dropping incoming batch connection\n";
+            close(clientFd);
+            continue;
+        }
         clientFdQueue.push_front(clientFd);
-        receiveQueueCv.notify_one();
+        receiveQueueCv.notify_all();
         receiveQueueMutex.unlock();
     }
 
@@ -1071,7 +1084,7 @@ int main(int argc, char **argv) {
 
     cpConfig.directory = "src/crawler";
     checkpoint = new Checkpoint(cpConfig);
-    q = new IndexQueue();
+    q = new IndexQueue(maxIndexQueueItems);
     robotsCache = new RobotsCache();
     delayedQueue = new DelayedQueue();
     anchorIndex = new HashTable<string, AnchorPosting>(anchorKeyEqual, anchorKeyHash);
@@ -1236,7 +1249,11 @@ int main(int argc, char **argv) {
         std::cerr << "Starting fresh from seed list\n";
     }
 
-    size_t crawlerThreadCount = cores * 10;
+    size_t crawlerThreadCount = (cores == 0 ? fallbackCrawlerThreadCount
+                                            : static_cast<size_t>(cores) * crawlerThreadsPerCore);
+    if (crawlerThreadCount > maxCrawlerThreadCount) {
+        crawlerThreadCount = maxCrawlerThreadCount;
+    }
     size_t indexThreadCount = 1;
     vector<pthread_t> crawlerThreads(crawlerThreadCount);
     vector<pthread_t> indexThreads(indexThreadCount);

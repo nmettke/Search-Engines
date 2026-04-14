@@ -13,8 +13,8 @@
 
 class IndexQueue {
   public:
-    IndexQueue();
-    IndexQueue(::vector<HtmlParser> items);
+    explicit IndexQueue(std::size_t maxQueuedItems = 1024);
+    IndexQueue(::vector<HtmlParser> items, std::size_t maxQueuedItems = 1024);
     ~IndexQueue() = default;
 
     void push(HtmlParser &parsed);
@@ -28,4 +28,5 @@ class IndexQueue {
     ::condition_variable cv;
     bool closed;
     std::size_t pending;
+    std::size_t maxQueuedItems;
 };
