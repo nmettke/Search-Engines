@@ -54,7 +54,13 @@ struct RoutedLink {
     size_t seedDistance = 0;
 };
 
-vector<vector<RoutedLink>> batches;
+struct OutboundPeerQueue {
+    mutex lock;
+    vector<vector<RoutedLink>> readyBatches;
+};
+
+vector<OutboundPeerQueue *> outboundQueues;
+std::atomic<size_t> readyOutboundBatchCount{0};
 mutex batch_lock;
 std::atomic<size_t> machine_id{0};
 // peer address should never be empty, it should at least include self
@@ -154,6 +160,48 @@ static void appendAnchorTerms(const string &url, const vector<string> &words, bo
     anchorEdited = true;
 }
 
+static void notifySenderThread() {
+    lock_guard guard(batch_lock);
+    batch_cv.notify_one();
+}
+
+static void publishOutboundBatch(size_t destinationMachine, vector<RoutedLink> &buffer) {
+    if (buffer.size() == 0) {
+        return;
+    }
+
+    if (destinationMachine >= outboundQueues.size() ||
+        outboundQueues[destinationMachine] == nullptr) {
+        buffer = vector<RoutedLink>();
+        return;
+    }
+
+    vector<RoutedLink> ready = std::move(buffer);
+    buffer = vector<RoutedLink>();
+
+    {
+        lock_guard guard(outboundQueues[destinationMachine]->lock);
+        outboundQueues[destinationMachine]->readyBatches.pushBack(std::move(ready));
+    }
+
+    readyOutboundBatchCount.fetch_add(1);
+    notifySenderThread();
+}
+
+static vector<vector<RoutedLink>> drainReadyOutboundBatches(size_t destinationMachine) {
+    vector<vector<RoutedLink>> readyBatches;
+
+    if (destinationMachine >= outboundQueues.size() ||
+        outboundQueues[destinationMachine] == nullptr) {
+        return readyBatches;
+    }
+
+    lock_guard guard(outboundQueues[destinationMachine]->lock);
+    readyBatches = std::move(outboundQueues[destinationMachine]->readyBatches);
+    outboundQueues[destinationMachine]->readyBatches = vector<vector<RoutedLink>>();
+    return readyBatches;
+}
+
 static void flushAnchorIndexToDisk(bool force) {
     // creates a new empty anchor index and flushes old index to disk
     vector<AnchorSnapshot> snapshot;
@@ -247,6 +295,11 @@ static void flushAnchorIndexToDisk(bool force) {
 
 void *CrawlerWorkerThread(void *) {
     size_t machineCount = peer_address.size();
+    if (machineCount == 0) {
+        machineCount = 1;
+    }
+
+    vector<vector<RoutedLink>> outboundBuffers(machineCount);
 
     while (std::optional<FrontierItem> item = f->pop()) {
         if (shouldStop) {
@@ -309,12 +362,10 @@ void *CrawlerWorkerThread(void *) {
                 routedLink.seedDistance = item->getSeedDistance() + 1;
                 routedLink.anchorText = link.anchorText;
 
-                batch_lock.lock();
-                batches[destinationMachine].pushBack(std::move(routedLink));
-                if (batches[destinationMachine].size() >= numLinkThreshold.load()) {
-                    batch_cv.notify_one();
+                outboundBuffers[destinationMachine].pushBack(std::move(routedLink));
+                if (outboundBuffers[destinationMachine].size() >= numLinkThreshold.load()) {
+                    publishOutboundBatch(destinationMachine, outboundBuffers[destinationMachine]);
                 }
-                batch_lock.unlock();
                 continue;
             }
 
@@ -342,6 +393,11 @@ void *CrawlerWorkerThread(void *) {
                 }
             }
         }
+    }
+
+    for (size_t destinationMachine = 0; destinationMachine < outboundBuffers.size();
+         ++destinationMachine) {
+        publishOutboundBatch(destinationMachine, outboundBuffers[destinationMachine]);
     }
 
     return nullptr;
@@ -489,14 +545,7 @@ void *IndexWorkerThread(void *) {
     return nullptr;
 }
 
-static bool hasReadyBatch() {
-    for (const auto &batch : batches) {
-        if (batch.size() >= numLinkThreshold.load() || (shouldStop && batch.size() > 0)) {
-            return true;
-        }
-    }
-    return false;
-}
+static bool hasReadyBatch() { return readyOutboundBatchCount.load() > 0; }
 
 static constexpr size_t sendBatchRetryCount = 5;
 static constexpr int sendBatchRetryBaseDelayMs = 1000;
@@ -611,8 +660,6 @@ static bool sendBatchToPeerWithRetry(const string &peer, const vector<RoutedLink
 
 void *SendToMachineThread(void *) {
     while (true) {
-        vector<vector<RoutedLink>> readyBatches;
-
         batch_lock.lock();
         while (!shouldStop && !hasReadyBatch()) {
             batch_cv.wait(batch_lock);
@@ -623,18 +670,26 @@ void *SendToMachineThread(void *) {
             break;
         }
 
-        // We consider batch ready if it is big enough or when process
-        // stopped and there are remaining batches
-        readyBatches = vector<vector<RoutedLink>>(batches.size());
-        for (size_t i = 0; i < batches.size(); ++i) {
-            if (batches[i].size() >= numLinkThreshold.load() ||
-                (shouldStop && batches[i].size() > 0)) {
-                readyBatches[i] = std::move(batches[i]);
-                batches[i] = vector<RoutedLink>();
+        batch_lock.unlock();
+
+        vector<vector<vector<RoutedLink>>> readyBatches(peer_address.size());
+        size_t drainedBatchCount = 0;
+
+        for (size_t i = 0; i < peer_address.size(); ++i) {
+            vector<vector<RoutedLink>> peerReadyBatches = drainReadyOutboundBatches(i);
+            if (peerReadyBatches.size() == 0) {
+                continue;
             }
+
+            drainedBatchCount += peerReadyBatches.size();
+            readyBatches[i] = std::move(peerReadyBatches);
         }
 
-        batch_lock.unlock();
+        if (drainedBatchCount == 0) {
+            continue;
+        }
+
+        readyOutboundBatchCount.fetch_sub(drainedBatchCount);
 
         for (size_t i = 0; i < readyBatches.size(); ++i) {
             if (readyBatches[i].size() == 0) {
@@ -645,32 +700,29 @@ void *SendToMachineThread(void *) {
                 // batch of the local machine should always be empty, so
                 // shouldn't happen but still safeguarding
                 vector<FrontierItem> localLinks;
-                for (const RoutedLink &link : readyBatches[i]) {
-                    string canonicalOut;
-                    if (!passesUrlQualityChecks(link.url, canonicalOut) ||
-                        !urlFilter.isAllowed(canonicalOut)) {
-                        continue;
-                    }
+                for (const vector<RoutedLink> &batch : readyBatches[i]) {
+                    for (const RoutedLink &link : batch) {
+                        string canonicalOut;
+                        if (!passesUrlQualityChecks(link.url, canonicalOut) ||
+                            !urlFilter.isAllowed(canonicalOut)) {
+                            continue;
+                        }
 
-                    appendAnchorTerms(canonicalOut, link.anchorText, false);
-                    if (bloom.checkAndInsert(canonicalOut)) {
-                        localLinks.pushBack(
-                            FrontierItem::withSeedDistance(canonicalOut, link.seedDistance));
+                        appendAnchorTerms(canonicalOut, link.anchorText, false);
+                        if (bloom.checkAndInsert(canonicalOut)) {
+                            localLinks.pushBack(
+                                FrontierItem::withSeedDistance(canonicalOut, link.seedDistance));
+                        }
                     }
                 }
                 f->pushMany(localLinks);
                 continue;
             }
 
-            if (!sendBatchToPeerWithRetry(peer_address[i], readyBatches[i])) {
-                // Put failed batch back without notifying batch_cv so it only
-                // retries once real new URLs make the batch ready again.
-                // batch_lock.lock();
-                // for (Link &link : readyBatches[i]) {
-                //     batches[i].pushBack(std::move(link));
-                // }
-                // batch_lock.unlock();
-                std::cerr << "Send Batch Failed; Give up\n";
+            for (const vector<RoutedLink> &batch : readyBatches[i]) {
+                if (!sendBatchToPeerWithRetry(peer_address[i], batch)) {
+                    std::cerr << "Send Batch Failed; Give up\n";
+                }
             }
         }
     }
@@ -1067,7 +1119,11 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    batches = vector<vector<RoutedLink>>(peer_address.size());
+    outboundQueues = vector<OutboundPeerQueue *>(peer_address.size(), nullptr);
+    for (size_t i = 0; i < peer_address.size(); ++i) {
+        outboundQueues[i] = new OutboundPeerQueue();
+    }
+    readyOutboundBatchCount.store(0);
 
     vector<FrontierItem> recoveredItems;
     urlsCrawled = 0;
@@ -1215,6 +1271,10 @@ int main(int argc, char **argv) {
     delete f;
     delete q;
     delete checkpoint;
+
+    for (size_t i = 0; i < outboundQueues.size(); ++i) {
+        delete outboundQueues[i];
+    }
 
     cleanupSSL();
     return 0;
