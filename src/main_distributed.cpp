@@ -266,7 +266,7 @@ void *CrawlerWorkerThread(void *) {
         RobotCheckResult check = robotsCache->checkAndReserve(item->link);
 
         if (check.status == RobotCheckStatus::DISALLOWED) {
-            std::cerr << "Blocked by robots.txt: " << item->link << '\n';
+            // std::cerr << "Blocked by robots.txt: " << item->link << '\n';
             continue;
         }
 
