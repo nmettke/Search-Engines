@@ -64,15 +64,13 @@ std::atomic<size_t> machine_id{0};
 vector<string> peer_address;
 condition_variable batch_cv;
 
-struct AnchorPosting {
-    vector<string> titleWords;
-    vector<string> anchorWords;
+struct WordPosting {
+    vector<string> words;
 };
 
-struct AnchorSnapshot {
+struct WordSnapshot {
     string url;
-    vector<string> titleWords;
-    vector<string> anchorWords;
+    vector<string> words;
 };
 
 static bool anchorKeyEqual(string a, string b) {
@@ -83,10 +81,12 @@ static uint64_t anchorKeyHash(string key) {
     return hashString(key.cstr());
 } // defined to construct anchor hashtable
 
-HashTable<string, AnchorPosting> *anchorIndex = nullptr;
+HashTable<string, WordPosting> *titleIndex = nullptr;
+HashTable<string, WordPosting> *anchorIndex = nullptr;
 mutex anchor_lock;
-bool anchorEdited = false;
-size_t anchorFileCount = 0;
+bool titleIndexEdited = false;
+bool anchorIndexEdited = false;
+size_t anchorFlushFileCount = 0;
 const string anchorIndexDirectory("data/anchor_index");
 const string indexDirectory("data/body_index");
 const string metaDirectory("data/meta");
@@ -152,81 +152,70 @@ static void appendAnchorTerms(const string &url, const vector<string> &words, bo
     }
 
     lock_guard guard(anchor_lock);
-    Tuple<string, AnchorPosting> *entry = anchorIndex->Find(url, AnchorPosting());
-    vector<string> &target = isTitle ? entry->value.titleWords : entry->value.anchorWords;
+    HashTable<string, WordPosting> *targetIndex = isTitle ? titleIndex : anchorIndex;
+    Tuple<string, WordPosting> *entry = targetIndex->Find(url, WordPosting());
+    vector<string> &target = entry->value.words;
     for (const string &word : words) {
         target.pushBack(word);
     }
-    anchorEdited = true;
+    if (isTitle) {
+        titleIndexEdited = true;
+    } else {
+        anchorIndexEdited = true;
+    }
 }
 
-static void flushAnchorIndexToDisk(bool force) {
-    // creates a new empty anchor index and flushes old index to disk
-    vector<AnchorSnapshot> snapshot;
-
-    anchor_lock.lock();
-    if (!force && !anchorEdited) {
-        // do nothing if anchor is unchanged
-        anchor_lock.unlock();
-        return;
+static void restoreWordSnapshot(HashTable<string, WordPosting> *targetIndex, bool &editedFlag,
+                                const vector<WordSnapshot> &snapshot) {
+    lock_guard guard(anchor_lock);
+    for (const WordSnapshot &record : snapshot) {
+        Tuple<string, WordPosting> *entry = targetIndex->Find(record.url, WordPosting());
+        for (const string &word : record.words) {
+            entry->value.words.pushBack(word);
+        }
     }
+    editedFlag = true;
+}
 
-    for (auto it = anchorIndex->begin(); it != anchorIndex->end(); ++it) {
-        snapshot.pushBack({it->key, it->value.titleWords, it->value.anchorWords});
-    }
-    HashTable<string, AnchorPosting> *oldIndex = anchorIndex;
-    anchorIndex = new HashTable<string, AnchorPosting>(anchorKeyEqual, anchorKeyHash);
-    anchorFileCount++;
-    anchorEdited = false;
-    anchor_lock.unlock();
-
-    delete oldIndex;
-
+static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, const char *prefix,
+                                    size_t fileCount, bool isTitle,
+                                    HashTable<string, WordPosting> *targetIndex, bool &editedFlag) {
     if (snapshot.size() == 0) {
-        return;
+        return true;
     }
 
-    // Old C-style way of writing format string
     char buffer[128];
-    std::snprintf(buffer, sizeof(buffer), "%s/anchor_%zu.idx", anchorIndexDirectory.c_str(),
-                  anchorFileCount);
+    std::snprintf(buffer, sizeof(buffer), "%s/%s_%zu.idx", anchorIndexDirectory.c_str(), prefix,
+                  fileCount);
 
-    const string anchorIndexPath(buffer);
-    string tmpPath = anchorIndexPath + ".tmp";
+    const string indexPath(buffer);
+    string tmpPath = indexPath + ".tmp";
     FILE *fp = fopen(tmpPath.c_str(), "wb");
 
     if (fp == nullptr) {
-        std::cerr << "Failed to open anchor index temp file: " << tmpPath << '\n';
-        lock_guard guard(anchor_lock);
-        for (const AnchorSnapshot &record : snapshot) {
-            // File fail to open, add snapshot back to index
-            Tuple<string, AnchorPosting> *entry = anchorIndex->Find(record.url, AnchorPosting());
-            for (const string &word : record.titleWords) {
-                entry->value.titleWords.pushBack(word);
-            }
-            for (const string &word : record.anchorWords) {
-                entry->value.anchorWords.pushBack(word);
-            }
-        }
-        anchorEdited = true;
-        return;
+        std::cerr << "Failed to open " << prefix << " index temp file: " << tmpPath << '\n';
+        restoreWordSnapshot(targetIndex, editedFlag, snapshot);
+        return false;
     }
 
-    // No idea if this write logic is correct. Needs checking
     fprintf(fp, "[HEADER]\n");
     fprintf(fp, "version=1\n");
     fprintf(fp, "record_count=%zu\n", snapshot.size());
-    fprintf(fp, "[ANCHOR]\n");
+    fprintf(fp, "[Words]\n");
 
-    // writes url, title size, titles, anchor size, anchors
-    for (const AnchorSnapshot &record : snapshot) {
-        fprintf(fp, "%s\t%zu", record.url.c_str(), record.titleWords.size());
-        for (const string &word : record.titleWords) {
-            fprintf(fp, "\t%s", word.c_str());
-        }
-        fprintf(fp, "\t%zu", record.anchorWords.size());
-        for (const string &word : record.anchorWords) {
-            fprintf(fp, "\t%s", word.c_str());
+    for (const WordSnapshot &record : snapshot) {
+        fprintf(fp, "%s", record.url.c_str());
+        if (isTitle) {
+            fprintf(fp, "\t%zu", record.words.size());
+            for (const string &word : record.words) {
+                fprintf(fp, "\t%s", word.c_str());
+            }
+            fprintf(fp, "\t0");
+        } else {
+            fprintf(fp, "\t0\t%zu", record.words.size());
+            for (const string &word : record.words) {
+                fprintf(fp, "\t%s", word.c_str());
+            }
         }
         fprintf(fp, "\n");
     }
@@ -235,20 +224,48 @@ static void flushAnchorIndexToDisk(bool force) {
     fsync(fileno(fp));
     fclose(fp);
 
-    if (rename(tmpPath.c_str(), anchorIndexPath.c_str()) != 0) {
-        std::cerr << "Failed to rename anchor index file to " << anchorIndexPath << '\n';
-        lock_guard guard(anchor_lock);
-        for (const AnchorSnapshot &record : snapshot) {
-            Tuple<string, AnchorPosting> *entry = anchorIndex->Find(record.url, AnchorPosting());
-            for (const string &word : record.titleWords) {
-                entry->value.titleWords.pushBack(word);
-            }
-            for (const string &word : record.anchorWords) {
-                entry->value.anchorWords.pushBack(word);
-            }
-        }
-        anchorEdited = true;
+    if (rename(tmpPath.c_str(), indexPath.c_str()) != 0) {
+        std::cerr << "Failed to rename " << prefix << " index file to " << indexPath << '\n';
+        restoreWordSnapshot(targetIndex, editedFlag, snapshot);
+        return false;
     }
+
+    return true;
+}
+
+static void flushAnchorIndexToDisk(bool force) {
+    vector<WordSnapshot> titleSnapshot;
+    vector<WordSnapshot> anchorSnapshot;
+
+    anchor_lock.lock();
+    if (!force && !titleIndexEdited && !anchorIndexEdited) {
+        anchor_lock.unlock();
+        return;
+    }
+
+    for (auto it = titleIndex->begin(); it != titleIndex->end(); ++it) {
+        titleSnapshot.pushBack({it->key, it->value.words});
+    }
+    for (auto it = anchorIndex->begin(); it != anchorIndex->end(); ++it) {
+        anchorSnapshot.pushBack({it->key, it->value.words});
+    }
+
+    HashTable<string, WordPosting> *oldTitleIndex = titleIndex;
+    HashTable<string, WordPosting> *oldAnchorIndex = anchorIndex;
+    titleIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
+    anchorIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
+    anchorFlushFileCount++;
+    titleIndexEdited = false;
+    anchorIndexEdited = false;
+    size_t fileCount = anchorFlushFileCount;
+    anchor_lock.unlock();
+
+    delete oldTitleIndex;
+    delete oldAnchorIndex;
+
+    flushWordSnapshotToDisk(titleSnapshot, "title", fileCount, true, titleIndex, titleIndexEdited);
+    flushWordSnapshotToDisk(anchorSnapshot, "anchor", fileCount, false, anchorIndex,
+                            anchorIndexEdited);
 }
 
 void *CrawlerWorkerThread(void *) {
@@ -1087,7 +1104,8 @@ int main(int argc, char **argv) {
     q = new IndexQueue(maxIndexQueueItems);
     robotsCache = new RobotsCache();
     delayedQueue = new DelayedQueue();
-    anchorIndex = new HashTable<string, AnchorPosting>(anchorKeyEqual, anchorKeyHash);
+    titleIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
+    anchorIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
 
     peer_address = {
         "34.130.43.20:8081",   // 0  Ashmit
@@ -1349,6 +1367,7 @@ int main(int argc, char **argv) {
         std::cerr << "Graceful shutdown after SIGINT\n";
     }
 
+    delete titleIndex;
     delete anchorIndex;
     delete robotsCache;
     delete delayedQueue;
