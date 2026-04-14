@@ -699,6 +699,112 @@ static bool parseSizeField(const string &raw, size_t &value) {
     return true;
 }
 
+struct ReceiveBatchArgs {
+    int clientFd;
+};
+
+static void *HandleReceivedBatchThread(void *rawArgs) {
+    ReceiveBatchArgs *args = static_cast<ReceiveBatchArgs *>(rawArgs);
+    int clientFd = args->clientFd;
+    delete args;
+
+    // read payload into a string
+    string payload;
+    char buffer[4096];
+    while (true) {
+        ssize_t received = recv(clientFd, buffer, sizeof(buffer), 0);
+        if (received == 0) {
+            break;
+        }
+        if (received < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            std::cerr << "Receive failed: " << std::strerror(errno) << '\n';
+            break;
+        }
+        payload.append(buffer, static_cast<size_t>(received));
+    }
+
+    close(clientFd);
+
+    if (debug) {
+        std::cout << "Receive batch\n";
+    }
+
+    if (payload.empty()) {
+        return nullptr;
+    }
+
+    // decode payload based on our encoding method into vector of urls and anchors
+    vector<FrontierItem> discoveredLinks;
+    size_t lineStart = 0;
+    while (lineStart < payload.size()) {
+        size_t lineEnd = findCharFrom(payload, '\n', lineStart);
+        size_t lineLength =
+            lineEnd != string::npos ? lineEnd - lineStart : payload.size() - lineStart;
+
+        string line = payload.substr(lineStart, lineLength);
+
+        if (!line.empty()) {
+            // parse line
+            size_t fieldEnd = findCharFrom(line, '\t', 0);
+            string rawUrl = fieldEnd == string::npos ? line : line.substr(0, fieldEnd);
+            vector<string> anchorWords;
+            size_t receivedSeedDistance = 0;
+
+            // New payload format includes seed distance as second field.
+            // For backward compatibility with old payloads, if parsing fails,
+            // we treat the field as the first anchor word.
+            if (fieldEnd != string::npos) {
+                size_t fieldStart = fieldEnd + 1;
+                size_t secondFieldEnd = findCharFrom(line, '\t', fieldStart);
+                size_t secondFieldLength = secondFieldEnd == string::npos
+                                               ? line.size() - fieldStart
+                                               : secondFieldEnd - fieldStart;
+                string maybeSeedDistance = line.substr(fieldStart, secondFieldLength);
+                if (parseSizeField(maybeSeedDistance, receivedSeedDistance)) {
+                    fieldEnd = secondFieldEnd;
+                }
+            }
+
+            // add anchor text if tab char was found
+            while (fieldEnd != string::npos) {
+                size_t fieldStart = fieldEnd + 1;
+                fieldEnd = findCharFrom(line, '\t', fieldStart);
+                size_t fieldLength =
+                    fieldEnd == string::npos ? line.size() - fieldStart : fieldEnd - fieldStart;
+                if (fieldLength > 0) {
+                    anchorWords.pushBack(line.substr(fieldStart, fieldLength));
+                }
+            }
+
+            // add the links to our frontier and anchor
+            string canonicalOut;
+            if (passesUrlQualityChecks(rawUrl, canonicalOut) && urlFilter.isAllowed(canonicalOut) &&
+                shouldOwnUrl(canonicalOut)) {
+                appendAnchorTerms(canonicalOut, anchorWords, false);
+                if (bloom.checkAndInsert(canonicalOut)) {
+                    discoveredLinks.pushBack(
+                        FrontierItem::withSeedDistance(canonicalOut, receivedSeedDistance));
+                }
+            }
+        }
+
+        if (lineEnd == string::npos) {
+            break;
+        }
+
+        lineStart = lineEnd + 1;
+    }
+
+    if (discoveredLinks.size() > 0) {
+        f->pushMany(discoveredLinks);
+    }
+
+    return nullptr;
+}
+
 static int openListeningSocket() {
     // Common network call for creating a socket to listen to incoming batches
     if (peer_address.size() <= 1 || machine_id.load() >= peer_address.size()) {
@@ -746,7 +852,7 @@ static int openListeningSocket() {
         int opt = 1;
         setsockopt(listenFd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-        if (bind(listenFd, rp->ai_addr, rp->ai_addrlen) == 0 && listen(listenFd, 32) == 0) {
+        if (bind(listenFd, rp->ai_addr, rp->ai_addrlen) == 0 && listen(listenFd, 100) == 0) {
             break;
         }
 
@@ -799,98 +905,15 @@ void *ReceiveFromMachineThread(void *) {
             continue;
         }
 
-        // read payload into a string
-        string payload;
-        char buffer[4096];
-        while (true) {
-            ssize_t received = recv(clientFd, buffer, sizeof(buffer), 0);
-            if (received == 0) {
-                break;
-            }
-            if (received < 0) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                std::cerr << "Receive failed: " << std::strerror(errno) << '\n';
-                break;
-            }
-            payload.append(buffer, static_cast<size_t>(received));
-        }
-
-        close(clientFd);
-
-        if (debug) {
-            std::cout << "Receive batch\n";
-        }
-
-        if (payload.empty()) {
-            continue;
-        }
-
-        // decode payload based on our encoding method into vector of urls and anchors
-        vector<FrontierItem> discoveredLinks;
-        size_t lineStart = 0;
-        while (lineStart < payload.size()) {
-            size_t lineEnd = findCharFrom(payload, '\n', lineStart);
-            size_t lineLength = lineEnd != string::npos ? lineLength = lineEnd - lineStart
-                                                        : lineLength = payload.size() - lineStart;
-
-            string line = payload.substr(lineStart, lineLength);
-
-            if (!line.empty()) {
-                // parse line
-                size_t fieldEnd = findCharFrom(line, '\t', 0);
-                string rawUrl = fieldEnd == string::npos ? line : line.substr(0, fieldEnd);
-                vector<string> anchorWords;
-                size_t receivedSeedDistance = 0;
-
-                // New payload format includes seed distance as second field.
-                // For backward compatibility with old payloads, if parsing fails,
-                // we treat the field as the first anchor word.
-                if (fieldEnd != string::npos) {
-                    size_t fieldStart = fieldEnd + 1;
-                    size_t secondFieldEnd = findCharFrom(line, '\t', fieldStart);
-                    size_t secondFieldLength = secondFieldEnd == string::npos
-                                                   ? line.size() - fieldStart
-                                                   : secondFieldEnd - fieldStart;
-                    string maybeSeedDistance = line.substr(fieldStart, secondFieldLength);
-                    if (parseSizeField(maybeSeedDistance, receivedSeedDistance)) {
-                        fieldEnd = secondFieldEnd;
-                    }
-                }
-
-                // add anchor text if tab char was found
-                while (fieldEnd != string::npos) {
-                    size_t fieldStart = fieldEnd + 1;
-                    fieldEnd = findCharFrom(line, '\t', fieldStart);
-                    size_t fieldLength =
-                        fieldEnd == string::npos ? line.size() - fieldStart : fieldEnd - fieldStart;
-                    if (fieldLength > 0) {
-                        anchorWords.pushBack(line.substr(fieldStart, fieldLength));
-                    }
-                }
-
-                // add the links to our frontier and anchor
-                string canonicalOut;
-                if (passesUrlQualityChecks(rawUrl, canonicalOut) &&
-                    urlFilter.isAllowed(canonicalOut) && shouldOwnUrl(canonicalOut)) {
-                    appendAnchorTerms(canonicalOut, anchorWords, false);
-                    if (bloom.checkAndInsert(canonicalOut)) {
-                        discoveredLinks.pushBack(
-                            FrontierItem::withSeedDistance(canonicalOut, receivedSeedDistance));
-                    }
-                }
-            }
-
-            if (lineEnd == string::npos) {
-                break;
-            }
-
-            lineStart = lineEnd + 1;
-        }
-
-        if (discoveredLinks.size() > 0) {
-            f->pushMany(discoveredLinks);
+        ReceiveBatchArgs *args = new ReceiveBatchArgs{clientFd};
+        pthread_t threadId{};
+        // create a separate thread to handle receive
+        if (pthread_create(&threadId, nullptr, HandleReceivedBatchThread, args) == 0) {
+            pthread_detach(threadId);
+        } else {
+            std::cerr << "Failed to create receive worker thread\n";
+            close(clientFd);
+            delete args;
         }
     }
 
