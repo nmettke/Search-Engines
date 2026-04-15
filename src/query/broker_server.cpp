@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
@@ -276,6 +277,8 @@ void *handle_frontend(void *args) {
         return nullptr;
     }
 
+    auto query_start = std::chrono::steady_clock::now();
+
     // Launch concurrent pthreads to query the Workers
     // TODO: load these from a config file
     ::vector<WorkerArgs> workers = {{"localhost", 8081, query, k, {}},
@@ -300,8 +303,12 @@ void *handle_frontend(void *args) {
 
     ::vector<GlobalResult> final_results = top_k.extractSorted();
 
+    auto query_end = std::chrono::steady_clock::now();
+    double elapsed_ms = std::chrono::duration<double, std::milli>(query_end - query_start).count();
+
     // Manually format the JSON response
-    string json = "{\n  \"query\": \"" + query + "\",\n  \"results\": [\n";
+    string json = "{\n  \"query\": \"" + query + "\",\n  \"elapsed_ms\": " + to_string(elapsed_ms) +
+                  ",\n  \"results\": [\n";
     for (size_t i = 0; i < final_results.size(); ++i) {
         json += "    {\n";
         json += "      \"url\": \"" + final_results[i].url + "\",\n";
