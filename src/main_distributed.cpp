@@ -137,7 +137,7 @@ static std::string timestampPrefix() {
     std::tm localTime{};
     localtime_r(&now, &localTime);
 
-    char buffer[32];
+    char buffer[32] = {};
     std::strftime(buffer, sizeof(buffer), "[%Y-%m-%d %H:%M:%S] ", &localTime);
     return std::string(buffer);
 }
@@ -206,7 +206,7 @@ static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, size_t
         return true;
     }
 
-    char buffer[128];
+    char buffer[128] = {};
     std::snprintf(buffer, sizeof(buffer), "%s/anchor_%zu.idx", anchorIndexDirectory.c_str(),
                   fileCount);
 
@@ -469,12 +469,12 @@ void *IndexWorkerThread(void *) {
         tokensProcessed += tokenized.tokens.size();
 
         if (tokensProcessed >= FLUSHBODYTOKENSIZE) {
-            char buffer[64];
+            char buffer[64] = {};
             std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
                           chunksWritten);
             const string path(buffer);
 
-            char meta_buffer[64];
+            char meta_buffer[64] = {};
             std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta",
                           metaDirectory.c_str(), chunksWritten);
             const string meta_path(meta_buffer);
@@ -504,12 +504,12 @@ void *IndexWorkerThread(void *) {
 
     // Write final partial chunk
     if (docsProcessed > 0) {
-        char buffer[64];
+        char buffer[64] = {};
         std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
                       chunksWritten);
         const string path(buffer);
 
-        char meta_buffer[64];
+        char meta_buffer[64] = {};
         std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta", metaDirectory.c_str(),
                       chunksWritten);
         const string meta_path(meta_buffer);
