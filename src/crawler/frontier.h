@@ -181,22 +181,34 @@ class Frontier {
 
     static std::int64_t nowMillis();
     static string extractHostKey(const string &url);
-    static std::size_t computeReservoirPromotionCount(std::size_t scannedCount);
 
+    // Requires: m is held.
     void pushInternal(const FrontierItem &item, bool countTowardsPending,
                       bool preserveIncomingWhenFull = false);
-    bool makeRoomForUnlocked(bool preserveIncomingWhenFull);
-    std::size_t trimReservoirTailUnlocked(std::size_t minimumSlotsNeeded);
-    std::size_t trimScheduledQueuesUnlocked(std::size_t minimumSlotsNeeded);
-    void enqueueScheduledItemUnlocked(const FrontierItem &item, std::int64_t nowMs);
-    void scheduleHostUnlocked(const string &hostKey, HostQueue &host, std::int64_t nowMs);
-    void promoteSleepingHostsUnlocked(std::int64_t nowMs);
-    void considerReservoirCandidateUnlocked(vector<PromotionCandidate> &winners,
-                                            const PromotionCandidate &candidate,
-                                            std::size_t maxWinners);
-    void removeReservoirEntryUnlocked(std::size_t index);
-    void promoteReservoirUnlocked(std::int64_t nowMs);
-    void releaseActiveHostUnlocked(std::int64_t nowMs);
+
+    // Requires: m is held.
+    bool makeRoom(bool preserveIncomingWhenFull);
+
+    // Requires: m is held.
+    std::size_t trimReservoirTail(std::size_t minimumSlotsNeeded);
+
+    // Requires: m is held.
+    std::size_t trimScheduledQueues(std::size_t minimumSlotsNeeded);
+
+    // Requires: m is held.
+    void enqueueScheduledItem(const FrontierItem &item, std::int64_t nowMs);
+
+    // Requires: m is held.
+    void scheduleHost(const string &hostKey, HostQueue &host, std::int64_t nowMs);
+
+    // Requires: m is held.
+    void promoteSleepingHosts(std::int64_t nowMs);
+
+    // Requires: m is held.
+    void promoteReservoir(std::int64_t nowMs);
+
+    // Requires: m is held.
+    void releaseActiveHost(std::int64_t nowMs);
     static string &activeHostKey();
 
     using HostTable = HashTable<string, HostQueue>;

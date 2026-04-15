@@ -57,22 +57,6 @@ string Frontier::extractHostKey(const string &url) {
     return string(url.cstr() + hostStart, url.cstr() + hostEnd);
 }
 
-std::size_t Frontier::computeReservoirPromotionCount(std::size_t scannedCount) {
-    if (scannedCount == 0) {
-        return 0;
-    }
-
-    std::size_t count =
-        (scannedCount * frontierReservoirPromotionPercent + 99) / 100;
-    if (count == 0) {
-        count = 1;
-    }
-    if (count > scannedCount) {
-        count = scannedCount;
-    }
-    return count;
-}
-
 Frontier::Frontier(const string &seed_list_str, bool autoCloseWhenDrainedArg,
                    size_t maxQueuedItemsArg)
     : hostQueues(frontierHostKeyEqual, frontierHostKeyHash), closed(false),
@@ -109,7 +93,7 @@ Frontier::Frontier(vector<FrontierItem> items, bool autoCloseWhenDrainedArg,
     }
 }
 
-void Frontier::scheduleHostUnlocked(const string &hostKey, HostQueue &host, std::int64_t nowMs) {
+void Frontier::scheduleHost(const string &hostKey, HostQueue &host, std::int64_t nowMs) {
     if (host.items.empty() || host.inFlight || host.inReadyQueue) {
         return;
     }
@@ -131,7 +115,7 @@ void Frontier::scheduleHostUnlocked(const string &hostKey, HostQueue &host, std:
     host.inReadyQueue = true;
 }
 
-void Frontier::promoteSleepingHostsUnlocked(std::int64_t nowMs) {
+void Frontier::promoteSleepingHosts(std::int64_t nowMs) {
     while (!sleepingHosts.empty() && sleepingHosts.top().readyAtMs <= nowMs) {
         SleepingHost sleeping = sleepingHosts.extractTop();
 
@@ -157,7 +141,7 @@ void Frontier::promoteSleepingHostsUnlocked(std::int64_t nowMs) {
     }
 }
 
-std::size_t Frontier::trimReservoirTailUnlocked(std::size_t minimumSlotsNeeded) {
+std::size_t Frontier::trimReservoirTail(std::size_t minimumSlotsNeeded) {
     if (minimumSlotsNeeded == 0 || reservoir.empty()) {
         return 0;
     }
@@ -188,7 +172,7 @@ std::size_t Frontier::trimReservoirTailUnlocked(std::size_t minimumSlotsNeeded) 
     return trimCount;
 }
 
-std::size_t Frontier::trimScheduledQueuesUnlocked(std::size_t minimumSlotsNeeded) {
+std::size_t Frontier::trimScheduledQueues(std::size_t minimumSlotsNeeded) {
     if (minimumSlotsNeeded == 0) {
         return 0;
     }
@@ -210,18 +194,20 @@ std::size_t Frontier::trimScheduledQueuesUnlocked(std::size_t minimumSlotsNeeded
     return removed;
 }
 
-bool Frontier::makeRoomForUnlocked(bool /*preserveIncomingWhenFull*/) {
+bool Frontier::makeRoom(bool /*preserveIncomingWhenFull*/) {
     if (maxQueuedItems == 0 || queued < maxQueuedItems) {
         return true;
     }
 
+    // Frontier pressure is handled approximately: drop reservoir tail chunks first,
+    // then fall back to trimming scheduled host queues if the reservoir is already small.
     std::size_t minimumSlotsNeeded = queued - maxQueuedItems + 1;
-    trimReservoirTailUnlocked(minimumSlotsNeeded);
+    trimReservoirTail(minimumSlotsNeeded);
     if (queued < maxQueuedItems) {
         return true;
     }
 
-    trimScheduledQueuesUnlocked(minimumSlotsNeeded);
+    trimScheduledQueues(minimumSlotsNeeded);
     if (queued < maxQueuedItems) {
         return true;
     }
@@ -229,60 +215,21 @@ bool Frontier::makeRoomForUnlocked(bool /*preserveIncomingWhenFull*/) {
     return false;
 }
 
-void Frontier::enqueueScheduledItemUnlocked(const FrontierItem &item, std::int64_t nowMs) {
+void Frontier::enqueueScheduledItem(const FrontierItem &item, std::int64_t nowMs) {
     string hostKey = extractHostKey(item.link);
     Tuple<string, HostQueue> *hostTuple = hostQueues.Find(hostKey, HostQueue());
     HostQueue &host = hostTuple->value;
     host.items.pushBack(item);
-    scheduleHostUnlocked(hostKey, host, nowMs);
+    scheduleHost(hostKey, host, nowMs);
 }
 
-void Frontier::considerReservoirCandidateUnlocked(vector<PromotionCandidate> &winners,
-                                                  const PromotionCandidate &candidate,
-                                                  std::size_t maxWinners) {
-    if (maxWinners == 0) {
-        return;
-    }
-
-    if (winners.size() < maxWinners) {
-        winners.pushBack(candidate);
-        return;
-    }
-
-    std::size_t worstWinnerIndex = 0;
-    for (std::size_t i = 1; i < winners.size(); ++i) {
-        if (winners[i].score < winners[worstWinnerIndex].score) {
-            worstWinnerIndex = i;
-        }
-    }
-
-    if (candidate.score > winners[worstWinnerIndex].score) {
-        winners[worstWinnerIndex] = candidate;
-    }
-}
-
-void Frontier::removeReservoirEntryUnlocked(std::size_t index) {
-    if (reservoir.empty() || index >= reservoir.size()) {
-        return;
-    }
-
-    if (index + 1 != reservoir.size()) {
-        reservoir[index] = std::move(reservoir[reservoir.size() - 1]);
-    }
-    reservoir.popBack();
-
-    if (reservoir.empty()) {
-        reservoirSweepCursor = 0;
-    } else if (reservoirSweepCursor >= reservoir.size()) {
-        reservoirSweepCursor %= reservoir.size();
-    }
-}
-
-void Frontier::promoteReservoirUnlocked(std::int64_t nowMs) {
+void Frontier::promoteReservoir(std::int64_t nowMs) {
     if (!readyHosts.empty() || reservoir.empty()) {
         return;
     }
 
+    // When the runnable host list is empty, pull a bounded chunk from the reservoir,
+    // score only that chunk, and promote the strongest URLs into host queues.
     while (readyHosts.empty() && !reservoir.empty()) {
         if (reservoirSweepCursor >= reservoir.size()) {
             reservoirSweepCursor = 0;
@@ -291,7 +238,14 @@ void Frontier::promoteReservoirUnlocked(std::int64_t nowMs) {
         const std::size_t scannedCount =
             reservoir.size() < frontierReservoirSweepChunkSize ? reservoir.size()
                                                                : frontierReservoirSweepChunkSize;
-        const std::size_t winnersToKeep = computeReservoirPromotionCount(scannedCount);
+        std::size_t winnersToKeep =
+            (scannedCount * frontierReservoirPromotionPercent + 99) / 100;
+        if (winnersToKeep == 0) {
+            winnersToKeep = 1;
+        }
+        if (winnersToKeep > scannedCount) {
+            winnersToKeep = scannedCount;
+        }
         if (winnersToKeep == 0) {
             return;
         }
@@ -301,8 +255,23 @@ void Frontier::promoteReservoirUnlocked(std::int64_t nowMs) {
 
         for (std::size_t offset = 0; offset < scannedCount; ++offset) {
             std::size_t index = (reservoirSweepCursor + offset) % reservoir.size();
-            considerReservoirCandidateUnlocked(winners, {index, reservoir[index].getScore()},
-                                              winnersToKeep);
+            PromotionCandidate candidate{index, reservoir[index].getScore()};
+
+            if (winners.size() < winnersToKeep) {
+                winners.pushBack(candidate);
+                continue;
+            }
+
+            std::size_t worstWinnerIndex = 0;
+            for (std::size_t i = 1; i < winners.size(); ++i) {
+                if (winners[i].score < winners[worstWinnerIndex].score) {
+                    worstWinnerIndex = i;
+                }
+            }
+
+            if (candidate.score > winners[worstWinnerIndex].score) {
+                winners[worstWinnerIndex] = candidate;
+            }
         }
 
         if (winners.empty()) {
@@ -324,6 +293,10 @@ void Frontier::promoteReservoirUnlocked(std::int64_t nowMs) {
             scannedCount == reservoir.size() ||
             reservoirSweepCursor + scannedCount > reservoir.size();
 
+        // Swap-remove is safe in arbitrary order unless this chunk reaches the
+        // physical tail of the reservoir. In that case, repeatedly exposing new
+        // tail elements can corrupt saved winner indices, so remove from largest
+        // index to smallest.
         if (scannedChunkTouchesReservoirTail) {
             while (!winners.empty()) {
                 std::size_t maxIndexPos = 0;
@@ -333,7 +306,11 @@ void Frontier::promoteReservoirUnlocked(std::int64_t nowMs) {
                     }
                 }
 
-                removeReservoirEntryUnlocked(winners[maxIndexPos].index);
+                std::size_t index = winners[maxIndexPos].index;
+                if (index + 1 != reservoir.size()) {
+                    reservoir[index] = std::move(reservoir[reservoir.size() - 1]);
+                }
+                reservoir.popBack();
                 if (maxIndexPos + 1 != winners.size()) {
                     winners[maxIndexPos] = winners[winners.size() - 1];
                 }
@@ -341,7 +318,11 @@ void Frontier::promoteReservoirUnlocked(std::int64_t nowMs) {
             }
         } else {
             while (!winners.empty()) {
-                removeReservoirEntryUnlocked(winners[winners.size() - 1].index);
+                std::size_t index = winners[winners.size() - 1].index;
+                if (index + 1 != reservoir.size()) {
+                    reservoir[index] = std::move(reservoir[reservoir.size() - 1]);
+                }
+                reservoir.popBack();
                 winners.popBack();
             }
         }
@@ -353,7 +334,7 @@ void Frontier::promoteReservoirUnlocked(std::int64_t nowMs) {
         }
 
         for (std::size_t i = 0; i < promotedItems.size(); ++i) {
-            enqueueScheduledItemUnlocked(promotedItems[i], nowMs);
+            enqueueScheduledItem(promotedItems[i], nowMs);
         }
         nowMs = nowMillis();
     }
@@ -365,7 +346,7 @@ void Frontier::pushInternal(const FrontierItem &item, bool countTowardsPending,
         return;
     }
 
-    if (!makeRoomForUnlocked(preserveIncomingWhenFull)) {
+    if (!makeRoom(preserveIncomingWhenFull)) {
         return;
     }
 
@@ -376,7 +357,7 @@ void Frontier::pushInternal(const FrontierItem &item, bool countTowardsPending,
 
     std::int64_t nowMs = nowMillis();
     if (preserveIncomingWhenFull) {
-        enqueueScheduledItemUnlocked(item, nowMs);
+        enqueueScheduledItem(item, nowMs);
         return;
     }
 
@@ -481,7 +462,7 @@ void Frontier::snoozeCurrent(const FrontierItem &item, std::int64_t readyAtMs) {
     host.inFlight = false;
 
     if (!item.link.empty()) {
-        if (!makeRoomForUnlocked(true)) {
+        if (!makeRoom(true)) {
             hostKey = string();
             cv.notify_all();
             return;
@@ -499,7 +480,7 @@ void Frontier::snoozeCurrent(const FrontierItem &item, std::int64_t readyAtMs) {
         sleepingHosts.push({host.blockedUntilMs, host.sleepGeneration, hostKey});
         host.inSleepingQueue = true;
     } else {
-        scheduleHostUnlocked(hostKey, host, now);
+        scheduleHost(hostKey, host, now);
     }
     hostKey = string();
     cv.notify_all();
@@ -508,10 +489,13 @@ void Frontier::snoozeCurrent(const FrontierItem &item, std::int64_t readyAtMs) {
 std::optional<FrontierItem> Frontier::pop() {
     m.lock();
 
+    // pop() is the handoff point between the two frontier layers:
+    // wake delayed hosts, refill from the reservoir if needed, then dispatch
+    // one URL from the next runnable host.
     while (true) {
         std::int64_t now = nowMillis();
-        promoteSleepingHostsUnlocked(now);
-        promoteReservoirUnlocked(now);
+        promoteSleepingHosts(now);
+        promoteReservoir(now);
 
         while (!readyHosts.empty()) {
             string hostKey = readyHosts.popFront();
@@ -549,7 +533,7 @@ std::optional<FrontierItem> Frontier::pop() {
     }
 }
 
-void Frontier::releaseActiveHostUnlocked(std::int64_t nowMs) {
+void Frontier::releaseActiveHost(std::int64_t nowMs) {
     string &hostKey = activeHostKey();
     if (hostKey.empty()) {
         return;
@@ -563,19 +547,19 @@ void Frontier::releaseActiveHostUnlocked(std::int64_t nowMs) {
 
     HostQueue &host = hostTuple->value;
     host.inFlight = false;
-    scheduleHostUnlocked(hostKey, host, nowMs);
+    scheduleHost(hostKey, host, nowMs);
     hostKey = string();
 }
 
 void Frontier::taskDone() {
     lock_guard<mutex> guard(m);
     if (pending == 0) {
-        releaseActiveHostUnlocked(nowMillis());
+        releaseActiveHost(nowMillis());
         return;
     }
 
     --pending;
-    releaseActiveHostUnlocked(nowMillis());
+    releaseActiveHost(nowMillis());
 
     if (pending == 0) {
         if (autoCloseWhenDrained) {
