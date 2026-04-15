@@ -166,7 +166,7 @@ void *fetch_from_worker(void *args) {
                 string url = line.substr(0, t1);
                 string title = line.substr(t1 + 1, t2 - t1 - 1);
                 string snippet = line.substr(t2 + 1, t3 - t2 - 1);
-                double score = atoi(line.substr(t3 + 1).c_str());
+                double score = atof(line.substr(t3 + 1).c_str());
 
                 wa->local_results.pushBack({url, title, snippet, score});
             }

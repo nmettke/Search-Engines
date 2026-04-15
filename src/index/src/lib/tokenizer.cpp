@@ -67,6 +67,14 @@ TokenizedDocument Tokenizer::processDocument(const HtmlParser &doc) {
         ++next_location;
     }
 
+    for (const ::string &raw_word : doc.titleWords) {
+        auto expanded = processToken(raw_word);
+        for (const auto &token : expanded) {
+            out.tokens.push_back(TokenOutput{"$" + token, next_location});
+        }
+        ++next_location;
+    }
+
     out.doc_end = DocEndOutput{next_location,   doc.documentUrl(),
                                body_word_count, static_cast<uint16_t>(doc.titleWords.size()),
                                doc_start,       doc.seedDistance,

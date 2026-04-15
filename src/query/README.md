@@ -3,6 +3,10 @@
 make create_dummy_index
 ```
 
+This creates `chunk1/` and `chunk2/` with:
+- `body_index/*.idx`
+- `meta/*.meta`
+
 ## Worker Server
 
 ```
@@ -45,8 +49,14 @@ make broker_server
 
 4. Query through your web browser. e.g. http://localhost:8080/search?q=cat
 
+You can also query from the terminal:
+```
+curl "http://localhost:8080/search?q=cat"
+```
+
+The JSON response includes the worker-computed static `score` for each result.
+
 
 ## TODOs
 - Implement two-tier searching (Every worker should search anchor_chunks/ first then search body_chunks/).
 - load the config using config files.
-- implement ranking.
