@@ -72,11 +72,6 @@ class TopKHeap {
     }
 };
 
-double QueryEngine::calculate_score(const DocumentRecord &doc, const string &query) const {
-    // TODO: Implement scoring logic
-    return 1.0;
-}
-
 vector<ScoredDocument> QueryEngine::search(const string &query, size_t K) const {
     TopKHeap top_k(K);
 
@@ -104,7 +99,7 @@ vector<ScoredDocument> QueryEngine::search(const string &query, size_t K) const 
         auto doc = reader_.getDocument(doc_id);
 
         if (doc) {
-            double score = calculate_score(*doc, query);
+            double score = scorer_.score(*doc);
             top_k.push({doc_id, score});
         }
 

@@ -13,6 +13,7 @@
 #include "./index/src/lib/tokenizer.h"
 #include "./parser/HtmlParser.h"
 #include "./utils/SSL/LinuxSSL_Crawler.hpp"
+#include "./utils/STL_rewrite/deque.hpp"
 #include "./utils/hash/HashTable.h"
 #include "./utils/string.hpp"
 #include "./utils/threads/condition_variable.hpp"
@@ -28,6 +29,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fcntl.h>
 #include <fstream>
 #include <iostream>
 #include <netdb.h>
@@ -62,15 +64,15 @@ std::atomic<size_t> machine_id{0};
 vector<string> peer_address;
 condition_variable batch_cv;
 
-struct AnchorPosting {
-    vector<string> titleWords;
-    vector<string> anchorWords;
+struct WordPosting {
+    vector<string> words;
+    size_t referring_count;
 };
 
-struct AnchorSnapshot {
+struct WordSnapshot {
     string url;
-    vector<string> titleWords;
-    vector<string> anchorWords;
+    vector<string> words;
+    size_t referring_count;
 };
 
 static bool anchorKeyEqual(string a, string b) {
@@ -81,15 +83,26 @@ static uint64_t anchorKeyHash(string key) {
     return hashString(key.cstr());
 } // defined to construct anchor hashtable
 
-HashTable<string, AnchorPosting> *anchorIndex = nullptr;
+static void sanitizeText(string &text) {
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '\t' || text[i] == '\n' || text[i] == '\r') {
+            text[i] = ' ';
+        }
+    }
+}
+
+HashTable<string, WordPosting> *anchorIndex = nullptr;
 mutex anchor_lock;
-bool anchorEdited = false;
-size_t anchorFileCount = 0;
+bool anchorIndexEdited = false;
+size_t anchorFlushFileCount = 0;
 const string anchorIndexDirectory("data/anchor_index");
 const string indexDirectory("data/body_index");
 const string metaDirectory("data/meta");
-const size_t FLUSHANCHORSIZE = 2500;
 const size_t FLUSHBODYTOKENSIZE = 25000000;
+static constexpr size_t maxIndexQueueItems = 1024;
+static constexpr size_t crawlerThreadsPerCore = 300;
+static constexpr size_t fallbackCrawlerThreadCount = 8;
+static constexpr size_t maxCrawlerThreadCount = 2400;
 
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint = nullptr;
@@ -100,14 +113,18 @@ RobotsCache *robotsCache = nullptr;
 DelayedQueue *delayedQueue = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
 static std::atomic<time_t> lastCheckpointTime{0};
-static constexpr int checkpointIntervalSecs = 600; // 10 minutes
+static std::atomic<time_t> lastHeartbeatTime{0};
+static constexpr int checkpointIntervalSecs = 1800; // 30 minutes
+static constexpr int heartbeatIntervalSecs = 300;   // 5 minutes
 mutex crawlLogLock;
 bool debug = false;
+
+static std::ostream &tsOut(std::ostream &stream);
 
 static void logCrawled(size_t count, const string &url) {
     lock_guard guard(crawlLogLock);
     if (debug) {
-        std::cerr << "Crawled [" << count << "] " << url << '\n';
+        tsOut(std::cerr) << "Crawled [" << count << "] " << url << '\n';
     }
 }
 
@@ -115,6 +132,21 @@ static int64_t nowMillis() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static std::string timestampPrefix() {
+    std::time_t now = std::time(nullptr);
+    std::tm localTime{};
+    localtime_r(&now, &localTime);
+
+    char buffer[32];
+    std::strftime(buffer, sizeof(buffer), "[%Y-%m-%d %H:%M:%S] ", &localTime);
+    return std::string(buffer);
+}
+
+static std::ostream &tsOut(std::ostream &stream) {
+    stream << timestampPrefix();
+    return stream;
 }
 // size_t anchorFlushIntervalSeconds = 30;
 
@@ -139,88 +171,67 @@ static void signalHandler(int) {
     }
 }
 
-static void appendAnchorTerms(const string &url, const vector<string> &words, bool isTitle) {
-    // push to title list or anchor text list
+static void appendAnchorTerms(const string &url, const vector<string> &words) {
+    // push to anchor text list
     if (words.size() == 0) {
         return;
     }
 
     lock_guard guard(anchor_lock);
-    Tuple<string, AnchorPosting> *entry = anchorIndex->Find(url, AnchorPosting());
-    vector<string> &target = isTitle ? entry->value.titleWords : entry->value.anchorWords;
-    for (const string &word : words) {
+    Tuple<string, WordPosting> *entry = anchorIndex->Find(url, WordPosting());
+    vector<string> &target = entry->value.words;
+    for (string word : words) {
+        sanitizeText(word);
         target.pushBack(word);
     }
-    anchorEdited = true;
+    entry->value.referring_count++;
+
+    anchorIndexEdited = true;
 }
 
-static void flushAnchorIndexToDisk(bool force) {
-    // creates a new empty anchor index and flushes old index to disk
-    vector<AnchorSnapshot> snapshot;
-
-    anchor_lock.lock();
-    if (!force && !anchorEdited) {
-        // do nothing if anchor is unchanged
-        anchor_lock.unlock();
-        return;
+static void restoreWordSnapshot(HashTable<string, WordPosting> *targetIndex, bool &editedFlag,
+                                const vector<WordSnapshot> &snapshot) {
+    lock_guard guard(anchor_lock);
+    for (const WordSnapshot &record : snapshot) {
+        Tuple<string, WordPosting> *entry = targetIndex->Find(record.url, WordPosting());
+        for (const string &word : record.words) {
+            entry->value.words.pushBack(word);
+        }
+        entry->value.referring_count += record.referring_count;
     }
+    editedFlag = true;
+}
 
-    for (auto it = anchorIndex->begin(); it != anchorIndex->end(); ++it) {
-        snapshot.pushBack({it->key, it->value.titleWords, it->value.anchorWords});
-    }
-    HashTable<string, AnchorPosting> *oldIndex = anchorIndex;
-    anchorIndex = new HashTable<string, AnchorPosting>(anchorKeyEqual, anchorKeyHash);
-    anchorFileCount++;
-    anchorEdited = false;
-    anchor_lock.unlock();
-
-    delete oldIndex;
-
+static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, size_t fileCount,
+                                    HashTable<string, WordPosting> *targetIndex, bool &editedFlag) {
     if (snapshot.size() == 0) {
-        return;
+        return true;
     }
 
-    // Old C-style way of writing format string
     char buffer[128];
     std::snprintf(buffer, sizeof(buffer), "%s/anchor_%zu.idx", anchorIndexDirectory.c_str(),
-                  anchorFileCount);
+                  fileCount);
 
-    const string anchorIndexPath(buffer);
-    string tmpPath = anchorIndexPath + ".tmp";
+    const string indexPath(buffer);
+    string tmpPath = indexPath + ".tmp";
     FILE *fp = fopen(tmpPath.c_str(), "wb");
 
     if (fp == nullptr) {
-        std::cerr << "Failed to open anchor index temp file: " << tmpPath << '\n';
-        lock_guard guard(anchor_lock);
-        for (const AnchorSnapshot &record : snapshot) {
-            // File fail to open, add snapshot back to index
-            Tuple<string, AnchorPosting> *entry = anchorIndex->Find(record.url, AnchorPosting());
-            for (const string &word : record.titleWords) {
-                entry->value.titleWords.pushBack(word);
-            }
-            for (const string &word : record.anchorWords) {
-                entry->value.anchorWords.pushBack(word);
-            }
-        }
-        anchorEdited = true;
-        return;
+        tsOut(std::cerr) << "Failed to open anchor index temp file: " << tmpPath << '\n';
+        restoreWordSnapshot(targetIndex, editedFlag, snapshot);
+        return false;
     }
 
-    // No idea if this write logic is correct. Needs checking
     fprintf(fp, "[HEADER]\n");
     fprintf(fp, "version=1\n");
     fprintf(fp, "record_count=%zu\n", snapshot.size());
-    fprintf(fp, "[ANCHOR]\n");
+    fprintf(fp, "[Words]\n");
 
-    // writes url, title size, titles, anchor size, anchors
-    for (const AnchorSnapshot &record : snapshot) {
-        fprintf(fp, "%s\t%zu", record.url.c_str(), record.titleWords.size());
-        for (const string &word : record.titleWords) {
-            fprintf(fp, "\t%s", word.c_str());
-        }
-        fprintf(fp, "\t%zu", record.anchorWords.size());
-        for (const string &word : record.anchorWords) {
-            fprintf(fp, "\t%s", word.c_str());
+    for (const WordSnapshot &record : snapshot) {
+        fprintf(fp, "%s", record.url.c_str());
+        fprintf(fp, "\t%zu\t%zu\t", record.referring_count, record.words.size());
+        for (const string &word : record.words) {
+            fprintf(fp, "%s ", word.c_str());
         }
         fprintf(fp, "\n");
     }
@@ -229,20 +240,84 @@ static void flushAnchorIndexToDisk(bool force) {
     fsync(fileno(fp));
     fclose(fp);
 
-    if (rename(tmpPath.c_str(), anchorIndexPath.c_str()) != 0) {
-        std::cerr << "Failed to rename anchor index file to " << anchorIndexPath << '\n';
-        lock_guard guard(anchor_lock);
-        for (const AnchorSnapshot &record : snapshot) {
-            Tuple<string, AnchorPosting> *entry = anchorIndex->Find(record.url, AnchorPosting());
-            for (const string &word : record.titleWords) {
-                entry->value.titleWords.pushBack(word);
-            }
-            for (const string &word : record.anchorWords) {
-                entry->value.anchorWords.pushBack(word);
-            }
-        }
-        anchorEdited = true;
+    if (rename(tmpPath.c_str(), indexPath.c_str()) != 0) {
+        tsOut(std::cerr) << "Failed to rename anchor index file to " << indexPath << '\n';
+        restoreWordSnapshot(targetIndex, editedFlag, snapshot);
+        return false;
     }
+
+    return true;
+}
+
+static void flushAnchorIndexToDisk(bool force) {
+    vector<WordSnapshot> anchorSnapshot;
+    anchor_lock.lock();
+    if (!force && !anchorIndexEdited) {
+        anchor_lock.unlock();
+        return;
+    }
+
+    for (auto it = anchorIndex->begin(); it != anchorIndex->end(); ++it) {
+        anchorSnapshot.pushBack({it->key, it->value.words, it->value.referring_count});
+    }
+
+    HashTable<string, WordPosting> *oldAnchorIndex = anchorIndex;
+    anchorIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
+    anchorIndexEdited = false;
+
+    anchor_lock.unlock();
+
+    delete oldAnchorIndex;
+
+    if (anchorSnapshot.size() == 0) {
+        return;
+    }
+
+    anchorFlushFileCount++;
+    flushWordSnapshotToDisk(anchorSnapshot, anchorFlushFileCount, anchorIndex, anchorIndexEdited);
+}
+
+void *CheckpointThread(void *) {
+    while (!shouldStop) {
+        sleep(1);
+        if (shouldStop) {
+            break;
+        }
+
+        time_t now = time(nullptr);
+        time_t lastHeartbeat = lastHeartbeatTime.load();
+        if ((now - lastHeartbeat) >= heartbeatIntervalSecs) {
+            tsOut(std::cout) << "still alive; documents processed = " << urlsCrawled.load() << '\n';
+            std::cout.flush();
+            lastHeartbeatTime = now;
+        }
+
+        time_t last = lastCheckpointTime.load();
+        if ((now - last) < checkpointIntervalSecs) {
+            continue;
+        }
+
+        const size_t crawled = urlsCrawled.load();
+        CheckpointSnapshot snapshot;
+        const int64_t snapshotStart = nowMillis();
+        if (!checkpoint->createSnapshot(*f, bloom, crawled, snapshot)) {
+            continue;
+        }
+        const int64_t snapshotEnd = nowMillis();
+
+        tsOut(std::cout) << "Starting checkpoint at " << crawled << " URLs\n";
+        if (!checkpoint->writeSnapshot(snapshot)) {
+            tsOut(std::cerr) << "Checkpoint write failed at " << crawled << " URLs\n";
+            continue;
+        }
+        const int64_t writeEnd = nowMillis();
+        tsOut(std::cerr) << "Checkpoint snapshot took " << (snapshotEnd - snapshotStart)
+                         << " ms; write took " << (writeEnd - snapshotEnd) << " ms\n";
+
+        lastCheckpointTime = now;
+    }
+
+    return nullptr;
 }
 
 void *CrawlerWorkerThread(void *) {
@@ -289,7 +364,6 @@ void *CrawlerWorkerThread(void *) {
             continue;
         }
 
-        appendAnchorTerms(item->link, parsed.titleWords, true);
         q->push(parsed);
 
         vector<FrontierItem> discoveredLinks;
@@ -320,7 +394,7 @@ void *CrawlerWorkerThread(void *) {
 
             // URL belongs to this machine, add to anchor term,
             // and add to frontier if not seen
-            appendAnchorTerms(canonicalOut, link.anchorText, false);
+            appendAnchorTerms(canonicalOut, link.anchorText);
             if (bloom.checkAndInsert(canonicalOut)) {
                 discoveredLinks.pushBack(FrontierItem(canonicalOut, *item));
             }
@@ -329,19 +403,6 @@ void *CrawlerWorkerThread(void *) {
         f->pushMany(discoveredLinks);
         size_t crawled = ++urlsCrawled;
         logCrawled(crawled, item->link);
-
-        {
-            time_t now = time(nullptr);
-            time_t last = lastCheckpointTime.load();
-            if (!shouldStop && (now - last) >= checkpointIntervalSecs) {
-                if (lastCheckpointTime.compare_exchange_strong(last, now)) {
-                    std::cout << "Starting checkpoint at " << crawled << " URLs\n";
-                    checkpoint->save(*f, bloom, urlsCrawled.load());
-                    // flushAnchorIndexToDisk(false);
-                    std::cerr << "Checkpoint saved at " << urlsCrawled.load() << " URLs\n";
-                }
-            }
-        }
     }
 
     return nullptr;
@@ -360,14 +421,6 @@ void *DelayedQueueThread(void *) {
     return nullptr;
 }
 
-static void sanitizeMetaText(string &text) {
-    for (size_t i = 0; i < text.size(); ++i) {
-        if (text[i] == '\t' || text[i] == '\n' || text[i] == '\r') {
-            text[i] = ' ';
-        }
-    }
-}
-
 string buildMetaLine(const HtmlParser &doc) {
     string title = "";
     for (size_t i = 0; i < doc.titleWords.size(); ++i) {
@@ -376,7 +429,7 @@ string buildMetaLine(const HtmlParser &doc) {
     }
     if (title.empty())
         title = "Untitled";
-    sanitizeMetaText(title);
+    sanitizeText(title);
 
     string snippet = "";
     for (size_t i = 0; i < doc.words.size(); ++i) {
@@ -387,7 +440,7 @@ string buildMetaLine(const HtmlParser &doc) {
     }
     if (snippet.empty())
         snippet = "No content available.";
-    sanitizeMetaText(snippet);
+    sanitizeText(snippet);
 
     string meta_line = doc.sourceUrl;
     meta_line.pushBack('\t');
@@ -429,8 +482,6 @@ void *IndexWorkerThread(void *) {
         tokensProcessed += tokenized.tokens.size();
 
         if (tokensProcessed >= FLUSHBODYTOKENSIZE) {
-            // if (docsProcessed >= 500) {
-            std::cout << "Start building index chunk \n";
             char buffer[64];
             std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
                           chunksWritten);
@@ -445,21 +496,22 @@ void *IndexWorkerThread(void *) {
                 flushIndexChunk(mem_index, path);
                 flushMetaData(chunk_metadata, meta_path);
                 flushAnchorIndexToDisk(false);
-                std::cout << "Successfully wrote chunk with " << docsProcessed
-                          << " docs to: " << path << '\n';
+                tsOut(std::cout) << "Successfully wrote chunk with " << docsProcessed
+                                 << " docs to: " << path << '\n';
             } catch (const std::exception &e) {
-                std::cerr << "Failed to write chunk: " << e.what() << '\n';
+                tsOut(std::cerr) << "Failed to write chunk: " << e.what() << '\n';
                 return nullptr;
             }
 
             mem_index = InMemoryIndex();
+            chunk_metadata = vector<string>();
             docsProcessed = 0;
             tokensProcessed = 0;
             ++chunksWritten;
         }
 
-        if (docsProcessed % 2500 == 0) {
-            std::cout << "Processed" << docsProcessed << "documents\n";
+        if (docsProcessed > 0 && docsProcessed % 10000 == 0) {
+            tsOut(std::cout) << "Processed " << docsProcessed << " documents\n";
         }
     }
 
@@ -479,10 +531,10 @@ void *IndexWorkerThread(void *) {
             flushIndexChunk(mem_index, path);
             flushMetaData(chunk_metadata, meta_path);
             flushAnchorIndexToDisk(false);
-            std::cout << "Successfully wrote final chunk with " << docsProcessed
-                      << " docs to: " << path << '\n';
+            tsOut(std::cout) << "Successfully wrote final chunk with " << docsProcessed
+                             << " docs to: " << path << '\n';
         } catch (const std::exception &e) {
-            std::cerr << "Failed to write final chunk: " << e.what() << '\n';
+            tsOut(std::cerr) << "Failed to write final chunk: " << e.what() << '\n';
         }
     }
 
@@ -500,6 +552,66 @@ static bool hasReadyBatch() {
 
 static constexpr size_t sendBatchRetryCount = 5;
 static constexpr int sendBatchRetryBaseDelayMs = 1000;
+static constexpr int sendBatchConnectTimeoutSecs = 10;
+static constexpr int sendBatchSendTimeoutSecs = 15;
+static constexpr int receiveBatchRecvTimeoutSecs = 30;
+static constexpr size_t receiveWorkerThreadCount = 32;
+static constexpr size_t maxQueuedReceiveClientFds = 5120;
+
+// Bounded handoff from the accept loop to a fixed pool of receive workers.
+// Replaces "spawn a detached pthread per accept()" so connection bursts or
+// stalled peers can no longer create unbounded threads/FDs.
+static deque<int> clientFdQueue;
+static mutex receiveQueueMutex;
+static condition_variable receiveQueueCv;
+
+// Non-blocking connect with a bounded timeout. Returns true iff the socket is
+// fully connected. On return, the socket is restored to blocking mode so the
+// caller can use ordinary send()/recv() with SO_SNDTIMEO / SO_RCVTIMEO.
+// The caller owns fd in all cases (this helper never closes it).
+static bool connectWithTimeout(int fd, const sockaddr *addr, socklen_t addrlen, int timeoutSecs) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0) {
+        return false;
+    }
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        return false;
+    }
+
+    int ret = connect(fd, addr, addrlen);
+    if (ret == 0) {
+        // Connected immediately (localhost-ish). Restore blocking mode.
+        fcntl(fd, F_SETFL, flags);
+        return true;
+    }
+    if (errno != EINPROGRESS) {
+        return false;
+    }
+
+    fd_set writeSet;
+    FD_ZERO(&writeSet);
+    FD_SET(fd, &writeSet);
+
+    timeval timeout{};
+    timeout.tv_sec = timeoutSecs;
+    timeout.tv_usec = 0;
+
+    int selectResult = select(fd + 1, nullptr, &writeSet, nullptr, &timeout);
+    if (selectResult <= 0) {
+        // 0 = timeout, <0 = error
+        return false;
+    }
+
+    int sockErr = 0;
+    socklen_t len = sizeof(sockErr);
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &sockErr, &len) < 0 || sockErr != 0) {
+        return false;
+    }
+
+    // Restore blocking mode so subsequent send() respects SO_SNDTIMEO.
+    fcntl(fd, F_SETFL, flags);
+    return true;
+}
 
 static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch) {
     // Common network connection code to send formatted payload of batched links
@@ -509,7 +621,7 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
 
     size_t colon = peer.find(':');
     if (colon == string::npos || colon == 0 || colon + 1 >= peer.size()) {
-        std::cerr << "Invalid peer address: " << peer << '\n';
+        tsOut(std::cerr) << "Invalid peer address: " << peer << '\n';
         return false;
     }
 
@@ -522,7 +634,7 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
 
     addrinfo *result = nullptr;
     if (getaddrinfo(host.c_str(), port.c_str(), &hints, &result) != 0) {
-        std::cerr << "Failed to resolve peer " << peer << '\n';
+        tsOut(std::cerr) << "Failed to resolve peer " << peer << '\n';
         return false;
     }
 
@@ -533,7 +645,8 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
             continue;
         }
 
-        if (connect(socketFd, rp->ai_addr, rp->ai_addrlen) == 0) {
+        if (connectWithTimeout(socketFd, rp->ai_addr, rp->ai_addrlen,
+                               sendBatchConnectTimeoutSecs)) {
             break;
         }
 
@@ -544,9 +657,15 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
     freeaddrinfo(result);
 
     if (socketFd < 0) {
-        std::cerr << "Failed to connect to peer " << peer << '\n';
+        tsOut(std::cerr) << "Failed to connect to peer " << peer << '\n';
         return false;
     }
+
+    // Bound how long send() can block on a dead peer.
+    timeval sendTimeout{};
+    sendTimeout.tv_sec = sendBatchSendTimeoutSecs;
+    sendTimeout.tv_usec = 0;
+    setsockopt(socketFd, SOL_SOCKET, SO_SNDTIMEO, &sendTimeout, sizeof(sendTimeout));
 
     string payload;
     payload.reserve(batch.size() * 96); // heuristic. can be changed
@@ -568,8 +687,8 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
     while (remaining > 0) {
         ssize_t sent = send(socketFd, data, remaining, 0);
         if (sent < 0) {
-            std::cerr << "Failed while sending to peer " << peer << ": " << std::strerror(errno)
-                      << '\n';
+            tsOut(std::cerr) << "Failed while sending to peer " << peer << ": "
+                             << std::strerror(errno) << '\n';
             close(socketFd);
             return false;
         }
@@ -581,7 +700,7 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
     close(socketFd);
 
     if (debug) {
-        std::cout << "Send Batch Successful\n";
+        tsOut(std::cout) << "Send Batch Successful\n";
     }
 
     return true;
@@ -594,12 +713,12 @@ static bool sendBatchToPeerWithRetry(const string &peer, const vector<RoutedLink
         }
 
         if (attempt == sendBatchRetryCount) {
-            std::cout << "Send Batch Failed; Give up\n";
+            tsOut(std::cout) << "Send Batch Failed; Give up\n";
             break;
         }
 
         if (debug) {
-            std::cout << "Send Batch Failed; Retrying\n";
+            tsOut(std::cout) << "Send Batch Failed; Retrying\n";
         }
 
         const int delayMs = sendBatchRetryBaseDelayMs * (1 << attempt);
@@ -652,7 +771,7 @@ void *SendToMachineThread(void *) {
                         continue;
                     }
 
-                    appendAnchorTerms(canonicalOut, link.anchorText, false);
+                    appendAnchorTerms(canonicalOut, link.anchorText);
                     if (bloom.checkAndInsert(canonicalOut)) {
                         localLinks.pushBack(
                             FrontierItem::withSeedDistance(canonicalOut, link.seedDistance));
@@ -670,7 +789,7 @@ void *SendToMachineThread(void *) {
                 //     batches[i].pushBack(std::move(link));
                 // }
                 // batch_lock.unlock();
-                std::cerr << "Send Batch Failed; Give up\n";
+                tsOut(std::cerr) << "Send Batch Failed; Give up\n";
             }
         }
     }
@@ -703,14 +822,18 @@ static bool parseSizeField(const string &raw, size_t &value) {
     return true;
 }
 
-struct ReceiveBatchArgs {
-    int clientFd;
-};
+static void processReceivedBatch(int clientFd) {
+    // Bound how long a stalled peer can pin this worker + FD.
+    // Without this, a half-open TCP connection leaves recv() blocked
+    // until the kernel's TCP keepalive expires (hours), leaking FDs
+    // over a long run.
+    timeval recvTimeout{};
+    recvTimeout.tv_sec = receiveBatchRecvTimeoutSecs;
+    recvTimeout.tv_usec = 0;
+    setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &recvTimeout, sizeof(recvTimeout));
 
-static void *HandleReceivedBatchThread(void *rawArgs) {
-    ReceiveBatchArgs *args = static_cast<ReceiveBatchArgs *>(rawArgs);
-    int clientFd = args->clientFd;
-    delete args;
+    int keepAlive = 1;
+    setsockopt(clientFd, SOL_SOCKET, SO_KEEPALIVE, &keepAlive, sizeof(keepAlive));
 
     // read payload into a string
     string payload;
@@ -724,7 +847,7 @@ static void *HandleReceivedBatchThread(void *rawArgs) {
             if (errno == EINTR) {
                 continue;
             }
-            std::cerr << "Receive failed: " << std::strerror(errno) << '\n';
+            tsOut(std::cerr) << "Receive failed: " << std::strerror(errno) << '\n';
             break;
         }
         payload.append(buffer, static_cast<size_t>(received));
@@ -733,11 +856,11 @@ static void *HandleReceivedBatchThread(void *rawArgs) {
     close(clientFd);
 
     if (debug) {
-        std::cout << "Receive batch\n";
+        tsOut(std::cout) << "Receive batch\n";
     }
 
     if (payload.empty()) {
-        return nullptr;
+        return;
     }
 
     // decode payload based on our encoding method into vector of urls and anchors
@@ -787,7 +910,7 @@ static void *HandleReceivedBatchThread(void *rawArgs) {
             string canonicalOut;
             if (passesUrlQualityChecks(rawUrl, canonicalOut) && urlFilter.isAllowed(canonicalOut) &&
                 shouldOwnUrl(canonicalOut)) {
-                appendAnchorTerms(canonicalOut, anchorWords, false);
+                appendAnchorTerms(canonicalOut, anchorWords);
                 if (bloom.checkAndInsert(canonicalOut)) {
                     discoveredLinks.pushBack(
                         FrontierItem::withSeedDistance(canonicalOut, receivedSeedDistance));
@@ -804,6 +927,30 @@ static void *HandleReceivedBatchThread(void *rawArgs) {
 
     if (discoveredLinks.size() > 0) {
         f->pushMany(discoveredLinks);
+    }
+}
+
+void *ReceiveWorkerThread(void *) {
+    // Pull accepted client FDs off clientFdQueue and process them. Workers
+    // drain any queued FDs after shouldStop flips so in-flight batches aren't
+    // lost during graceful shutdown.
+    while (true) {
+        int clientFd = -1;
+
+        receiveQueueMutex.lock();
+        while (!shouldStop && clientFdQueue.empty()) {
+            receiveQueueCv.wait(receiveQueueMutex);
+        }
+        if (clientFdQueue.empty()) {
+            // shouldStop && queue drained -> exit
+            receiveQueueMutex.unlock();
+            break;
+        }
+        clientFd = clientFdQueue.back();
+        clientFdQueue.pop_back();
+        receiveQueueMutex.unlock();
+
+        processReceivedBatch(clientFd);
     }
 
     return nullptr;
@@ -822,15 +969,15 @@ static int openListeningSocket() {
 
     size_t colon = selfPeer.find(':');
     if (colon == string::npos || colon + 1 >= selfPeer.size()) {
-        std::cerr << "Invalid listen address for machine " << machine_id.load() << ": " << selfPeer
-                  << '\n';
+        tsOut(std::cerr) << "Invalid listen address for machine " << machine_id.load() << ": "
+                         << selfPeer << '\n';
         return -1;
     }
 
     string port = selfPeer.substr(colon + 1);
     if (port.empty()) {
-        std::cerr << "Invalid listen address for machine " << machine_id.load() << ": " << selfPeer
-                  << '\n';
+        tsOut(std::cerr) << "Invalid listen address for machine " << machine_id.load() << ": "
+                         << selfPeer << '\n';
         return -1;
     }
 
@@ -842,7 +989,7 @@ static int openListeningSocket() {
     addrinfo *result = nullptr;
     // Bind to 0.0.0.0:8081
     if (getaddrinfo(nullptr, port.c_str(), &hints, &result) != 0) {
-        std::cerr << "Failed to resolve listen port for " << selfPeer << '\n';
+        tsOut(std::cerr) << "Failed to resolve listen port for " << selfPeer << '\n';
         return -1;
     }
 
@@ -867,8 +1014,8 @@ static int openListeningSocket() {
     freeaddrinfo(result);
 
     if (listenFd >= 0) {
-        std::cerr << "Listening for batches on 0.0.0.0:" << port << " (configured as " << selfPeer
-                  << ")\n";
+        tsOut(std::cerr) << "Listening for batches on 0.0.0.0:" << port << " (configured as "
+                         << selfPeer << ")\n";
     }
     return listenFd;
 }
@@ -893,7 +1040,7 @@ void *ReceiveFromMachineThread(void *) {
             if (errno == EINTR) {
                 continue;
             }
-            std::cerr << "Listener select failed: " << std::strerror(errno) << '\n';
+            tsOut(std::cerr) << "Listener select failed: " << std::strerror(errno) << '\n';
             break;
         }
         if (ready == 0) {
@@ -905,54 +1052,28 @@ void *ReceiveFromMachineThread(void *) {
             if (errno == EINTR) {
                 continue;
             }
-            std::cerr << "Accept failed: " << std::strerror(errno) << '\n';
+            tsOut(std::cerr) << "Accept failed: " << std::strerror(errno) << '\n';
             continue;
         }
 
-        ReceiveBatchArgs *args = new ReceiveBatchArgs{clientFd};
-        pthread_t threadId{};
-        // create a separate thread to handle receive
-        if (pthread_create(&threadId, nullptr, HandleReceivedBatchThread, args) == 0) {
-            pthread_detach(threadId);
-        } else {
-            std::cerr << "Failed to create receive worker thread\n";
+        // Hand the fd to the fixed-size receive worker pool. A single
+        // notify_one wakes one idle worker; if all workers are busy the fd
+        // stays in the queue until one frees up.
+        receiveQueueMutex.lock();
+        if (clientFdQueue.size() >= maxQueuedReceiveClientFds) {
+            receiveQueueMutex.unlock();
+            tsOut(std::cerr) << "Receive queue full; dropping incoming batch connection\n";
             close(clientFd);
-            delete args;
+            continue;
         }
+        clientFdQueue.push_front(clientFd);
+        receiveQueueCv.notify_all();
+        receiveQueueMutex.unlock();
     }
 
     close(listenFd);
     return nullptr;
 }
-
-// code to create thread to periodically flush anchor.
-// Since we are already flushing every few hundred docs, we skip this
-
-// void *AnchorFlushThread(void *) {
-//     while (!shouldStop) {
-//         for (size_t i = 0; i < anchorFlushIntervalSeconds && !shouldStop; ++i) {
-//             sleep(1);
-//         }
-//         flushAnchorIndexToDisk(false);
-//     }
-//     return nullptr;
-// }
-
-// static size_t parseEnv(const char *name, size_t fallback) {
-//     // Try parsing env as unsigned long int, else return fallback
-//     const char *raw = std::getenv(name);
-//     if (raw == nullptr || raw[0] == '\0') {
-//         return fallback;
-//     }
-//
-//     char *end = nullptr;
-//     unsigned long parsed = std::strtoul(raw, &end, 10);
-//     if (end == raw || (end != nullptr && *end != '\0')) {
-//         return fallback;
-//     }
-//
-//     return static_cast<size_t>(parsed);
-// }
 
 static bool parseSizeArg(const char *raw, size_t &value) {
     if (raw == nullptr || raw[0] == '\0') {
@@ -978,57 +1099,13 @@ int main(int argc, char **argv) {
 
     cpConfig.directory = "src/crawler";
     checkpoint = new Checkpoint(cpConfig);
-    q = new IndexQueue();
+    q = new IndexQueue(maxIndexQueueItems);
     robotsCache = new RobotsCache();
     delayedQueue = new DelayedQueue();
-    anchorIndex = new HashTable<string, AnchorPosting>(anchorKeyEqual, anchorKeyHash);
+    anchorIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
 
-    peer_address = {
-        "34.130.43.20:8081",   // 0  Ashmit
-        "34.130.82.156:8081",  // 1
-        "34.124.113.238:8081", // 2
-        "34.130.64.46:8081",   // 3
-        "34.130.43.3:8081",    // 4
-        "34.130.137.49:8081",  // 5
-        "34.130.64.163:8081",  // 6
-        "34.130.229.83:8081",  // 7  Will
-        "34.130.16.28:8081",   // 8
-        "34.130.91.157:8081",  // 9
-        "34.130.93.78:8081",   // 10
-        "34.130.21.35:8081",   // 11
-        "34.130.79.253:8081",  // 12 Andrew
-        "34.130.0.117:8081",   // 13
-        "34.130.198.23:8081",  // 14
-        "34.130.157.28:8081",  // 15
-        "34.130.190.162:8081", // 16
-        "34.130.122.145:8081", // 17 Anthony
-        "34.130.29.159:8081",  // 18
-        "34.130.82.240:8081",  // 19
-        "34.130.157.196:8081", // 20
-        "34.130.214.145:8081", // 21
-        "34.130.119.2:8081",   // 22
-        "34.130.216.240:8081", // 23
-        "34.130.243.215:8081", // 24
-        "34.130.130.196:8081", // 25 Satvik
-        "34.130.230.21:8081",  // 26
-        "34.130.161.223:8081", // 27
-        "34.130.5.230:8081",   // 28
-        "34.130.138.190:8081", // 29
-        "34.130.249.128:8081", // 30
-        "34.130.93.208:8081",  // 31
-        "34.130.104.67:8081",  // 32 Vasu
-        "34.130.81.209:8081",  // 33
-        "34.130.117.222:8081", // 34
-        "34.130.62.205:8081",  // 35
-        "34.124.120.173:8081", // 36
-        "34.130.240.109:8081", // 37
-        "34.130.84.218:8081",  // 38
-        "34.45.219.149:8081",  // 39 Nate
-        "34.9.132.225:8081",   // 40
-        "34.9.191.70:8081",    // 41
-        "136.116.245.6:8081",  // 42
-        "34.9.119.101:8081",   // 43
-    };
+    peer_address = {"10.128.0.21:8081", "10.128.0.22:8081", "10.128.0.23:8081", "10.128.0.25:8081",
+                    "10.128.0.26:8081", "10.128.0.27:8081", "10.128.0.28:8081", "10.128.0.29:8081"};
 
     // machine_id = parseEnv("SEARCH_MACHINE_ID", 0);
     // numLinkThreshold = parseEnv("SEARCH_BATCH_THRESHOLD", numLinkThreshold.load());
@@ -1036,14 +1113,14 @@ int main(int argc, char **argv) {
     // anchorFlushIntervalSeconds);
 
     if (argc != 3 && argc != 4) {
-        std::cerr << "Usage: " << argv[0] << " <machine_id> <batch_threshold> [debug]\n";
+        tsOut(std::cerr) << "Usage: " << argv[0] << " <machine_id> <batch_threshold> [debug]\n";
         return 1;
     }
 
     size_t parsedMachineId = 0;
     size_t parsedBatchThreshold = 0;
     if (!parseSizeArg(argv[1], parsedMachineId) || !parseSizeArg(argv[2], parsedBatchThreshold)) {
-        std::cerr << "machine_id and batch_threshold must both be unsigned integers\n";
+        tsOut(std::cerr) << "machine_id and batch_threshold must both be unsigned integers\n";
         return 1;
     }
 
@@ -1051,7 +1128,7 @@ int main(int argc, char **argv) {
     numLinkThreshold = parsedBatchThreshold;
     if (argc == 4) {
         if (string(argv[3]) != "debug") {
-            std::cerr << "Optional third argument must be 'debug'\n";
+            tsOut(std::cerr) << "Optional third argument must be 'debug'\n";
             return 1;
         }
         debug = true;
@@ -1062,8 +1139,8 @@ int main(int argc, char **argv) {
     // }
 
     if (machine_id.load() >= peer_address.size()) {
-        std::cerr << "Machine id " << machine_id.load()
-                  << " is out of range for configured peers; Halting\n";
+        tsOut(std::cerr) << "Machine id " << machine_id.load()
+                         << " is out of range for configured peers; Halting\n";
         return 1;
     }
 
@@ -1096,10 +1173,11 @@ int main(int argc, char **argv) {
 
         if (ownedRecoveredItems.size() > 0) {
             f = new Frontier(std::move(ownedRecoveredItems), false);
-            std::cerr << "Recovered from checkpoint at " << urlsCrawled.load() << " URLs\n";
+            tsOut(std::cerr) << "Recovered from checkpoint at " << urlsCrawled.load() << " URLs\n";
         } else {
-            std::cerr << "Checkpoint has empty frontier for this machine; starting fresh from seed "
-                         "list\n";
+            tsOut(std::cerr)
+                << "Checkpoint has empty frontier for this machine; starting fresh from seed "
+                   "list\n";
 
             std::ifstream seedList("src/crawler/seedList.txt");
             if (!seedList.is_open()) {
@@ -1119,7 +1197,7 @@ int main(int argc, char **argv) {
 
             f = new Frontier(std::move(ownedSeedItems), false);
             urlsCrawled = 0;
-            std::cerr << "Starting fresh from seed list\n";
+            tsOut(std::cerr) << "Starting fresh from seed list\n";
         }
     } else {
         // We filter to ensure we should own link on the seed list
@@ -1140,10 +1218,14 @@ int main(int argc, char **argv) {
         }
 
         f = new Frontier(std::move(ownedSeedItems), false);
-        std::cerr << "Starting fresh from seed list\n";
+        tsOut(std::cerr) << "Starting fresh from seed list\n";
     }
 
-    size_t crawlerThreadCount = cores * 10;
+    size_t crawlerThreadCount = (cores == 0 ? fallbackCrawlerThreadCount
+                                            : static_cast<size_t>(cores) * crawlerThreadsPerCore);
+    if (crawlerThreadCount > maxCrawlerThreadCount) {
+        crawlerThreadCount = maxCrawlerThreadCount;
+    }
     size_t indexThreadCount = 1;
     vector<pthread_t> crawlerThreads(crawlerThreadCount);
     vector<pthread_t> indexThreads(indexThreadCount);
@@ -1151,11 +1233,16 @@ int main(int argc, char **argv) {
     pthread_t senderThread{};
     pthread_t receiverThread{};
     pthread_t dqThread{};
+    pthread_t checkpointThread{};
     // pthread_t anchorThread{};
+    vector<pthread_t> receiveWorkers(receiveWorkerThreadCount);
     bool senderStarted = false;
     bool receiverStarted = false;
+    bool receiveWorkersStarted = false;
+    bool checkpointStarted = false;
 
     lastCheckpointTime = time(nullptr);
+    lastHeartbeatTime = lastCheckpointTime.load();
 
     for (size_t i = 0; i < crawlerThreadCount; ++i) {
         pthread_create(&crawlerThreads[i], nullptr, CrawlerWorkerThread, nullptr);
@@ -1165,6 +1252,8 @@ int main(int argc, char **argv) {
         pthread_create(&indexThreads[i], nullptr, IndexWorkerThread, nullptr);
     }
 
+    pthread_create(&checkpointThread, nullptr, CheckpointThread, nullptr);
+    checkpointStarted = true;
     pthread_create(&dqThread, nullptr, DelayedQueueThread, nullptr);
 
     if (peer_address.size() > 1) {
@@ -1173,6 +1262,13 @@ int main(int argc, char **argv) {
         pthread_create(&receiverThread, nullptr, ReceiveFromMachineThread, nullptr);
         senderStarted = true;
         receiverStarted = true;
+
+        // Fixed pool of receive workers. Replaces per-accept pthread_create
+        // so connection bursts can't create unbounded threads/FDs.
+        for (size_t i = 0; i < receiveWorkerThreadCount; ++i) {
+            pthread_create(&receiveWorkers[i], nullptr, ReceiveWorkerThread, nullptr);
+        }
+        receiveWorkersStarted = true;
     }
 
     // pthread_create(&anchorThread, nullptr, AnchorFlushThread, nullptr);
@@ -1184,6 +1280,10 @@ int main(int argc, char **argv) {
     shouldStop = true;
     q->shutdown();
     batch_cv.notify_all();
+
+    if (checkpointStarted) {
+        pthread_join(checkpointThread, nullptr);
+    }
 
     for (size_t i = 0; i < indexThreads.size(); ++i) {
         pthread_join(indexThreads[i], nullptr);
@@ -1197,6 +1297,27 @@ int main(int argc, char **argv) {
         pthread_join(receiverThread, nullptr);
     }
 
+    if (receiveWorkersStarted) {
+        // Receiver has exited, so no new fds will be pushed. Wake every
+        // receive worker so they observe shouldStop, drain any queued fds,
+        // and exit. Defensive drain + close afterwards in case any fd
+        // slipped in during the shutdown race.
+        receiveQueueMutex.lock();
+        receiveQueueCv.notify_all();
+        receiveQueueMutex.unlock();
+
+        for (size_t i = 0; i < receiveWorkers.size(); ++i) {
+            pthread_join(receiveWorkers[i], nullptr);
+        }
+
+        receiveQueueMutex.lock();
+        while (!clientFdQueue.empty()) {
+            close(clientFdQueue.back());
+            clientFdQueue.pop_back();
+        }
+        receiveQueueMutex.unlock();
+    }
+
     pthread_join(dqThread, nullptr);
     // pthread_join(anchorThread, nullptr);
 
@@ -1206,7 +1327,7 @@ int main(int argc, char **argv) {
     flushAnchorIndexToDisk(true);
 
     if (shouldStop) {
-        std::cerr << "Graceful shutdown after SIGINT\n";
+        tsOut(std::cerr) << "Graceful shutdown after SIGINT\n";
     }
 
     delete anchorIndex;

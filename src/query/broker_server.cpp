@@ -1,3 +1,5 @@
+#include <arpa/inet.h>
+#include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
@@ -41,7 +43,7 @@ void *fetch_from_worker(void *args) {
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) >= 0) {
-        string msg = wa->query + "\n";
+        string msg = to_string(wa->k) + "\t" + wa->query + "\n";
         send(sock, msg.c_str(), msg.size(), 0);
 
         char buffer[4096];
@@ -105,6 +107,19 @@ string url_decode(const string &src) {
         }
     }
     return ret;
+}
+
+bool parse_positive_k(const string &raw_k, size_t &k_out) {
+    if (raw_k.empty())
+        return false;
+
+    char *endptr = nullptr;
+    long parsed = std::strtol(raw_k.c_str(), &endptr, 10);
+    if (endptr == raw_k.c_str() || *endptr != '\0' || parsed <= 0)
+        return false;
+
+    k_out = static_cast<size_t>(parsed);
+    return true;
 }
 
 void *handle_frontend(void *args) {
@@ -199,14 +214,58 @@ void *handle_frontend(void *args) {
 
     // Parse HTTP GET /search?q=cat HTTP/1.1
     string query = "";
-    size_t q_pos = http_request.find("GET /search?q=");
-    if (q_pos != string::npos) {
-        size_t start = q_pos + 14;
-        size_t end = http_request.substr(start).find(' ');
-        if (end != string::npos)
-            end += start;
-        string raw_query = http_request.substr(start, end - start);
-        query = url_decode(raw_query);
+    size_t k = 10;
+    size_t get_pos = http_request.find("GET ");
+    if (get_pos != string::npos) {
+        size_t target_start = get_pos + 4;
+        size_t target_end = http_request.find(' ', target_start);
+        if (target_end != string::npos) {
+            string target = http_request.substr(target_start, target_end - target_start);
+            size_t qmark = target.find('?');
+            string path = target.substr(0, qmark);
+
+            if (path == "/search" && qmark != string::npos) {
+                string query_string = target.substr(qmark + 1);
+                string raw_query;
+                string raw_k;
+
+                size_t pos = 0;
+                while (pos <= query_string.size()) {
+                    size_t amp = query_string.find('&', pos);
+                    if (amp == string::npos)
+                        amp = query_string.size();
+
+                    string param = query_string.substr(pos, amp - pos);
+                    size_t eq = param.find('=');
+                    if (eq != string::npos) {
+                        string key = param.substr(0, eq);
+                        string value = param.substr(eq + 1);
+
+                        if (key == "q")
+                            raw_query = value;
+                        else if (key == "k")
+                            raw_k = value;
+                    }
+
+                    if (amp == query_string.size())
+                        break;
+                    pos = amp + 1;
+                }
+
+                query = url_decode(raw_query);
+                if (!raw_k.empty()) {
+                    size_t parsed_k = 0;
+                    if (!parse_positive_k(url_decode(raw_k), parsed_k)) {
+                        string response = "HTTP/1.1 400 Bad Request\r\n\r\nInvalid k";
+                        send(client_sock, response.c_str(), response.size(), 0);
+                        close(client_sock);
+                        delete ca;
+                        return nullptr;
+                    }
+                    k = parsed_k;
+                }
+            }
+        }
     }
 
     if (query.empty()) {
@@ -219,7 +278,8 @@ void *handle_frontend(void *args) {
 
     // Launch concurrent pthreads to query the Workers
     // TODO: load these from a config file
-    ::vector<WorkerArgs> workers = {{"localhost", 8081, query, {}}, {"localhost", 8082, query, {}}};
+    ::vector<WorkerArgs> workers = {{"localhost", 8081, query, k, {}},
+                                    {"localhost", 8082, query, k, {}}};
 
     ::vector<pthread_t> threads(workers.size());
     for (size_t i = 0; i < workers.size(); ++i) {
@@ -230,8 +290,8 @@ void *handle_frontend(void *args) {
         pthread_join(threads[i], nullptr);
     }
 
-    // Merge results and get global top 10
-    GlobalTopKHeap top_k(10);
+    // Merge results and get global top k
+    GlobalTopKHeap top_k(k);
     for (const auto &w : workers) {
         for (const auto &res : w.local_results) {
             top_k.push(res);

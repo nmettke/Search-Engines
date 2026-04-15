@@ -40,10 +40,14 @@ Frontier::Frontier(vector<FrontierItem> items, bool autoCloseWhenDrainedArg) {
 }
 
 vector<FrontierItem> Frontier::snapshot() const {
-    lock_guard guard(m);
     vector<FrontierItem> result;
-    size_t n = pq.size();
-    PriorityQueue<FrontierItem, FrontierItemCompare> pq_copy = pq;
+    PriorityQueue<FrontierItem, FrontierItemCompare> pq_copy;
+    {
+        lock_guard guard(m);
+        pq_copy = pq;
+    }
+
+    size_t n = pq_copy.size();
     for (size_t i = 0; i < n; ++i) {
         result.pushBack(pq_copy.top());
         pq_copy.pop();

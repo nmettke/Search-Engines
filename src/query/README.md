@@ -4,6 +4,10 @@
 make create_dummy_index
 ```
 
+This creates `chunk1/` and `chunk2/` with:
+- `body_index/*.idx`
+- `meta/*.meta`
+
 ## Worker Server
 
 ```
@@ -55,4 +59,3 @@ make broker_server
 
 - Implement two-tier searching (Every worker should search anchor_chunks/ first then search body_chunks/).
 - load the config using config files.
-- implement ranking.

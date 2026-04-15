@@ -11,19 +11,22 @@
 UrlBloomFilter::UrlBloomFilter(std::size_t bc, std::uint32_t hc, ::vector<bool> b)
     : bitCount(bc), hashCount(hc), bits(std::move(b)) {}
 
-bool UrlBloomFilter::serializeToStream(FILE *f) const {
-    lock_guard guard(m_);
-
-    fwrite(&bitCount, sizeof(bitCount), 1, f);
-    fwrite(&hashCount, sizeof(hashCount), 1, f);
-
-    ::vector<uint8_t> packed((bitCount + 7) / 8, 0);
-    for (std::size_t i = 0; i < bitCount; ++i) {
-        if (bits[i])
-            packed[i / 8] |= (1 << (i % 8));
+UrlBloomFilter::Snapshot UrlBloomFilter::snapshot() const {
+    Snapshot snap;
+    vector<bool> bitsCopy;
+    {
+        lock_guard guard(m_);
+        snap.bitCount = bitCount;
+        snap.hashCount = hashCount;
+        bitsCopy = bits;
     }
-    fwrite(packed.data(), 1, packed.size(), f);
-    return true;
+
+    snap.packedBits = ::vector<uint8_t>((bitCount + 7) / 8, 0);
+    for (std::size_t i = 0; i < snap.bitCount; ++i) {
+        if (bitsCopy[i])
+            snap.packedBits[i / 8] |= (1 << (i % 8));
+    }
+    return snap;
 }
 
 UrlBloomFilter UrlBloomFilter::deserializeFromStream(FILE *f) {
