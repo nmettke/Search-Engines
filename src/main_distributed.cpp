@@ -277,7 +277,6 @@ void *CheckpointThread(void *) {
         if (!checkpoint->createSnapshot(*f, bloom, crawled, snapshot)) {
             continue;
         }
-        lastCheckpointTime = now;
         const int64_t snapshotEnd = nowMillis();
 
         std::cout << "Starting checkpoint at " << crawled << " URLs\n";
@@ -288,6 +287,8 @@ void *CheckpointThread(void *) {
         const int64_t writeEnd = nowMillis();
         std::cerr << "Checkpoint snapshot took " << (snapshotEnd - snapshotStart)
                   << " ms; write took " << (writeEnd - snapshotEnd) << " ms\n";
+
+        lastCheckpointTime = now;
     }
 
     return nullptr;

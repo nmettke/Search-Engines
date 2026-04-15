@@ -12,14 +12,18 @@ UrlBloomFilter::UrlBloomFilter(std::size_t bc, std::uint32_t hc, ::vector<bool> 
     : bitCount(bc), hashCount(hc), bits(std::move(b)) {}
 
 UrlBloomFilter::Snapshot UrlBloomFilter::snapshot() const {
-    lock_guard guard(m_);
-
     Snapshot snap;
-    snap.bitCount = bitCount;
-    snap.hashCount = hashCount;
+    vector<bool> bitsCopy;
+    {
+        lock_guard guard(m_);
+        snap.bitCount = bitCount;
+        snap.hashCount = hashCount;
+        bitsCopy = bits;
+    }
+
     snap.packedBits = ::vector<uint8_t>((bitCount + 7) / 8, 0);
-    for (std::size_t i = 0; i < bitCount; ++i) {
-        if (bits[i])
+    for (std::size_t i = 0; i < snap.bitCount; ++i) {
+        if (bitsCopy[i])
             snap.packedBits[i / 8] |= (1 << (i % 8));
     }
     return snap;
