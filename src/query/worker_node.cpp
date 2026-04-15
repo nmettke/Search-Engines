@@ -188,89 +188,92 @@ int main(int argc, char **argv) {
     vector<QueryEngine *> engines;
     vector<vector<MetaRecord>> all_meta;
 
-    HashTable<string, Location> index_lookup(anchorKeyEqual, anchorKeyHash);
-
     DIR *dir;
     struct dirent *ent;
     string index_dir = dir_path + "/anchor_parsed_index";
     string meta_dir = dir_path + "/meta";
 
-    if ((dir = opendir(index_dir.c_str())) != nullptr) {
-        while ((ent = readdir(dir)) != nullptr) {
-            string file_name = ent->d_name;
+    {
+        HashTable<string, Location> index_lookup(anchorKeyEqual, anchorKeyHash);
 
-            if (file_name.length() >= 4 && file_name.substr(file_name.length() - 4) == ".idx") {
-                string idx_path = index_dir + "/" + file_name;
+        if ((dir = opendir(index_dir.c_str())) != nullptr) {
+            while ((ent = readdir(dir)) != nullptr) {
+                string file_name = ent->d_name;
 
-                DiskChunkReader *reader = new DiskChunkReader();
-                if (reader->open(idx_path)) {
-                    QueryEngine *engine = new QueryEngine(*reader);
-                    readers.pushBack(reader);
-                    engines.pushBack(engine);
+                if (file_name.length() >= 4 && file_name.substr(file_name.length() - 4) == ".idx") {
+                    string idx_path = index_dir + "/" + file_name;
 
-                    auto header = reader->header();
-                    std::cout << "Loaded chunk: " << idx_path << " with " << header.num_documents
-                              << " documents\n";
+                    DiskChunkReader *reader = new DiskChunkReader();
+                    if (reader->open(idx_path)) {
+                        QueryEngine *engine = new QueryEngine(*reader);
+                        readers.pushBack(reader);
+                        engines.pushBack(engine);
 
-                    for (size_t doc_id = 0; doc_id < header.num_documents; ++doc_id) {
-                        auto doc_info = reader->getDocument(doc_id);
-                        index_lookup.Find(doc_info->url, {readers.size() - 1, doc_id});
-                    }
-                }
-            }
-        }
-        closedir(dir);
-    } else {
-        std::cerr << "Fatal Error: Could not open directory " << dir_path << "\n";
-        return 1;
-    }
+                        auto header = reader->header();
+                        std::cout << "Loaded chunk: " << idx_path << " with "
+                                  << header.num_documents << " documents\n";
 
-    // Initialize all_meta with empty records for each document in each chunk
-    for (size_t i = 0; i < readers.size(); i++) {
-        auto header = readers[i]->header();
-        vector<MetaRecord> chunk_meta(header.num_documents);
-        all_meta.pushBack(chunk_meta);
-    }
-
-    // load all meta data and put into all_meta vector
-    if ((dir = opendir(meta_dir.c_str())) != nullptr) {
-        while ((ent = readdir(dir)) != nullptr) {
-            string file_name = ent->d_name;
-
-            if (file_name.length() >= 5 && file_name.substr(file_name.length() - 5) == ".meta") {
-                string meta_path = meta_dir + "/" + file_name;
-
-                FILE *fp = fopen(meta_path.c_str(), "r");
-                if (fp) {
-                    char line[4096];
-                    while (fgets(line, sizeof(line), fp)) {
-                        string s(line);
-                        if (!s.empty() && s.back() == '\n')
-                            s.pop_back();
-
-                        size_t tab1 = s.find('\t');
-                        size_t tab2 = s.find('\t', tab1 + 1);
-
-                        if (tab1 != string::npos && tab2 != string::npos) {
-                            string url = s.substr(0, tab1);
-                            string title = s.substr(tab1 + 1, tab2 - tab1 - 1);
-                            string snippet = s.substr(tab2 + 1);
-
-                            Tuple<string, Location> *loc_tuple = index_lookup.Find(url);
-                            if (loc_tuple != nullptr) {
-                                Location loc = loc_tuple->value;
-                                all_meta[loc.chunk_id][loc.doc_id] = {url, title, snippet};
-                            }
+                        for (size_t doc_id = 0; doc_id < header.num_documents; ++doc_id) {
+                            auto doc_info = reader->getDocument(doc_id);
+                            index_lookup.Find(doc_info->url, {readers.size() - 1, doc_id});
                         }
                     }
-                    fclose(fp);
                 }
             }
+            closedir(dir);
+        } else {
+            std::cerr << "Fatal Error: Could not open directory " << dir_path << "\n";
+            return 1;
         }
-        closedir(dir);
-    } else {
-        std::cerr << "Fatal Error: Could not open directory " << meta_dir << "\n";
-        return 1;
+
+        // Initialize all_meta with empty records for each document in each chunk
+        for (size_t i = 0; i < readers.size(); i++) {
+            auto header = readers[i]->header();
+            vector<MetaRecord> chunk_meta(header.num_documents);
+            all_meta.pushBack(chunk_meta);
+        }
+
+        // load all meta data and put into all_meta vector
+        if ((dir = opendir(meta_dir.c_str())) != nullptr) {
+            while ((ent = readdir(dir)) != nullptr) {
+                string file_name = ent->d_name;
+
+                if (file_name.length() >= 5 &&
+                    file_name.substr(file_name.length() - 5) == ".meta") {
+                    string meta_path = meta_dir + "/" + file_name;
+
+                    FILE *fp = fopen(meta_path.c_str(), "r");
+                    if (fp) {
+                        char line[4096];
+                        while (fgets(line, sizeof(line), fp)) {
+                            string s(line);
+                            if (!s.empty() && s.back() == '\n')
+                                s.pop_back();
+
+                            size_t tab1 = s.find('\t');
+                            size_t tab2 = s.find('\t', tab1 + 1);
+
+                            if (tab1 != string::npos && tab2 != string::npos) {
+                                string url = s.substr(0, tab1);
+                                string title = s.substr(tab1 + 1, tab2 - tab1 - 1);
+                                string snippet = s.substr(tab2 + 1);
+
+                                Tuple<string, Location> *loc_tuple = index_lookup.Find(url);
+                                if (loc_tuple != nullptr) {
+                                    Location loc = loc_tuple->value;
+                                    all_meta[loc.chunk_id][loc.doc_id] = {url, title, snippet};
+                                }
+                            }
+                        }
+                        fclose(fp);
+                    }
+                }
+            }
+            closedir(dir);
+        } else {
+            std::cerr << "Fatal Error: Could not open directory " << meta_dir << "\n";
+            return 1;
+        }
     }
 
     if (engines.empty()) {

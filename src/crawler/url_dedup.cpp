@@ -65,6 +65,10 @@ string trim(const string &input) {
         last--;
     }
 
+    while (last > first && input[last - 1] == '/') {
+        last--;
+    }
+
     return input.substr(first, last - first);
 }
 
