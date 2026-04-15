@@ -529,8 +529,8 @@ static constexpr int sendBatchRetryBaseDelayMs = 1000;
 static constexpr int sendBatchConnectTimeoutSecs = 10;
 static constexpr int sendBatchSendTimeoutSecs = 15;
 static constexpr int receiveBatchRecvTimeoutSecs = 30;
-static constexpr size_t receiveWorkerThreadCount = 8;
-static constexpr size_t maxQueuedReceiveClientFds = 256;
+static constexpr size_t receiveWorkerThreadCount = 32;
+static constexpr size_t maxQueuedReceiveClientFds = 5120;
 
 // Bounded handoff from the accept loop to a fixed pool of receive workers.
 // Replaces "spawn a detached pthread per accept()" so connection bursts or
