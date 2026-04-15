@@ -612,7 +612,7 @@ static bool recvAllBytes(int socketFd, unsigned char *data, size_t totalBytes, s
 static bool sendFrame(int socketFd, const string &peer, const string &payload) {
     unsigned char header[8];
     uint64_t value = static_cast<uint64_t>(payload.size());
-    
+
     // encode header (payload size)
     for (int i = 7; i >= 0; --i) {
         header[i] = static_cast<unsigned char>(value & 0xffU);
@@ -647,7 +647,8 @@ static bool recvFrame(int socketFd, size_t peerIndex, string &payload) {
     char buffer[4096];
     uint64_t remaining = frameBytes;
     while (remaining > 0) {
-        size_t chunkSize = remaining > sizeof(buffer) ? sizeof(buffer) : static_cast<size_t>(remaining);
+        size_t chunkSize =
+            remaining > sizeof(buffer) ? sizeof(buffer) : static_cast<size_t>(remaining);
         ssize_t received = recv(socketFd, buffer, chunkSize, 0);
         if (received < 0) {
             if (errno == EINTR) {
@@ -725,8 +726,8 @@ static string peerHost(size_t peerIndex) {
     return peer.substr(0, colon);
 }
 
-static bool findPeerIndexForClientAddress(const sockaddr_storage &clientAddr, socklen_t clientAddrLen,
-                                          size_t &peerIndex) {
+static bool findPeerIndexForClientAddress(const sockaddr_storage &clientAddr,
+                                          socklen_t clientAddrLen, size_t &peerIndex) {
     char host[NI_MAXHOST] = {};
     int rc = getnameinfo(reinterpret_cast<const sockaddr *>(&clientAddr), clientAddrLen, host,
                          sizeof(host), nullptr, 0, NI_NUMERICHOST);
@@ -770,8 +771,8 @@ static bool ensureConnectedPeerSocket(size_t peerIndex, int &socketFd) {
 
 static bool sendBatchToPeerWithRetry(size_t peerIndex, int &socketFd,
                                      const vector<RoutedLink> &batch) {
-    // build payload 
-    const string payload;
+    // build payload
+    string payload;
     payload.reserve(batch.size() * 96);
     for (const RoutedLink &link : batch) {
         payload += link.url;
@@ -783,7 +784,7 @@ static bool sendBatchToPeerWithRetry(size_t peerIndex, int &socketFd,
         }
         payload.pushBack('\n');
     }
-    
+
     for (size_t attempt = 0; attempt <= sendBatchRetryCount; ++attempt) {
         if (ensureConnectedPeerSocket(peerIndex, socketFd) &&
             sendFrame(socketFd, peer_address[peerIndex], payload)) {
@@ -956,9 +957,9 @@ static void processReceivedBatch(const string &payload) {
             if (fieldEnd != string::npos) {
                 size_t fieldStart = fieldEnd + 1;
                 size_t secondFieldEnd = findCharFrom(line, '\t', fieldStart);
-                size_t secondFieldLength =
-                    secondFieldEnd == string::npos ? line.size() - fieldStart
-                                                   : secondFieldEnd - fieldStart;
+                size_t secondFieldLength = secondFieldEnd == string::npos
+                                               ? line.size() - fieldStart
+                                               : secondFieldEnd - fieldStart;
                 string maybeSeedDistance = line.substr(fieldStart, secondFieldLength);
                 if (parseSizeField(maybeSeedDistance, receivedSeedDistance)) {
                     fieldEnd = secondFieldEnd;
@@ -968,8 +969,8 @@ static void processReceivedBatch(const string &payload) {
             while (fieldEnd != string::npos) {
                 size_t fieldStart = fieldEnd + 1;
                 fieldEnd = findCharFrom(line, '\t', fieldStart);
-                size_t fieldLength = fieldEnd == string::npos ? line.size() - fieldStart
-                                                              : fieldEnd - fieldStart;
+                size_t fieldLength =
+                    fieldEnd == string::npos ? line.size() - fieldStart : fieldEnd - fieldStart;
                 if (fieldLength > 0) {
                     anchorWords.pushBack(line.substr(fieldStart, fieldLength));
                 }

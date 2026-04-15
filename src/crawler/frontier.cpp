@@ -235,11 +235,10 @@ void Frontier::promoteReservoir(std::int64_t nowMs) {
             reservoirSweepCursor = 0;
         }
 
-        const std::size_t scannedCount =
-            reservoir.size() < frontierReservoirSweepChunkSize ? reservoir.size()
-                                                               : frontierReservoirSweepChunkSize;
-        std::size_t winnersToKeep =
-            (scannedCount * frontierReservoirPromotionPercent + 99) / 100;
+        const std::size_t scannedCount = reservoir.size() < frontierReservoirSweepChunkSize
+                                             ? reservoir.size()
+                                             : frontierReservoirSweepChunkSize;
+        std::size_t winnersToKeep = (scannedCount * frontierReservoirPromotionPercent + 99) / 100;
         if (winnersToKeep == 0) {
             winnersToKeep = 1;
         }
@@ -369,9 +368,7 @@ vector<FrontierItem> Frontier::snapshot() const {
     lock_guard<mutex> guard(m);
     HostTable &queues = const_cast<HostTable &>(hostQueues);
     for (HostTable::Iterator it = queues.begin(); it != queues.end(); ++it) {
-        it->value.items.forEach([&result](const FrontierItem &item) {
-            result.pushBack(item);
-        });
+        it->value.items.forEach([&result](const FrontierItem &item) { result.pushBack(item); });
     }
     for (std::size_t i = 0; i < reservoir.size(); ++i) {
         result.pushBack(reservoir[i]);
