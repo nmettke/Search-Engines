@@ -25,6 +25,7 @@
 #include <cerrno>
 #include <chrono>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -62,6 +63,22 @@ std::atomic<size_t> machine_id{0};
 vector<string> peer_address;
 condition_variable batch_cv;
 
+struct PeerReceiverState {
+    mutex lock;
+    condition_variable cv;
+    int pendingSocketFd = -1;
+    int activeSocketFd = -1;
+    bool stop = false;
+};
+
+struct PeerThreadArgs {
+    size_t peerIndex = 0;
+};
+
+PeerReceiverState *peerReceiverStates = nullptr;
+PeerThreadArgs *peerSenderThreadArgs = nullptr;
+PeerThreadArgs *peerReceiverThreadArgs = nullptr;
+
 struct WordPosting {
     vector<string> words;
     size_t referring_count;
@@ -98,7 +115,7 @@ const string indexDirectory("data/body_index");
 const string metaDirectory("data/meta");
 const size_t FLUSHBODYTOKENSIZE = 25000000;
 static constexpr size_t maxIndexQueueItems = 1024;
-static constexpr size_t crawlerThreadsPerCore = 300;
+static constexpr size_t crawlerThreadsPerCore = 10;
 static constexpr size_t fallbackCrawlerThreadCount = 8;
 static constexpr size_t maxCrawlerThreadCount = 2400;
 
@@ -160,6 +177,14 @@ static bool shouldOwnUrl(const string &normalizedUrl) {
 static void signalHandler(int) {
     shouldStop = true;
     batch_cv.notify_all();
+    if (peerReceiverStates != nullptr) {
+        for (size_t i = 0; i < peer_address.size(); ++i) {
+            if (i == machine_id.load()) {
+                continue;
+            }
+            peerReceiverStates[i].cv.notify_one();
+        }
+    }
     if (f != nullptr) {
         f->shutdown();
     }
@@ -529,24 +554,127 @@ void *IndexWorkerThread(void *) {
 
 static constexpr size_t sendBatchRetryCount = 5;
 static constexpr int sendBatchRetryBaseDelayMs = 1000;
-static bool hasReadyBatch() {
-    for (const auto &batch : batches) {
-        if (batch.size() >= numLinkThreshold.load() || (shouldStop && batch.size() > 0)) {
-            return true;
-        }
-    }
-    return false;
+
+static bool hasReadyBatchForPeer(size_t peerIndex) {
+    return batches[peerIndex].size() >= numLinkThreshold.load() ||
+           (shouldStop && batches[peerIndex].size() > 0);
 }
 
-static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch) {
-    if (batch.size() == 0) {
+static bool sendAllBytes(int socketFd, const char *data, size_t totalBytes, const string &peer) {
+    size_t remaining = totalBytes;
+    while (remaining > 0) {
+        ssize_t sent = send(socketFd, data, remaining, 0);
+        if (sent < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            tsOut(std::cerr) << "Failed while sending to peer " << peer << ": "
+                             << std::strerror(errno) << '\n';
+            return false;
+        }
+        if (sent == 0) {
+            tsOut(std::cerr) << "Peer " << peer << " closed while sending\n";
+            return false;
+        }
+
+        data += sent;
+        remaining -= static_cast<size_t>(sent);
+    }
+
+    return true;
+}
+
+static bool recvAllBytes(int socketFd, unsigned char *data, size_t totalBytes, size_t peerIndex) {
+    size_t remaining = totalBytes;
+    while (remaining > 0) {
+        ssize_t received = recv(socketFd, data, remaining, 0);
+        if (received < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (!shouldStop) {
+                tsOut(std::cerr) << "Receive failed from peer " << peerIndex << ": "
+                                 << std::strerror(errno) << '\n';
+            }
+            return false;
+        }
+        if (received == 0) {
+            return false;
+        }
+
+        data += received;
+        remaining -= static_cast<size_t>(received);
+    }
+
+    return true;
+}
+
+static bool sendFrame(int socketFd, const string &peer, const string &payload) {
+    unsigned char header[8];
+    uint64_t value = static_cast<uint64_t>(payload.size());
+    
+    // encode header (payload size)
+    for (int i = 7; i >= 0; --i) {
+        header[i] = static_cast<unsigned char>(value & 0xffU);
+        value >>= 8;
+    }
+
+    // We need to let peer know payload size
+    if (!sendAllBytes(socketFd, reinterpret_cast<const char *>(header), sizeof(header), peer)) {
+        return false;
+    }
+
+    if (payload.size() == 0) {
         return true;
     }
 
+    return sendAllBytes(socketFd, payload.data(), payload.size(), peer);
+}
+
+static bool recvFrame(int socketFd, size_t peerIndex, string &payload) {
+    unsigned char header[8];
+    if (!recvAllBytes(socketFd, header, sizeof(header), peerIndex)) {
+        return false;
+    }
+
+    // decode the message size
+    uint64_t frameBytes = 0;
+    for (size_t i = 0; i < 8; ++i) {
+        frameBytes = (frameBytes << 8) | static_cast<uint64_t>(header[i]);
+    }
+
+    payload = string();
+    char buffer[4096];
+    uint64_t remaining = frameBytes;
+    while (remaining > 0) {
+        size_t chunkSize = remaining > sizeof(buffer) ? sizeof(buffer) : static_cast<size_t>(remaining);
+        ssize_t received = recv(socketFd, buffer, chunkSize, 0);
+        if (received < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (!shouldStop) {
+                tsOut(std::cerr) << "Receive failed from peer " << peerIndex << ": "
+                                 << std::strerror(errno) << '\n';
+            }
+            return false;
+        }
+        if (received == 0) {
+            return false;
+        }
+
+        payload.append(buffer, static_cast<size_t>(received));
+        remaining -= static_cast<uint64_t>(received);
+    }
+
+    return true;
+}
+
+static int connectToPeer(const string &peer) {
     size_t colon = peer.find(':');
     if (colon == string::npos || colon == 0 || colon + 1 >= peer.size()) {
         tsOut(std::cerr) << "Invalid peer address: " << peer << '\n';
-        return false;
+        return -1;
     }
 
     string host = peer.substr(0, colon);
@@ -559,7 +687,7 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
     addrinfo *result = nullptr;
     if (getaddrinfo(host.c_str(), port.c_str(), &hints, &result) != 0) {
         tsOut(std::cerr) << "Failed to resolve peer " << peer << '\n';
-        return false;
+        return -1;
     }
 
     int socketFd = -1;
@@ -569,6 +697,8 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
             continue;
         }
 
+        int opt = 1;
+        setsockopt(socketFd, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(opt));
         if (connect(socketFd, rp->ai_addr, rp->ai_addrlen) == 0) {
             break;
         }
@@ -581,10 +711,67 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
 
     if (socketFd < 0) {
         tsOut(std::cerr) << "Failed to connect to peer " << peer << '\n';
+    }
+
+    return socketFd;
+}
+
+static string peerHost(size_t peerIndex) {
+    const string &peer = peer_address[peerIndex];
+    size_t colon = peer.find(':');
+    if (colon == string::npos) {
+        return peer;
+    }
+    return peer.substr(0, colon);
+}
+
+static bool findPeerIndexForClientAddress(const sockaddr_storage &clientAddr, socklen_t clientAddrLen,
+                                          size_t &peerIndex) {
+    char host[NI_MAXHOST] = {};
+    int rc = getnameinfo(reinterpret_cast<const sockaddr *>(&clientAddr), clientAddrLen, host,
+                         sizeof(host), nullptr, 0, NI_NUMERICHOST);
+    if (rc != 0) {
+        tsOut(std::cerr) << "Failed to identify accepted peer: " << gai_strerror(rc) << '\n';
         return false;
     }
 
-    string payload;
+    const string remoteHost(host);
+    for (size_t i = 0; i < peer_address.size(); ++i) {
+        if (i == machine_id.load()) {
+            continue;
+        }
+
+        if (peerHost(i) == remoteHost) {
+            peerIndex = i;
+            return true;
+        }
+    }
+
+    tsOut(std::cerr) << "Rejected connection from unknown host " << remoteHost << '\n';
+    return false;
+}
+
+static bool ensureConnectedPeerSocket(size_t peerIndex, int &socketFd) {
+    if (socketFd >= 0) {
+        return true;
+    }
+
+    socketFd = connectToPeer(peer_address[peerIndex]);
+    if (socketFd < 0) {
+        return false;
+    }
+
+    if (debug) {
+        tsOut(std::cout) << "Connected outbound socket to peer " << peerIndex << '\n';
+    }
+
+    return true;
+}
+
+static bool sendBatchToPeerWithRetry(size_t peerIndex, int &socketFd,
+                                     const vector<RoutedLink> &batch) {
+    // build payload 
+    const string payload;
     payload.reserve(batch.size() * 96);
     for (const RoutedLink &link : batch) {
         payload += link.url;
@@ -596,39 +783,25 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
         }
         payload.pushBack('\n');
     }
-
-    const char *data = payload.data();
-    size_t remaining = payload.size();
-    while (remaining > 0) {
-        ssize_t sent = send(socketFd, data, remaining, 0);
-        if (sent < 0) {
-            tsOut(std::cerr) << "Failed while sending to peer " << peer << ": "
-                             << std::strerror(errno) << '\n';
-            close(socketFd);
-            return false;
-        }
-
-        data += sent;
-        remaining -= static_cast<size_t>(sent);
-    }
-
-    close(socketFd);
-    return true;
-}
-
-static bool sendBatchToPeerWithRetry(const string &peer, const vector<RoutedLink> &batch) {
+    
     for (size_t attempt = 0; attempt <= sendBatchRetryCount; ++attempt) {
-        if (sendBatchToPeer(peer, batch)) {
+        if (ensureConnectedPeerSocket(peerIndex, socketFd) &&
+            sendFrame(socketFd, peer_address[peerIndex], payload)) {
             return true;
         }
 
+        if (socketFd >= 0) {
+            close(socketFd);
+            socketFd = -1;
+        }
+
         if (attempt == sendBatchRetryCount) {
-            tsOut(std::cout) << "Send Batch Failed; Give up\n";
+            tsOut(std::cout) << "Send batch to peer " << peerIndex << " failed after retries\n";
             break;
         }
 
         if (debug) {
-            tsOut(std::cout) << "Send Batch Failed; Retrying\n";
+            tsOut(std::cout) << "Retrying peer " << peerIndex << " batch send\n";
         }
 
         const int delayMs = sendBatchRetryBaseDelayMs * (1 << attempt);
@@ -638,56 +811,40 @@ static bool sendBatchToPeerWithRetry(const string &peer, const vector<RoutedLink
     return false;
 }
 
-void *SendToMachineThread(void *) {
+void *SendToPeerThread(void *arg) {
+    const size_t peerIndex = static_cast<PeerThreadArgs *>(arg)->peerIndex;
+    int socketFd = -1;
+
     while (true) {
-        vector<vector<RoutedLink>> readyBatches;
+        vector<RoutedLink> readyBatch;
 
         batch_lock.lock();
-        while (!shouldStop && !hasReadyBatch()) {
+        while (!hasReadyBatchForPeer(peerIndex) && !shouldStop) {
             batch_cv.wait(batch_lock);
         }
 
-        if (shouldStop && !hasReadyBatch()) {
+        if (!hasReadyBatchForPeer(peerIndex)) {
             batch_lock.unlock();
             break;
         }
 
-        readyBatches = vector<vector<RoutedLink>>(batches.size());
-        for (size_t i = 0; i < batches.size(); ++i) {
-            if (batches[i].size() >= numLinkThreshold.load() || (shouldStop && batches[i].size() > 0)) {
-                readyBatches[i] = std::move(batches[i]);
-                batches[i] = vector<RoutedLink>();
-            }
-        }
+        readyBatch = std::move(batches[peerIndex]);
+        batches[peerIndex] = vector<RoutedLink>();
         batch_lock.unlock();
 
-        for (size_t i = 0; i < readyBatches.size(); ++i) {
-            if (readyBatches[i].size() == 0) {
-                continue;
+        if (!sendBatchToPeerWithRetry(peerIndex, socketFd, readyBatch)) {
+            batch_lock.lock();
+            for (const RoutedLink &link : readyBatch) {
+                batches[peerIndex].pushBack(link);
             }
-            if (i == machine_id.load()) {
-                vector<FrontierItem> localItems;
-                for (const RoutedLink &link : readyBatches[i]) {
-                    appendAnchorTerms(link.url, link.anchorText);
-                    if (bloom.checkAndInsert(link.url)) {
-                        localItems.pushBack(FrontierItem::withSeedDistance(link.url, link.seedDistance));
-                    }
-                }
-                f->pushMany(localItems);
-                continue;
-            }
-
-            if (!sendBatchToPeerWithRetry(peer_address[i], readyBatches[i])) {
-                batch_lock.lock();
-                for (const RoutedLink &link : readyBatches[i]) {
-                    batches[i].pushBack(link);
-                }
-                batch_lock.unlock();
-                batch_cv.notify_one();
-            }
+            batch_lock.unlock();
+            batch_cv.notify_all();
         }
     }
 
+    if (socketFd >= 0) {
+        close(socketFd);
+    }
     return nullptr;
 }
 
@@ -777,7 +934,71 @@ static int openListeningSocket() {
     return listenFd;
 }
 
-void *ReceiveFromMachineThread(void *) {
+static void processReceivedBatch(const string &payload) {
+    if (payload.empty()) {
+        return;
+    }
+
+    vector<FrontierItem> discoveredLinks;
+    size_t lineStart = 0;
+    while (lineStart < payload.size()) {
+        size_t lineEnd = findCharFrom(payload, '\n', lineStart);
+        size_t lineLength =
+            lineEnd != string::npos ? lineEnd - lineStart : payload.size() - lineStart;
+
+        string line = payload.substr(lineStart, lineLength);
+        if (!line.empty()) {
+            size_t fieldEnd = findCharFrom(line, '\t', 0);
+            string rawUrl = fieldEnd == string::npos ? line : line.substr(0, fieldEnd);
+            vector<string> anchorWords;
+            size_t receivedSeedDistance = 0;
+
+            if (fieldEnd != string::npos) {
+                size_t fieldStart = fieldEnd + 1;
+                size_t secondFieldEnd = findCharFrom(line, '\t', fieldStart);
+                size_t secondFieldLength =
+                    secondFieldEnd == string::npos ? line.size() - fieldStart
+                                                   : secondFieldEnd - fieldStart;
+                string maybeSeedDistance = line.substr(fieldStart, secondFieldLength);
+                if (parseSizeField(maybeSeedDistance, receivedSeedDistance)) {
+                    fieldEnd = secondFieldEnd;
+                }
+            }
+
+            while (fieldEnd != string::npos) {
+                size_t fieldStart = fieldEnd + 1;
+                fieldEnd = findCharFrom(line, '\t', fieldStart);
+                size_t fieldLength = fieldEnd == string::npos ? line.size() - fieldStart
+                                                              : fieldEnd - fieldStart;
+                if (fieldLength > 0) {
+                    anchorWords.pushBack(line.substr(fieldStart, fieldLength));
+                }
+            }
+
+            string canonicalOut;
+            if (passesUrlQualityChecks(rawUrl, canonicalOut) && urlFilter.isAllowed(canonicalOut) &&
+                shouldOwnUrl(canonicalOut)) {
+                appendAnchorTerms(canonicalOut, anchorWords);
+                if (bloom.checkAndInsert(canonicalOut)) {
+                    discoveredLinks.pushBack(
+                        FrontierItem::withSeedDistance(canonicalOut, receivedSeedDistance));
+                }
+            }
+        }
+
+        if (lineEnd == string::npos) {
+            break;
+        }
+
+        lineStart = lineEnd + 1;
+    }
+
+    if (discoveredLinks.size() > 0) {
+        f->pushMany(discoveredLinks);
+    }
+}
+
+void *AcceptPeerConnectionsThread(void *) {
     int listenFd = openListeningSocket();
     if (listenFd < 0) {
         return nullptr;
@@ -804,7 +1025,9 @@ void *ReceiveFromMachineThread(void *) {
             continue;
         }
 
-        int clientFd = accept(listenFd, nullptr, nullptr);
+        sockaddr_storage clientAddr{};
+        socklen_t clientAddrLen = sizeof(clientAddr);
+        int clientFd = accept(listenFd, reinterpret_cast<sockaddr *>(&clientAddr), &clientAddrLen);
         if (clientFd < 0) {
             if (errno == EINTR) {
                 continue;
@@ -813,93 +1036,89 @@ void *ReceiveFromMachineThread(void *) {
             continue;
         }
 
-        string payload;
-        char buffer[4096];
-        while (true) {
-            ssize_t received = recv(clientFd, buffer, sizeof(buffer), 0);
-            if (received == 0) {
-                break;
-            }
-            if (received < 0) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                tsOut(std::cerr) << "Receive failed: " << std::strerror(errno) << '\n';
-                break;
-            }
-            payload.append(buffer, static_cast<size_t>(received));
+        int opt = 1;
+        setsockopt(clientFd, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(opt));
+
+        size_t remotePeerIndex = 0;
+        if (!findPeerIndexForClientAddress(clientAddr, clientAddrLen, remotePeerIndex)) {
+            close(clientFd);
+            continue;
         }
 
-        close(clientFd);
-
-        if (payload.empty()) {
+        if (remotePeerIndex >= peer_address.size() || remotePeerIndex == machine_id.load()) {
+            tsOut(std::cerr) << "Rejected connection with invalid peer id " << remotePeerIndex
+                             << '\n';
+            close(clientFd);
             continue;
         }
 
         if (debug) {
-            tsOut(std::cout) << "Receive batch\n";
+            tsOut(std::cout) << "Accepted persistent connection from peer " << remotePeerIndex
+                             << '\n';
         }
 
-        vector<FrontierItem> discoveredLinks;
-        size_t lineStart = 0;
-        while (lineStart < payload.size()) {
-            size_t lineEnd = findCharFrom(payload, '\n', lineStart);
-            size_t lineLength =
-                lineEnd != string::npos ? lineEnd - lineStart : payload.size() - lineStart;
-
-            string line = payload.substr(lineStart, lineLength);
-            if (!line.empty()) {
-                size_t fieldEnd = findCharFrom(line, '\t', 0);
-                string rawUrl = fieldEnd == string::npos ? line : line.substr(0, fieldEnd);
-                vector<string> anchorWords;
-                size_t receivedSeedDistance = 0;
-
-                if (fieldEnd != string::npos) {
-                    size_t fieldStart = fieldEnd + 1;
-                    size_t secondFieldEnd = findCharFrom(line, '\t', fieldStart);
-                    size_t secondFieldLength =
-                        secondFieldEnd == string::npos ? line.size() - fieldStart
-                                                       : secondFieldEnd - fieldStart;
-                    string maybeSeedDistance = line.substr(fieldStart, secondFieldLength);
-                    if (parseSizeField(maybeSeedDistance, receivedSeedDistance)) {
-                        fieldEnd = secondFieldEnd;
-                    }
-                }
-
-                while (fieldEnd != string::npos) {
-                    size_t fieldStart = fieldEnd + 1;
-                    fieldEnd = findCharFrom(line, '\t', fieldStart);
-                    size_t fieldLength = fieldEnd == string::npos ? line.size() - fieldStart
-                                                                  : fieldEnd - fieldStart;
-                    if (fieldLength > 0) {
-                        anchorWords.pushBack(line.substr(fieldStart, fieldLength));
-                    }
-                }
-
-                string canonicalOut;
-                if (passesUrlQualityChecks(rawUrl, canonicalOut) && urlFilter.isAllowed(canonicalOut) &&
-                    shouldOwnUrl(canonicalOut)) {
-                    appendAnchorTerms(canonicalOut, anchorWords);
-                    if (bloom.checkAndInsert(canonicalOut)) {
-                        discoveredLinks.pushBack(
-                            FrontierItem::withSeedDistance(canonicalOut, receivedSeedDistance));
-                    }
-                }
-            }
-
-            if (lineEnd == string::npos) {
-                break;
-            }
-
-            lineStart = lineEnd + 1;
+        PeerReceiverState &state = peerReceiverStates[remotePeerIndex];
+        state.lock.lock();
+        if (state.pendingSocketFd >= 0) {
+            close(state.pendingSocketFd);
         }
-
-        if (discoveredLinks.size() > 0) {
-            f->pushMany(discoveredLinks);
-        }
+        state.pendingSocketFd = clientFd;
+        state.cv.notify_one();
+        state.lock.unlock();
     }
 
     close(listenFd);
+    return nullptr;
+}
+
+void *ReceiveFromPeerThread(void *arg) {
+    const size_t peerIndex = static_cast<PeerThreadArgs *>(arg)->peerIndex;
+    PeerReceiverState &state = peerReceiverStates[peerIndex];
+
+    while (true) {
+        int socketFd = -1;
+
+        state.lock.lock();
+        while (state.pendingSocketFd < 0 && !state.stop && !shouldStop) {
+            state.cv.wait(state.lock);
+        }
+
+        if (state.pendingSocketFd < 0 && (state.stop || shouldStop)) {
+            state.lock.unlock();
+            break;
+        }
+
+        socketFd = state.pendingSocketFd;
+        state.pendingSocketFd = -1;
+        state.activeSocketFd = socketFd;
+        state.lock.unlock();
+
+        if (debug) {
+            tsOut(std::cout) << "Receiver thread attached to peer " << peerIndex << '\n';
+        }
+
+        while (!shouldStop) {
+            string payload;
+            if (!recvFrame(socketFd, peerIndex, payload)) {
+                break;
+            }
+
+            if (debug) {
+                tsOut(std::cout) << "Received batch frame from peer " << peerIndex << '\n';
+            }
+            processReceivedBatch(payload);
+        }
+
+        shutdown(socketFd, SHUT_RDWR);
+        close(socketFd);
+
+        state.lock.lock();
+        if (state.activeSocketFd == socketFd) {
+            state.activeSocketFd = -1;
+        }
+        state.lock.unlock();
+    }
+
     return nullptr;
 }
 
@@ -1073,11 +1292,13 @@ int main(int argc, char **argv) {
     size_t indexThreadCount = 1;
     vector<pthread_t> crawlerThreads(crawlerThreadCount);
     vector<pthread_t> indexThreads(indexThreadCount);
-    pthread_t senderThread{};
-    pthread_t receiverThread{};
+    pthread_t acceptThread{};
     pthread_t checkpointThread{};
-    bool senderStarted = false;
-    bool receiverStarted = false;
+    pthread_t *peerSenderThreads = nullptr;
+    pthread_t *peerReceiverThreads = nullptr;
+    bool *peerSenderStarted = nullptr;
+    bool *peerReceiverStarted = nullptr;
+    bool acceptStarted = false;
     bool checkpointStarted = false;
 
     lastCheckpointTime = time(nullptr);
@@ -1097,10 +1318,33 @@ int main(int argc, char **argv) {
     if (peer_address.size() > 1) {
         // For local frontier testing, the default configuration leaves SEARCH_PEERS unset,
         // which gives us a single-machine run and bypasses all socket code.
-        pthread_create(&senderThread, nullptr, SendToMachineThread, nullptr);
-        pthread_create(&receiverThread, nullptr, ReceiveFromMachineThread, nullptr);
-        senderStarted = true;
-        receiverStarted = true;
+        const size_t peerCount = peer_address.size();
+        peerReceiverStates = new PeerReceiverState[peerCount];
+        peerSenderThreadArgs = new PeerThreadArgs[peerCount];
+        peerReceiverThreadArgs = new PeerThreadArgs[peerCount];
+        peerSenderThreads = new pthread_t[peerCount];
+        peerReceiverThreads = new pthread_t[peerCount];
+        peerSenderStarted = new bool[peerCount]();
+        peerReceiverStarted = new bool[peerCount]();
+
+        for (size_t i = 0; i < peerCount; ++i) {
+            peerSenderThreadArgs[i].peerIndex = i;
+            peerReceiverThreadArgs[i].peerIndex = i;
+            if (i == machine_id.load()) {
+                continue;
+            }
+
+            pthread_create(&peerSenderThreads[i], nullptr, SendToPeerThread,
+                           &peerSenderThreadArgs[i]);
+            peerSenderStarted[i] = true;
+
+            pthread_create(&peerReceiverThreads[i], nullptr, ReceiveFromPeerThread,
+                           &peerReceiverThreadArgs[i]);
+            peerReceiverStarted[i] = true;
+        }
+
+        pthread_create(&acceptThread, nullptr, AcceptPeerConnectionsThread, nullptr);
+        acceptStarted = true;
     }
 
     // pthread_create(&anchorThread, nullptr, AnchorFlushThread, nullptr);
@@ -1113,6 +1357,29 @@ int main(int argc, char **argv) {
     q->shutdown();
     batch_cv.notify_all();
 
+    if (peerReceiverStates != nullptr) {
+        // making sure all socket correctly closed
+        for (size_t i = 0; i < peer_address.size(); ++i) {
+            if (i == machine_id.load()) {
+                continue;
+            }
+
+            PeerReceiverState &state = peerReceiverStates[i];
+            state.lock.lock();
+            state.stop = true;
+            if (state.activeSocketFd >= 0) {
+                shutdown(state.activeSocketFd, SHUT_RDWR);
+            }
+            if (state.pendingSocketFd >= 0) {
+                shutdown(state.pendingSocketFd, SHUT_RDWR);
+                close(state.pendingSocketFd);
+                state.pendingSocketFd = -1;
+            }
+            state.cv.notify_one();
+            state.lock.unlock();
+        }
+    }
+
     if (checkpointStarted) {
         pthread_join(checkpointThread, nullptr);
     }
@@ -1121,12 +1388,30 @@ int main(int argc, char **argv) {
         pthread_join(indexThreads[i], nullptr);
     }
 
-    if (senderStarted) {
-        pthread_join(senderThread, nullptr);
+    if (acceptStarted) {
+        pthread_join(acceptThread, nullptr);
     }
 
-    if (receiverStarted) {
-        pthread_join(receiverThread, nullptr);
+    if (peerSenderThreads != nullptr) {
+        for (size_t i = 0; i < peer_address.size(); ++i) {
+            if (i == machine_id.load()) {
+                continue;
+            }
+            if (peerSenderStarted[i]) {
+                pthread_join(peerSenderThreads[i], nullptr);
+            }
+        }
+    }
+
+    if (peerReceiverThreads != nullptr) {
+        for (size_t i = 0; i < peer_address.size(); ++i) {
+            if (i == machine_id.load()) {
+                continue;
+            }
+            if (peerReceiverStarted[i]) {
+                pthread_join(peerReceiverThreads[i], nullptr);
+            }
+        }
     }
 
     // pthread_join(anchorThread, nullptr);
@@ -1145,6 +1430,13 @@ int main(int argc, char **argv) {
     delete f;
     delete q;
     delete checkpoint;
+    delete[] peerSenderThreads;
+    delete[] peerReceiverThreads;
+    delete[] peerSenderStarted;
+    delete[] peerReceiverStarted;
+    delete[] peerSenderThreadArgs;
+    delete[] peerReceiverThreadArgs;
+    delete[] peerReceiverStates;
 
     cleanupSSL();
     return 0;
