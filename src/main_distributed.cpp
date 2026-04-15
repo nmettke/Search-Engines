@@ -1044,35 +1044,6 @@ void *ReceiveFromMachineThread(void *) {
     return nullptr;
 }
 
-// code to create thread to periodically flush anchor.
-// Since we are already flushing every few hundred docs, we skip this
-
-// void *AnchorFlushThread(void *) {
-//     while (!shouldStop) {
-//         for (size_t i = 0; i < anchorFlushIntervalSeconds && !shouldStop; ++i) {
-//             sleep(1);
-//         }
-//         flushAnchorIndexToDisk(false);
-//     }
-//     return nullptr;
-// }
-
-// static size_t parseEnv(const char *name, size_t fallback) {
-//     // Try parsing env as unsigned long int, else return fallback
-//     const char *raw = std::getenv(name);
-//     if (raw == nullptr || raw[0] == '\0') {
-//         return fallback;
-//     }
-//
-//     char *end = nullptr;
-//     unsigned long parsed = std::strtoul(raw, &end, 10);
-//     if (end == raw || (end != nullptr && *end != '\0')) {
-//         return fallback;
-//     }
-//
-//     return static_cast<size_t>(parsed);
-// }
-
 static bool parseSizeArg(const char *raw, size_t &value) {
     if (raw == nullptr || raw[0] == '\0') {
         return false;
