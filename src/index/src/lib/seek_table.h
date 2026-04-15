@@ -15,8 +15,8 @@ struct SeekTableEntry {
 
 class SeekTable {
   public:
-    static constexpr uint32_t IndexBits = 16;                // use top 16 bits for index
-    static constexpr uint32_t EntryCount = 1u << IndexBits; // use top 16 bits for index
+    static constexpr uint32_t IndexBits = 8;                // use top 8 bits for index
+    static constexpr uint32_t EntryCount = 1u << IndexBits; // use top 8 bits for index
     static constexpr uint32_t BuildThreshold = 512;
     static constexpr uint32_t NoPosting = std::numeric_limits<uint32_t>::max();
     static constexpr size_t SerializedEntrySize = sizeof(uint32_t) * 2;
