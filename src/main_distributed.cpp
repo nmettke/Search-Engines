@@ -113,7 +113,7 @@ size_t anchorFlushFileCount = 0;
 const string anchorIndexDirectory("data/anchor_index");
 const string indexDirectory("data/body_index");
 const string metaDirectory("data/meta");
-const size_t FLUSHBODYTOKENSIZE = 25000000;
+const size_t FLUSHBODYTOKENSIZE = 100000000;
 static constexpr size_t maxIndexQueueItems = 1024;
 static constexpr size_t crawlerThreadsPerCore = 100;
 static constexpr size_t fallbackCrawlerThreadCount = 8;
