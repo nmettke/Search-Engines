@@ -102,7 +102,7 @@ const size_t FLUSHBODYTOKENSIZE = 25000000;
 static constexpr size_t maxIndexQueueItems = 1024;
 static constexpr size_t crawlerThreadsPerCore = 100;
 static constexpr size_t fallbackCrawlerThreadCount = 8;
-static constexpr size_t maxCrawlerThreadCount = 800;
+static constexpr size_t maxCrawlerThreadCount = 1600;
 
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint = nullptr;
@@ -485,7 +485,7 @@ void *IndexWorkerThread(void *) {
         }
 
         if (docsProcessed > 0 && docsProcessed % 10000 == 0) {
-            std::cout << "Processed" << docsProcessed << "documents\n";
+            std::cout << "Processed " << docsProcessed << " documents\n";
         }
     }
 
@@ -1078,11 +1078,8 @@ int main(int argc, char **argv) {
     delayedQueue = new DelayedQueue();
     anchorIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
 
-    peer_address = {
-        "10.128.0.21:8081", "10.128.0.22:8081", "10.128.0.23:8081",
-        "10.128.0.24:8081", "10.128.0.25:8081", "10.128.0.26:8081",
-        "10.128.0.27:8081", "10.128.0.28:8081", "10.128.0.29:8081",
-    };
+    peer_address = {"10.128.0.21:8081", "10.128.0.22:8081", "10.128.0.23:8081", "10.128.0.25:8081",
+                    "10.128.0.26:8081", "10.128.0.27:8081", "10.128.0.28:8081", "10.128.0.29:8081"};
 
     // machine_id = parseEnv("SEARCH_MACHINE_ID", 0);
     // numLinkThreshold = parseEnv("SEARCH_BATCH_THRESHOLD", numLinkThreshold.load());
