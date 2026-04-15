@@ -91,8 +91,7 @@ const string anchorIndexDirectory("data/anchor_index");
 const string indexDirectory("data/body_index");
 const string titleIndexDirectory("data/title_index");
 const string metaDirectory("data/meta");
-const size_t FLUSHANCHORSIZE = 2500;
-const size_t FLUSHBODYTOKENSIZE = 5000000;
+const size_t FLUSHBODYTOKENSIZE = 25000000;
 static constexpr size_t maxIndexQueueItems = 1024;
 static constexpr size_t crawlerThreadsPerCore = 100;
 static constexpr size_t fallbackCrawlerThreadCount = 8;
@@ -212,15 +211,14 @@ static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, const 
     for (const WordSnapshot &record : snapshot) {
         fprintf(fp, "%s", record.url.c_str());
         if (isTitle) {
-            fprintf(fp, "\t%zu", record.words.size());
+            fprintf(fp, "\t%zu\t", record.words.size());
             for (const string &word : record.words) {
-                fprintf(fp, "\t%s", word.c_str());
+                fprintf(fp, "%s ", word.c_str());
             }
-            fprintf(fp, "\t0");
         } else {
-            fprintf(fp, "\t0\t%zu", record.words.size());
+            fprintf(fp, "\t%zu\t", record.words.size());
             for (const string &word : record.words) {
-                fprintf(fp, "\t%s", word.c_str());
+                fprintf(fp, "%s ", word.c_str());
             }
         }
         fprintf(fp, "\n");
@@ -488,8 +486,7 @@ void *IndexWorkerThread(void *) {
             ++chunksWritten;
         }
 
-        if (docsProcessed > 0 && docsProcessed % FLUSHANCHORSIZE == 0) {
-            flushAnchorIndexToDisk(false);
+        if (docsProcessed > 0 && docsProcessed % 10000 == 0) {
             std::cout << "Processed" << docsProcessed << "documents\n";
         }
     }
