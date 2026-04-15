@@ -309,6 +309,7 @@ void *handle_frontend(void *args) {
 
     // Manually format the JSON response
     string json = "{\n  \"query\": \"" + query + "\",\n  \"elapsed_ms\": " + to_string(elapsed_ms) +
+                  ",\n  \"total_results\": " + to_string(final_results.size()) +
                   ",\n  \"results\": [\n";
     for (size_t i = 0; i < final_results.size(); ++i) {
         json += "    {\n";

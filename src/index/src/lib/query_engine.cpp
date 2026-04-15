@@ -100,7 +100,7 @@ vector<ScoredDocument> QueryEngine::search(const string &query, size_t K) const 
 
         if (doc) {
             double score = scorer_.score(*doc);
-            top_k.push({doc->url, score});
+            top_k.push({doc_id, score});
         }
 
         root->seek(doc_end_loc + 1);

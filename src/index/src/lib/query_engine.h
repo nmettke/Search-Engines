@@ -9,7 +9,7 @@
 #include <cstdint>
 
 struct ScoredDocument {
-    string url;
+    uint32_t doc_id;
     double score;
 };
 

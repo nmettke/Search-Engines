@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
@@ -16,19 +17,26 @@
 #include "../utils/vector.hpp"
 
 struct MetaRecord {
+    string url;
     string title;
     string snippet;
 };
 
 struct GlobalMatch {
-    string url;
+    int chunk_id;
+    uint32_t doc_id;
     double score;
 };
 
 struct ThreadArgs {
     int client_socket;
     vector<QueryEngine *> *engines;
-    HashTable<string, MetaRecord> *all_meta;
+    vector<vector<MetaRecord>> *all_meta;
+};
+
+struct Location {
+    size_t chunk_id;
+    size_t doc_id;
 };
 
 string to_string(double score) {
@@ -140,7 +148,7 @@ void *handle_master_connection(void *args) {
         for (size_t i = 0; i < engines->size(); ++i) {
             vector<ScoredDocument> chunk_matches = (*engines)[i]->search(query, K);
             for (const auto &match : chunk_matches) {
-                top_k_heap.push({match.url, match.score});
+                top_k_heap.push({(int)i, match.doc_id, match.score});
             }
         }
         vector<GlobalMatch> matches = top_k_heap.extractSorted();
@@ -148,12 +156,10 @@ void *handle_master_connection(void *args) {
         // Format the response: "url score\n"
         string response = "";
         for (const auto &match : matches) {
-            Tuple<string, MetaRecord> *result = (*t_args->all_meta).Find(match.url);
-            if (result != nullptr) {
-                MetaRecord &meta = result->value;
-                response += match.url + "\t" + meta.title + "\t" + meta.snippet + "\t" +
-                            to_string(match.score) + "\n";
-            }
+            MetaRecord &meta = (*t_args->all_meta)[match.chunk_id][match.doc_id];
+
+            response += meta.url + "\t" + meta.title + "\t" + meta.snippet + "\t" +
+                        to_string(match.score) + "\n";
         }
 
         response += "END_OF_RESULTS\n";
@@ -180,14 +186,53 @@ int main(int argc, char **argv) {
 
     vector<DiskChunkReader *> readers;
     vector<QueryEngine *> engines;
-    HashTable<string, MetaRecord> all_meta(anchorKeyEqual, anchorKeyHash);
+    vector<vector<MetaRecord>> all_meta;
+
+    HashTable<string, Location> index_lookup(anchorKeyEqual, anchorKeyHash);
 
     DIR *dir;
     struct dirent *ent;
     string index_dir = dir_path + "/anchor_parsed_index";
     string meta_dir = dir_path + "/meta";
 
-    // load all meta data into hashtable for quick access during query time
+    if ((dir = opendir(index_dir.c_str())) != nullptr) {
+        while ((ent = readdir(dir)) != nullptr) {
+            string file_name = ent->d_name;
+
+            if (file_name.length() >= 4 && file_name.substr(file_name.length() - 4) == ".idx") {
+                string idx_path = index_dir + "/" + file_name;
+
+                DiskChunkReader *reader = new DiskChunkReader();
+                if (reader->open(idx_path)) {
+                    QueryEngine *engine = new QueryEngine(*reader);
+                    readers.pushBack(reader);
+                    engines.pushBack(engine);
+
+                    auto header = reader->header();
+                    std::cout << "Loaded chunk: " << idx_path << " with " << header.num_documents
+                              << " documents\n";
+
+                    for (size_t doc_id = 0; doc_id < header.num_documents; ++doc_id) {
+                        auto doc_info = reader->getDocument(doc_id);
+                        index_lookup.Find(doc_info->url, {readers.size() - 1, doc_id});
+                    }
+                }
+            }
+        }
+        closedir(dir);
+    } else {
+        std::cerr << "Fatal Error: Could not open directory " << dir_path << "\n";
+        return 1;
+    }
+
+    // Initialize all_meta with empty records for each document in each chunk
+    for (size_t i = 0; i < readers.size(); i++) {
+        auto header = readers[i]->header();
+        vector<MetaRecord> chunk_meta(header.num_documents);
+        all_meta.pushBack(chunk_meta);
+    }
+
+    // load all meta data and put into all_meta vector
     if ((dir = opendir(meta_dir.c_str())) != nullptr) {
         while ((ent = readdir(dir)) != nullptr) {
             string file_name = ent->d_name;
@@ -210,7 +255,12 @@ int main(int argc, char **argv) {
                             string url = s.substr(0, tab1);
                             string title = s.substr(tab1 + 1, tab2 - tab1 - 1);
                             string snippet = s.substr(tab2 + 1);
-                            all_meta.Find(url, {title, snippet});
+
+                            Tuple<string, Location> *loc_tuple = index_lookup.Find(url);
+                            if (loc_tuple != nullptr) {
+                                Location loc = loc_tuple->value;
+                                all_meta[loc.chunk_id][loc.doc_id] = {url, title, snippet};
+                            }
                         }
                     }
                     fclose(fp);
@@ -220,31 +270,6 @@ int main(int argc, char **argv) {
         closedir(dir);
     } else {
         std::cerr << "Fatal Error: Could not open directory " << meta_dir << "\n";
-        return 1;
-    }
-
-    if ((dir = opendir(index_dir.c_str())) != nullptr) {
-        while ((ent = readdir(dir)) != nullptr) {
-            string file_name = ent->d_name;
-
-            if (file_name.length() >= 4 && file_name.substr(file_name.length() - 4) == ".idx") {
-                string idx_path = index_dir + "/" + file_name;
-
-                DiskChunkReader *reader = new DiskChunkReader();
-                if (reader->open(idx_path)) {
-                    QueryEngine *engine = new QueryEngine(*reader);
-                    readers.pushBack(reader);
-                    engines.pushBack(engine);
-
-                    auto header = reader->header();
-                    std::cout << "Loaded chunk: " << idx_path << " with " << header.num_documents
-                              << " documents\n";
-                }
-            }
-        }
-        closedir(dir);
-    } else {
-        std::cerr << "Fatal Error: Could not open directory " << dir_path << "\n";
         return 1;
     }
 
