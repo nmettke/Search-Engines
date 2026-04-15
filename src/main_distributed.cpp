@@ -66,11 +66,13 @@ condition_variable batch_cv;
 
 struct WordPosting {
     vector<string> words;
+    size_t referring_count;
 };
 
 struct WordSnapshot {
     string url;
     vector<string> words;
+    size_t referring_count;
 };
 
 static bool anchorKeyEqual(string a, string b) {
@@ -163,6 +165,7 @@ static void appendAnchorTerms(const string &url, const vector<string> &words) {
         sanitizeText(word);
         target.pushBack(word);
     }
+    entry->value.referring_count++;
 
     anchorIndexEdited = true;
 }
@@ -175,6 +178,7 @@ static void restoreWordSnapshot(HashTable<string, WordPosting> *targetIndex, boo
         for (const string &word : record.words) {
             entry->value.words.pushBack(word);
         }
+        entry->value.referring_count += record.referring_count;
     }
     editedFlag = true;
 }
@@ -206,7 +210,7 @@ static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, size_t
 
     for (const WordSnapshot &record : snapshot) {
         fprintf(fp, "%s", record.url.c_str());
-        fprintf(fp, "\t%zu\t", record.words.size());
+        fprintf(fp, "\t%zu\t%zu\t", record.referring_count, record.words.size());
         for (const string &word : record.words) {
             fprintf(fp, "%s ", word.c_str());
         }
@@ -235,7 +239,7 @@ static void flushAnchorIndexToDisk(bool force) {
     }
 
     for (auto it = anchorIndex->begin(); it != anchorIndex->end(); ++it) {
-        anchorSnapshot.pushBack({it->key, it->value.words});
+        anchorSnapshot.pushBack({it->key, it->value.words, it->value.referring_count});
     }
 
     HashTable<string, WordPosting> *oldAnchorIndex = anchorIndex;
