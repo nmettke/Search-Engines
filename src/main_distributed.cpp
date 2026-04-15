@@ -81,6 +81,14 @@ static uint64_t anchorKeyHash(string key) {
     return hashString(key.cstr());
 } // defined to construct anchor hashtable
 
+static void sanitizeText(string &text) {
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '\t' || text[i] == '\n' || text[i] == '\r') {
+            text[i] = ' ';
+        }
+    }
+}
+
 HashTable<string, WordPosting> *titleIndex = nullptr;
 HashTable<string, WordPosting> *anchorIndex = nullptr;
 mutex anchor_lock;
@@ -155,7 +163,8 @@ static void appendAnchorTerms(const string &url, const vector<string> &words, bo
     HashTable<string, WordPosting> *targetIndex = isTitle ? titleIndex : anchorIndex;
     Tuple<string, WordPosting> *entry = targetIndex->Find(url, WordPosting());
     vector<string> &target = entry->value.words;
-    for (const string &word : words) {
+    for (string word : words) {
+        sanitizeText(word);
         target.pushBack(word);
     }
     if (isTitle) {
@@ -387,14 +396,6 @@ void *DelayedQueueThread(void *) {
     return nullptr;
 }
 
-static void sanitizeMetaText(string &text) {
-    for (size_t i = 0; i < text.size(); ++i) {
-        if (text[i] == '\t' || text[i] == '\n' || text[i] == '\r') {
-            text[i] = ' ';
-        }
-    }
-}
-
 string buildMetaLine(const HtmlParser &doc) {
     string title = "";
     for (size_t i = 0; i < doc.titleWords.size(); ++i) {
@@ -403,7 +404,7 @@ string buildMetaLine(const HtmlParser &doc) {
     }
     if (title.empty())
         title = "Untitled";
-    sanitizeMetaText(title);
+    sanitizeText(title);
 
     string snippet = "";
     for (size_t i = 0; i < doc.words.size(); ++i) {
@@ -414,7 +415,7 @@ string buildMetaLine(const HtmlParser &doc) {
     }
     if (snippet.empty())
         snippet = "No content available.";
-    sanitizeMetaText(snippet);
+    sanitizeText(snippet);
 
     string meta_line = doc.sourceUrl;
     meta_line.pushBack('\t');
