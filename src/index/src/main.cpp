@@ -96,32 +96,44 @@
 
 // debug anchor text index
 int main() {
-    string file_path = "../../data/anchor_parsed_index/anchor_chunk_3.idx";
-    DiskChunkReader reader;
-    if (!reader.open(file_path)) {
+    string anchor_file_path = "../../data/anchor_parsed_index/chunk_3.idx";
+    string body_file_path = "../../data/body_index/chunk_3.idx";
+    DiskChunkReader index_reader;
+    if (!index_reader.open(anchor_file_path)) {
         std::cerr << "Failed to open chunk\n";
         return 1;
     }
 
-    std::cout << "Chunk opened: " << file_path << "\n";
-    std::cout << "docs=" << reader.header().num_documents
-              << ", terms=" << reader.header().num_unique_terms
-              << ", total_locations=" << reader.header().total_locations << "\n";
+    std::cout << "Chunk opened: " << anchor_file_path << "\n";
+    std::cout << "docs=" << index_reader.header().num_documents
+              << ", terms=" << index_reader.header().num_unique_terms
+              << ", total_locations=" << index_reader.header().total_locations << "\n";
 
-    QueryEngine engine(reader);
-
-    string query = "human resourc"; // "python"
-
-    auto results = engine.search(query);
-    std::cout << "\nResults for '" << query << "':\n";
-    for (const auto &doc : results) {
-        std::cout << "- " << doc.doc_id << "\n";
-        auto doc_record = reader.getDocument(doc.doc_id);
-        std::cout << "  url: " << doc_record->url << "\n";
-        std::cout << "  start_location: " << doc_record->start_location << "\n";
-        std::cout << "  end_location: " << doc_record->end_location << "\n";
-        std::cout << "  word_count: " << doc_record->word_count << "\n";
+    DiskChunkReader body_reader;
+    if (!body_reader.open(body_file_path)) {
+        std::cerr << "Failed to open chunk\n";
+        return 1;
     }
+
+    std::cout << "Chunk opened: " << body_file_path << "\n";
+    std::cout << "docs=" << body_reader.header().num_documents
+              << ", terms=" << body_reader.header().num_unique_terms
+              << ", total_locations=" << body_reader.header().total_locations << "\n";
+
+    for (size_t i = 0; i < index_reader.header().num_documents; ++i) {
+        auto index_doc_info = index_reader.getDocument(i);
+        auto body_doc_info = body_reader.getDocument(i);
+
+        string index_url = index_doc_info->url;
+        string body_url = body_doc_info->url;
+
+        if (index_url != body_url) {
+            std::cerr << "URL mismatch at doc_id " << i << ": " << index_url << " vs " << body_url
+                      << "\n";
+        }
+    }
+
+    std::cout << "Finished validating URLs between anchor and body indices.\n";
 
     return 0;
 }

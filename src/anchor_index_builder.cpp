@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <cstdio>
 #include <dirent.h>
 #include <functional>
@@ -5,6 +6,7 @@
 
 // Include your existing engine headers
 #include "./index/src/lib/chunk_flusher.h"
+#include "./index/src/lib/disk_chunk_reader.h"
 #include "./index/src/lib/in_memory_index.h"
 #include "./index/src/lib/indexQueue.h"
 #include "./index/src/lib/tokenizer.h"
@@ -66,7 +68,6 @@ int main(int argc, char **argv) {
         dir_path.pop_back();
 
     string anchor_text_dir = dir_path + "/anchor_index/";
-    string meta_dir = dir_path + "/meta/";
     string index_dir = dir_path + "/body_index/";
     string anchor_index_output_dir = dir_path + "/anchor_parsed_index/";
 
@@ -123,71 +124,67 @@ int main(int argc, char **argv) {
     std::cout << "Building Synchronized Anchor Indices..." << std::endl;
     Tokenizer tokenizer;
 
-    if ((dir = opendir(meta_dir.c_str())) != nullptr) {
+    if ((dir = opendir(index_dir.c_str())) != nullptr) {
         while ((ent = readdir(dir)) != nullptr) {
             string file_name = ent->d_name;
 
-            if (file_name.find("chunk_") == 0 && file_name.find(".meta") != string::npos) {
+            if (file_name.find("chunk_") == 0 && file_name.find(".idx") != string::npos) {
                 std::cout << "Checking file: " << file_name << std::endl;
-                string base_name = file_name.substr(0, file_name.length() - 5);
+                string base_name = file_name.substr(0, file_name.length() - 4);
 
-                string full_path = meta_dir + file_name;
-                FILE *meta_file = fopen(full_path.c_str(), "r");
+                string full_path = index_dir + file_name;
 
-                if (meta_file) {
-                    InMemoryIndex anchor_index;
-                    char line[8192];
-                    size_t doc_count = 0;
+                InMemoryIndex anchor_index;
+                uint32_t doc_count = 0;
 
-                    while (fgets(line, sizeof(line), meta_file)) {
-                        string s(line);
-                        if (!s.empty() && s.back() == '\n')
-                            s.pop_back();
-                        if (!s.empty() && s.back() == '\r')
-                            s.pop_back();
-
-                        size_t tab1 = s.find('\t');
-                        if (tab1 == string::npos) {
-                            continue;
-                        }
-
-                        string url = s.substr(0, tab1);
-                        vector<string> words;
-
-                        auto entry = global_anchors.Find(url, "");
-                        if (!entry->value.empty()) {
-                            string raw_text = entry->value;
-                            string clean_text = strip_html_tags(raw_text);
-                            words = tokenize(clean_text);
-                        }
-
-                        if (words.size() == 0) {
-                            words = {"<placeholder>"};
-                        }
-
-                        HtmlParser doc;
-                        doc.words = words;
-                        doc.sourceUrl = url;
-
-                        auto tokenized = tokenizer.processDocument(doc);
-                        for (const auto &tok : tokenized.tokens) {
-                            anchor_index.addToken(tok);
-                        }
-
-                        anchor_index.finishDocument(tokenized.doc_end);
-                        doc_count++;
-                    }
-                    fclose(meta_file);
-
-                    // Flush this perfectly synchronized chunk to disk
-                    string out_path = anchor_index_output_dir + "anchor_" + base_name + ".idx";
-                    std::cout << "Flushing anchor index for " << base_name << " with " << doc_count
-                              << " docs to " << out_path << "...\n";
-                    flushIndexChunk(anchor_index, out_path);
-
-                    std::cout << "Built " << out_path << " with " << doc_count
-                              << " synchronized docs.\n";
+                DiskChunkReader reader;
+                if (!reader.open(index_dir + file_name)) {
+                    std::cerr << "Failed to open chunk file: " << index_dir + file_name
+                              << std::endl;
+                    std::cerr << "Skipping " << file_name << " due to missing chunk.\n";
+                    continue;
                 }
+
+                auto header = reader.header();
+                size_t num_docs = header.num_documents;
+
+                for (size_t doc_id = 0; doc_id < num_docs; ++doc_id) {
+                    auto doc_info = reader.getDocument(doc_id);
+                    string url = doc_info->url;
+                    vector<string> words;
+
+                    auto entry = global_anchors.Find(url, "");
+                    if (!entry->value.empty()) {
+                        string raw_text = entry->value;
+                        string clean_text = strip_html_tags(raw_text);
+                        words = tokenize(clean_text);
+                    }
+
+                    if (words.size() == 0) {
+                        words = {"PageWithNoAnchorText"};
+                    }
+
+                    HtmlParser doc;
+                    doc.words = words;
+                    doc.sourceUrl = url;
+
+                    auto tokenized = tokenizer.processDocument(doc);
+                    for (const auto &tok : tokenized.tokens) {
+                        anchor_index.addToken(tok);
+                    }
+
+                    anchor_index.finishDocument(tokenized.doc_end);
+                    doc_count++;
+                }
+
+                // Flush this perfectly synchronized chunk to disk
+                string out_path = anchor_index_output_dir + base_name + ".idx";
+                std::cout << "Flushing anchor index for " << base_name << " with " << doc_count
+                          << " docs to " << out_path << "...\n";
+                flushIndexChunk(anchor_index, out_path);
+
+                std::cout << "Built " << out_path << " with " << doc_count
+                          << " synchronized docs.\n";
             }
         }
         closedir(dir);
