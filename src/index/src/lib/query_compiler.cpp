@@ -5,6 +5,39 @@
 #include "isr_or.h"
 #include "isr_phrase.h"
 
+namespace {
+
+std::unique_ptr<ISR> collapseOrChildren(::vector<std::unique_ptr<ISR>> &children) {
+    if (children.empty()) {
+        return nullptr;
+    }
+    if (children.size() == 1) {
+        return std::move(children[0]);
+    }
+    return std::make_unique<ISROr>(std::move(children));
+}
+
+std::unique_ptr<ISR> buildStreamPhraseISR(const DiskChunkReader &reader,
+                                          const ::vector<::string> &terms, const char *prefix) {
+    ::vector<std::unique_ptr<ISR>> phrase_terms;
+    for (const ::string &term : terms) {
+        ::string decorated = term;
+        if (prefix != nullptr) {
+            decorated = ::string(prefix) + term;
+        }
+
+        std::unique_ptr<ISR> node = reader.createISR(decorated);
+        if (!node) {
+            return nullptr;
+        }
+        phrase_terms.pushBack(std::move(node));
+    }
+
+    return collapseOrChildren(phrase_terms);
+}
+
+} // namespace
+
 std::unique_ptr<ISR> QueryCompiler::compile(const ::vector<QueryToken> &tokens) {
     tokens_ = tokens;
     current_ = 0;
@@ -18,6 +51,42 @@ bool QueryCompiler::isAtEnd() const { return current_ >= tokens_.size(); }
 void QueryCompiler::consume() {
     if (!isAtEnd())
         current_++;
+}
+
+std::unique_ptr<ISR> QueryCompiler::buildWordISR(const ::string &term) const {
+    if (mode_ != QueryCompilationMode::BodyTitle) {
+        // Anchor ISR (no need to decorate)
+        return reader_.createISR(term);
+    }
+
+    ::vector<std::unique_ptr<ISR>> children;
+    if (std::unique_ptr<ISR> body = reader_.createISR(term)) {
+        children.pushBack(std::move(body));
+    }
+    if (std::unique_ptr<ISR> title = reader_.createISR("$" + term)) {
+        children.pushBack(std::move(title));
+    }
+    return collapseOrChildren(children);
+}
+
+std::unique_ptr<ISR> QueryCompiler::buildPhraseISR(const ::vector<::string> &terms) const {
+    if (terms.empty()) {
+        return nullptr;
+    }
+
+    if (mode_ != QueryCompilationMode::BodyTitle) {
+        // Build Anchor without decorator
+        return buildStreamPhraseISR(reader_, terms, nullptr);
+    }
+
+    ::vector<std::unique_ptr<ISR>> children;
+    if (std::unique_ptr<ISR> body_phrase = buildStreamPhraseISR(reader_, terms, nullptr)) {
+        children.pushBack(std::move(body_phrase));
+    }
+    if (std::unique_ptr<ISR> title_phrase = buildStreamPhraseISR(reader_, terms, "$")) {
+        children.pushBack(std::move(title_phrase));
+    }
+    return collapseOrChildren(children);
 }
 
 std::unique_ptr<ISR> QueryCompiler::parseOr() {
@@ -34,12 +103,7 @@ std::unique_ptr<ISR> QueryCompiler::parseOr() {
             children.pushBack(std::move(right));
     }
 
-    if (children.empty())
-        return nullptr;
-    if (children.size() == 1)
-        return std::move(children[0]);
-
-    return std::make_unique<ISROr>(std::move(children));
+    return collapseOrChildren(children);
 }
 
 std::unique_ptr<ISR> QueryCompiler::parseAnd() {
@@ -104,7 +168,7 @@ std::unique_ptr<ISR> QueryCompiler::parsePrimary() {
 
     if (token.type == QueryTokenType::WORD) {
         consume();
-        return reader_.createISR(token.text);
+        return buildWordISR(token.text);
     } else if (token.type == QueryTokenType::L_PAREN) {
         consume();
         auto node = parseOr();
@@ -113,28 +177,18 @@ std::unique_ptr<ISR> QueryCompiler::parsePrimary() {
         return node;
     } else if (token.type == QueryTokenType::QUOTE) {
         consume();
-        ::vector<std::unique_ptr<ISR>> phrase_terms;
-        bool missing_term = false;
+        ::vector<::string> phrase_terms;
 
         while (!isAtEnd() && peek().type != QueryTokenType::QUOTE) {
             if (peek().type == QueryTokenType::WORD) {
-                auto node = reader_.createISR(peek().text);
-                if (node)
-                    phrase_terms.pushBack(std::move(node));
-                else
-                    missing_term = true; // Phrase broken
+                phrase_terms.pushBack(peek().text);
             }
             consume();
         }
         if (!isAtEnd() && peek().type == QueryTokenType::QUOTE)
             consume();
 
-        if (missing_term || phrase_terms.empty())
-            return nullptr;
-        if (phrase_terms.size() == 1)
-            return std::move(phrase_terms[0]);
-
-        return std::make_unique<ISRPhrase>(std::move(phrase_terms));
+        return buildPhraseISR(phrase_terms);
     }
 
     // Invalid structual token, skip to prevent infinite loops

@@ -6,6 +6,11 @@
 #include "utils/string.hpp"
 #include <optional>
 
+struct TermInfo {
+    uint32_t doc_frequency = 0;
+    uint64_t collection_frequency = 0;
+};
+
 class DiskChunkReader {
   public:
     DiskChunkReader();
@@ -24,6 +29,9 @@ class DiskChunkReader {
 
     // returns a unique_ptr to an ISRWord. Returns nullptr if term is not found.
     std::unique_ptr<ISRWord> createISR(const ::string &term) const;
+
+    std::optional<TermInfo> getTermInfo(const ::string &term) const;
+    bool hasTerm(const ::string &term) const { return getTermInfo(term).has_value(); }
 
     // retrieves a document by its integer ID (0 to num_documents - 1).
     // returns std::nullopt if the ID is out of bounds.

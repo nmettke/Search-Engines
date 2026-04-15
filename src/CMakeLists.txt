@@ -119,9 +119,11 @@ add_library(index_lib
     index/src/lib/indexQueue.cpp
     index/src/lib/tokenizer.cpp
     index/src/lib/static_rank.cpp
+    index/src/lib/dynamic_rank.cpp
     index/src/lib/query_engine.cpp
     index/src/lib/query_tokenizer.cpp
     index/src/lib/query_compiler.cpp
+    index/src/lib/query_profile.cpp
     index/src/lib/isr.cpp
     index/src/lib/isr_and.cpp
     index/src/lib/isr_or.cpp

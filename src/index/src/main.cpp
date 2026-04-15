@@ -72,22 +72,30 @@ int main() {
 
     std::cout << "\nResults for '" << query1 << "':\n";
     for (const auto &doc : results1) {
-        std::cout << "- " << doc.url << "\n";
+        if (auto record = reader.getDocument(doc.doc_id)) {
+            std::cout << "- " << record->url << " (" << doc.score << ")\n";
+        }
     }
 
     std::cout << "\nResults for '" << query2 << "':\n";
     for (const auto &doc : results2) {
-        std::cout << "- " << doc.url << "\n";
+        if (auto record = reader.getDocument(doc.doc_id)) {
+            std::cout << "- " << record->url << " (" << doc.score << ")\n";
+        }
     }
 
     std::cout << "\nResults for '" << query3 << "':\n";
     for (const auto &doc : results3) {
-        std::cout << "- " << doc.url << "\n";
+        if (auto record = reader.getDocument(doc.doc_id)) {
+            std::cout << "- " << record->url << " (" << doc.score << ")\n";
+        }
     }
 
     std::cout << "\nResults for '" << query4 << "':\n";
     for (const auto &doc : results4) {
-        std::cout << "- " << doc.url << "\n";
+        if (auto record = reader.getDocument(doc.doc_id)) {
+            std::cout << "- " << record->url << " (" << doc.score << ")\n";
+        }
     }
 
     return 0;
