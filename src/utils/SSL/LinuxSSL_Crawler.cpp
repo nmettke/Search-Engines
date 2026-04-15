@@ -1,8 +1,11 @@
+#include <cerrno>
 #include <cstring>
+#include <fcntl.h>
 #include <iostream>
 #include <netdb.h>
 #include <openssl/ssl.h>
 #include <signal.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -12,6 +15,61 @@
 #include "LinuxSSL_Crawler.hpp"
 
 static SSL_CTX *sslCtx = nullptr;
+
+// Hard cap on a single HTTP(S) response body to prevent a malicious or
+// misbehaving server from OOMing the crawler by streaming unbounded data.
+// 10 MB easily covers normal HTML pages and robots.txt files.
+static constexpr size_t maxResponseBytes = 10ULL * 1024 * 1024;
+
+// Bound TCP connect() so an unreachable host doesn't pin a crawler thread
+// for the kernel default (~75s). SO_RCVTIMEO/SO_SNDTIMEO do not affect connect.
+static constexpr int connectTimeoutSecs = 10;
+
+// Non-blocking connect with a bounded timeout. Returns true iff the socket is
+// fully connected. On return, the socket is restored to blocking mode so the
+// caller can use ordinary send()/recv() (and SSL_connect, which expects a
+// blocking-mode fd) with the socket-level timeouts already set.
+// Caller owns fd in all cases (this helper never closes it).
+static bool connectWithTimeout(int fd, const sockaddr *addr, socklen_t addrlen, int timeoutSecs) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0) {
+        return false;
+    }
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        return false;
+    }
+
+    int ret = connect(fd, addr, addrlen);
+    if (ret == 0) {
+        fcntl(fd, F_SETFL, flags);
+        return true;
+    }
+    if (errno != EINPROGRESS) {
+        return false;
+    }
+
+    fd_set writeSet;
+    FD_ZERO(&writeSet);
+    FD_SET(fd, &writeSet);
+
+    timeval timeout{};
+    timeout.tv_sec = timeoutSecs;
+    timeout.tv_usec = 0;
+
+    int selectResult = select(fd + 1, nullptr, &writeSet, nullptr, &timeout);
+    if (selectResult <= 0) {
+        return false;
+    }
+
+    int sockErr = 0;
+    socklen_t len = sizeof(sockErr);
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &sockErr, &len) < 0 || sockErr != 0) {
+        return false;
+    }
+
+    fcntl(fd, F_SETFL, flags);
+    return true;
+}
 
 void initSSL() {
     signal(SIGPIPE, SIG_IGN);
@@ -117,10 +175,12 @@ string readURL(string target_url) {
     setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     setsockopt(socketFD, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
-    // Connect the socket to the host address.
-    int connectResult = connect(socketFD, address->ai_addr, address->ai_addrlen);
+    // Connect the socket to the host address with a bounded timeout so
+    // unreachable hosts don't pin this thread + fd for ~75s (kernel default).
+    bool connected =
+        connectWithTimeout(socketFD, address->ai_addr, address->ai_addrlen, connectTimeoutSecs);
     freeaddrinfo(address);
-    if (connectResult != 0) {
+    if (!connected) {
         close(socketFD);
         return "";
     }
@@ -169,9 +229,14 @@ string readURL(string target_url) {
     char buffer[buffLength];
     int bytes;
     string rawResponse = "";
+    bool responseTooLarge = false;
 
     while ((bytes = SSL_read(ssl, buffer, sizeof(buffer))) > 0) {
         rawResponse.append(buffer, bytes);
+        if (rawResponse.size() > maxResponseBytes) {
+            responseTooLarge = true;
+            break;
+        }
     }
 
     // Close the socket and free the address info structure.
@@ -179,6 +244,12 @@ string readURL(string target_url) {
     SSL_shutdown(ssl);
     SSL_free(ssl);
     close(socketFD);
+
+    // Drop oversize responses entirely rather than feeding a truncated body
+    // into the HTML parser (unbalanced tags would pollute the index).
+    if (responseTooLarge) {
+        return "";
+    }
 
     std::size_t headerEnd = rawResponse.find("\r\n\r\n");
     if (headerEnd == string::npos) {

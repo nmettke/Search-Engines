@@ -13,13 +13,29 @@ string Checkpoint::filePath() const { return config_.directory + "/checkpoint.da
 string Checkpoint::tmpPath() const { return config_.directory + "/checkpoint.dat.tmp"; }
 
 bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom, size_t urlsCrawled) {
-    lock_guard guard(saveMutex_);
-    vector<FrontierItem> items = frontier.snapshot();
+    CheckpointSnapshot snapshot;
+    if (!createSnapshot(frontier, bloom, urlsCrawled, snapshot)) {
+        return false;
+    }
+    return writeSnapshot(snapshot);
+}
 
-    if (items.size() == 0 && frontier.hasInFlightWork()) {
+bool Checkpoint::createSnapshot(const Frontier &frontier, const UrlBloomFilter &bloom,
+                                size_t urlsCrawled, CheckpointSnapshot &snapshot) {
+    snapshot.frontierItems = frontier.snapshot();
+
+    if (snapshot.frontierItems.size() == 0 && frontier.hasInFlightWork()) {
         std::cerr << "Checkpoint skipped: frontier snapshot empty while work is in flight\n";
         return false;
     }
+
+    snapshot.bloomSnapshot = bloom.snapshot();
+    snapshot.urlsCrawled = urlsCrawled;
+    return true;
+}
+
+bool Checkpoint::writeSnapshot(const CheckpointSnapshot &snapshot) {
+    lock_guard guard(saveMutex_);
 
     FILE *f = fopen(tmpPath().c_str(), "wb");
     if (!f) {
@@ -29,17 +45,20 @@ bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom, siz
 
     fprintf(f, "[HEADER]\n");
     fprintf(f, "version=1\n");
-    fprintf(f, "urls_crawled=%zu\n", urlsCrawled);
-    fprintf(f, "frontier_count=%zu\n", items.size());
+    fprintf(f, "urls_crawled=%zu\n", snapshot.urlsCrawled);
+    fprintf(f, "frontier_count=%zu\n", snapshot.frontierItems.size());
 
     fprintf(f, "[FRONTIER]\n");
-    for (const auto &item : items) {
+    for (const auto &item : snapshot.frontierItems) {
         string line = item.serializeToLine();
         fprintf(f, "%s\n", line.c_str());
     }
 
     fprintf(f, "[BLOOM]\n");
-    bloom.serializeToStream(f);
+    fwrite(&snapshot.bloomSnapshot.bitCount, sizeof(snapshot.bloomSnapshot.bitCount), 1, f);
+    fwrite(&snapshot.bloomSnapshot.hashCount, sizeof(snapshot.bloomSnapshot.hashCount), 1, f);
+    fwrite(snapshot.bloomSnapshot.packedBits.data(), 1, snapshot.bloomSnapshot.packedBits.size(),
+           f);
 
     fflush(f);
     fsync(fileno(f));
@@ -50,8 +69,8 @@ bool Checkpoint::save(const Frontier &frontier, const UrlBloomFilter &bloom, siz
         return false;
     }
 
-    std::cerr << "Checkpoint saved at " << urlsCrawled << " URLs (" << items.size()
-              << " frontier items)\n";
+    std::cerr << "Checkpoint saved at " << snapshot.urlsCrawled << " URLs ("
+              << snapshot.frontierItems.size() << " frontier items)\n";
     return true;
 }
 

@@ -10,11 +10,20 @@ struct CheckpointConfig {
     string directory = ".";
 };
 
+struct CheckpointSnapshot {
+    vector<FrontierItem> frontierItems;
+    UrlBloomFilter::Snapshot bloomSnapshot;
+    size_t urlsCrawled = 0;
+};
+
 class Checkpoint {
   public:
     explicit Checkpoint(const CheckpointConfig &config);
 
     bool save(const Frontier &frontier, const UrlBloomFilter &bloom, size_t urlsCrawled);
+    bool createSnapshot(const Frontier &frontier, const UrlBloomFilter &bloom, size_t urlsCrawled,
+                        CheckpointSnapshot &snapshot);
+    bool writeSnapshot(const CheckpointSnapshot &snapshot);
     bool load(vector<FrontierItem> &items, UrlBloomFilter &bloom, size_t &urlsCrawled);
 
   private:

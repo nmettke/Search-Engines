@@ -14,9 +14,16 @@
 
 class UrlBloomFilter {
   public:
+    struct Snapshot {
+        std::size_t bitCount = 0;
+        std::uint32_t hashCount = 0;
+        vector<uint8_t> packedBits;
+    };
+
     UrlBloomFilter(std::size_t expectedItems, double falsePositiveRate);
     bool serializeToStream(FILE *f) const;
     static UrlBloomFilter deserializeFromStream(FILE *f);
+    Snapshot snapshot() const;
 
     bool probablyContains(const ::string &key) const;
     void insert(const ::string &key);
