@@ -59,6 +59,8 @@ template <typename Key, typename Value> class HashTable {
     }
 
   public:
+    size_t size() const { return uniqueKeys; }
+
     Tuple<Key, Value> *Find(const Key k, const Value initialValue) {
         // Search for the key k and return a pointer to the
         // ( key, value ) entry.  If the key is not already

@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <sys/stat.h>
 
+#include "../utils/vector.hpp"
 #include "Plugin.h"
 #include "SearchCommon.h"
 

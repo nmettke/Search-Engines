@@ -97,6 +97,7 @@ struct WorkerArgs {
     string ip;
     int port;
     string query;
+    size_t k;
     ::vector<GlobalResult> local_results;
 };
 
