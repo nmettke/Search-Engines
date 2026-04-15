@@ -89,15 +89,12 @@ static void sanitizeText(string &text) {
     }
 }
 
-HashTable<string, WordPosting> *titleIndex = nullptr;
 HashTable<string, WordPosting> *anchorIndex = nullptr;
 mutex anchor_lock;
-bool titleIndexEdited = false;
 bool anchorIndexEdited = false;
 size_t anchorFlushFileCount = 0;
 const string anchorIndexDirectory("data/anchor_index");
 const string indexDirectory("data/body_index");
-const string titleIndexDirectory("data/title_index");
 const string metaDirectory("data/meta");
 const size_t FLUSHBODYTOKENSIZE = 25000000;
 static constexpr size_t maxIndexQueueItems = 1024;
@@ -153,25 +150,21 @@ static void signalHandler(int) {
     }
 }
 
-static void appendAnchorTerms(const string &url, const vector<string> &words, bool isTitle) {
-    // push to title list or anchor text list
+static void appendAnchorTerms(const string &url, const vector<string> &words) {
+    // push to anchor text list
     if (words.size() == 0) {
         return;
     }
 
     lock_guard guard(anchor_lock);
-    HashTable<string, WordPosting> *targetIndex = isTitle ? titleIndex : anchorIndex;
-    Tuple<string, WordPosting> *entry = targetIndex->Find(url, WordPosting());
+    Tuple<string, WordPosting> *entry = anchorIndex->Find(url, WordPosting());
     vector<string> &target = entry->value.words;
     for (string word : words) {
         sanitizeText(word);
         target.pushBack(word);
     }
-    if (isTitle) {
-        titleIndexEdited = true;
-    } else {
-        anchorIndexEdited = true;
-    }
+
+    anchorIndexEdited = true;
 }
 
 static void restoreWordSnapshot(HashTable<string, WordPosting> *targetIndex, bool &editedFlag,
@@ -186,28 +179,22 @@ static void restoreWordSnapshot(HashTable<string, WordPosting> *targetIndex, boo
     editedFlag = true;
 }
 
-static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, const char *prefix,
-                                    size_t fileCount, bool isTitle,
+static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, size_t fileCount,
                                     HashTable<string, WordPosting> *targetIndex, bool &editedFlag) {
     if (snapshot.size() == 0) {
         return true;
     }
 
     char buffer[128];
-    if (isTitle) {
-        std::snprintf(buffer, sizeof(buffer), "%s/%s_%zu.idx", titleIndexDirectory.c_str(), prefix,
-                      fileCount);
-    } else {
-        std::snprintf(buffer, sizeof(buffer), "%s/%s_%zu.idx", anchorIndexDirectory.c_str(), prefix,
-                      fileCount);
-    }
+    std::snprintf(buffer, sizeof(buffer), "%s/anchor_%zu.idx", anchorIndexDirectory.c_str(),
+                  fileCount);
 
     const string indexPath(buffer);
     string tmpPath = indexPath + ".tmp";
     FILE *fp = fopen(tmpPath.c_str(), "wb");
 
     if (fp == nullptr) {
-        std::cerr << "Failed to open " << prefix << " index temp file: " << tmpPath << '\n';
+        std::cerr << "Failed to open anchor index temp file: " << tmpPath << '\n';
         restoreWordSnapshot(targetIndex, editedFlag, snapshot);
         return false;
     }
@@ -219,16 +206,9 @@ static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, const 
 
     for (const WordSnapshot &record : snapshot) {
         fprintf(fp, "%s", record.url.c_str());
-        if (isTitle) {
-            fprintf(fp, "\t%zu\t", record.words.size());
-            for (const string &word : record.words) {
-                fprintf(fp, "%s ", word.c_str());
-            }
-        } else {
-            fprintf(fp, "\t%zu\t", record.words.size());
-            for (const string &word : record.words) {
-                fprintf(fp, "%s ", word.c_str());
-            }
+        fprintf(fp, "\t%zu\t", record.words.size());
+        for (const string &word : record.words) {
+            fprintf(fp, "%s ", word.c_str());
         }
         fprintf(fp, "\n");
     }
@@ -238,7 +218,7 @@ static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, const 
     fclose(fp);
 
     if (rename(tmpPath.c_str(), indexPath.c_str()) != 0) {
-        std::cerr << "Failed to rename " << prefix << " index file to " << indexPath << '\n';
+        std::cerr << "Failed to rename anchor index file to " << indexPath << '\n';
         restoreWordSnapshot(targetIndex, editedFlag, snapshot);
         return false;
     }
@@ -247,38 +227,66 @@ static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, const 
 }
 
 static void flushAnchorIndexToDisk(bool force) {
-    vector<WordSnapshot> titleSnapshot;
     vector<WordSnapshot> anchorSnapshot;
-
     anchor_lock.lock();
-    if (!force && !titleIndexEdited && !anchorIndexEdited) {
+    if (!force && !anchorIndexEdited) {
         anchor_lock.unlock();
         return;
     }
 
-    for (auto it = titleIndex->begin(); it != titleIndex->end(); ++it) {
-        titleSnapshot.pushBack({it->key, it->value.words});
-    }
     for (auto it = anchorIndex->begin(); it != anchorIndex->end(); ++it) {
         anchorSnapshot.pushBack({it->key, it->value.words});
     }
 
-    HashTable<string, WordPosting> *oldTitleIndex = titleIndex;
     HashTable<string, WordPosting> *oldAnchorIndex = anchorIndex;
-    titleIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
     anchorIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
-    anchorFlushFileCount++;
-    titleIndexEdited = false;
     anchorIndexEdited = false;
-    size_t fileCount = anchorFlushFileCount;
+
     anchor_lock.unlock();
 
-    delete oldTitleIndex;
     delete oldAnchorIndex;
 
-    flushWordSnapshotToDisk(titleSnapshot, "title", fileCount, true, titleIndex, titleIndexEdited);
-    flushWordSnapshotToDisk(anchorSnapshot, "anchor", fileCount, false, anchorIndex,
-                            anchorIndexEdited);
+    if (anchorSnapshot.size() == 0) {
+        return;
+    }
+
+    anchorFlushFileCount++;
+    flushWordSnapshotToDisk(anchorSnapshot, anchorFlushFileCount, anchorIndex, anchorIndexEdited);
+}
+
+void *CheckpointThread(void *) {
+    while (!shouldStop) {
+        sleep(1);
+        if (shouldStop) {
+            break;
+        }
+
+        time_t now = time(nullptr);
+        time_t last = lastCheckpointTime.load();
+        if ((now - last) < checkpointIntervalSecs) {
+            continue;
+        }
+
+        const size_t crawled = urlsCrawled.load();
+        CheckpointSnapshot snapshot;
+        const int64_t snapshotStart = nowMillis();
+        if (!checkpoint->createSnapshot(*f, bloom, crawled, snapshot)) {
+            continue;
+        }
+        lastCheckpointTime = now;
+        const int64_t snapshotEnd = nowMillis();
+
+        std::cout << "Starting checkpoint at " << crawled << " URLs\n";
+        if (!checkpoint->writeSnapshot(snapshot)) {
+            std::cerr << "Checkpoint write failed at " << crawled << " URLs\n";
+            continue;
+        }
+        const int64_t writeEnd = nowMillis();
+        std::cerr << "Checkpoint snapshot took " << (snapshotEnd - snapshotStart)
+                  << " ms; write took " << (writeEnd - snapshotEnd) << " ms\n";
+    }
+
+    return nullptr;
 }
 
 void *CrawlerWorkerThread(void *) {
@@ -325,7 +333,6 @@ void *CrawlerWorkerThread(void *) {
             continue;
         }
 
-        appendAnchorTerms(item->link, parsed.titleWords, true);
         q->push(parsed);
 
         vector<FrontierItem> discoveredLinks;
@@ -356,7 +363,7 @@ void *CrawlerWorkerThread(void *) {
 
             // URL belongs to this machine, add to anchor term,
             // and add to frontier if not seen
-            appendAnchorTerms(canonicalOut, link.anchorText, false);
+            appendAnchorTerms(canonicalOut, link.anchorText);
             if (bloom.checkAndInsert(canonicalOut)) {
                 discoveredLinks.pushBack(FrontierItem(canonicalOut, *item));
             }
@@ -365,19 +372,6 @@ void *CrawlerWorkerThread(void *) {
         f->pushMany(discoveredLinks);
         size_t crawled = ++urlsCrawled;
         logCrawled(crawled, item->link);
-
-        {
-            time_t now = time(nullptr);
-            time_t last = lastCheckpointTime.load();
-            if (!shouldStop && (now - last) >= checkpointIntervalSecs) {
-                if (lastCheckpointTime.compare_exchange_strong(last, now)) {
-                    std::cout << "Starting checkpoint at " << crawled << " URLs\n";
-                    checkpoint->save(*f, bloom, urlsCrawled.load());
-                    // flushAnchorIndexToDisk(false);
-                    std::cerr << "Checkpoint saved at " << urlsCrawled.load() << " URLs\n";
-                }
-            }
-        }
     }
 
     return nullptr;
@@ -457,8 +451,6 @@ void *IndexWorkerThread(void *) {
         tokensProcessed += tokenized.tokens.size();
 
         if (tokensProcessed >= FLUSHBODYTOKENSIZE) {
-            // if (docsProcessed >= 500) {
-            std::cout << "Start building index chunk \n";
             char buffer[64];
             std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
                           chunksWritten);
@@ -748,7 +740,7 @@ void *SendToMachineThread(void *) {
                         continue;
                     }
 
-                    appendAnchorTerms(canonicalOut, link.anchorText, false);
+                    appendAnchorTerms(canonicalOut, link.anchorText);
                     if (bloom.checkAndInsert(canonicalOut)) {
                         localLinks.pushBack(
                             FrontierItem::withSeedDistance(canonicalOut, link.seedDistance));
@@ -887,7 +879,7 @@ static void processReceivedBatch(int clientFd) {
             string canonicalOut;
             if (passesUrlQualityChecks(rawUrl, canonicalOut) && urlFilter.isAllowed(canonicalOut) &&
                 shouldOwnUrl(canonicalOut)) {
-                appendAnchorTerms(canonicalOut, anchorWords, false);
+                appendAnchorTerms(canonicalOut, anchorWords);
                 if (bloom.checkAndInsert(canonicalOut)) {
                     discoveredLinks.pushBack(
                         FrontierItem::withSeedDistance(canonicalOut, receivedSeedDistance));
@@ -1108,7 +1100,6 @@ int main(int argc, char **argv) {
     q = new IndexQueue(maxIndexQueueItems);
     robotsCache = new RobotsCache();
     delayedQueue = new DelayedQueue();
-    titleIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
     anchorIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
 
     peer_address = {
@@ -1283,11 +1274,13 @@ int main(int argc, char **argv) {
     pthread_t senderThread{};
     pthread_t receiverThread{};
     pthread_t dqThread{};
+    pthread_t checkpointThread{};
     // pthread_t anchorThread{};
     vector<pthread_t> receiveWorkers(receiveWorkerThreadCount);
     bool senderStarted = false;
     bool receiverStarted = false;
     bool receiveWorkersStarted = false;
+    bool checkpointStarted = false;
 
     lastCheckpointTime = time(nullptr);
 
@@ -1299,6 +1292,8 @@ int main(int argc, char **argv) {
         pthread_create(&indexThreads[i], nullptr, IndexWorkerThread, nullptr);
     }
 
+    pthread_create(&checkpointThread, nullptr, CheckpointThread, nullptr);
+    checkpointStarted = true;
     pthread_create(&dqThread, nullptr, DelayedQueueThread, nullptr);
 
     if (peer_address.size() > 1) {
@@ -1325,6 +1320,10 @@ int main(int argc, char **argv) {
     shouldStop = true;
     q->shutdown();
     batch_cv.notify_all();
+
+    if (checkpointStarted) {
+        pthread_join(checkpointThread, nullptr);
+    }
 
     for (size_t i = 0; i < indexThreads.size(); ++i) {
         pthread_join(indexThreads[i], nullptr);
@@ -1371,7 +1370,6 @@ int main(int argc, char **argv) {
         std::cerr << "Graceful shutdown after SIGINT\n";
     }
 
-    delete titleIndex;
     delete anchorIndex;
     delete robotsCache;
     delete delayedQueue;
