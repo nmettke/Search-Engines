@@ -16,6 +16,7 @@ FLUSHER     := $(LIB_DIR)/chunk_flusher.cpp
 SEEK_TABLE  := $(LIB_DIR)/seek_table.cpp
 DOCUMENT_FEATURES := $(LIB_DIR)/document_features.cpp
 URL_FEATURES := $(LIB_DIR)/url_features.cpp
+STATIC_RANK := $(LIB_DIR)/static_rank.cpp
 HTML_PARSER := ../parser/HtmlParser.cpp
 UTF8 := ../utils/Utf8.cpp
 QUERY_ENGINE := $(LIB_DIR)/query_engine.cpp
@@ -31,7 +32,7 @@ ISR_CONTAINER  := $(LIB_DIR)/isr_container.cpp
 # All library sources (for main)
 ALL_LIB_SRCS := $(DISK_WRITER) $(VBYTE) $(IN_MEM_IDX) $(COMMON) $(DOCUMENT_FEATURES) \
                 $(FLUSHER) $(DISK_READER) $(TOKENIZER) $(SEEK_TABLE) \
-				$(QUERY_ENGINE) $(QUERY_TOKENIZER) $(QUERY_COMPILER) $(URL_FEATURES) \
+				$(STATIC_RANK) $(QUERY_ENGINE) $(QUERY_TOKENIZER) $(QUERY_COMPILER) $(URL_FEATURES) \
 				$(HTML_PARSER) $(UTF8) \
 				$(ISR) $(ISR_AND) $(ISR_OR) $(ISR_PHRASE) $(ISR_CONTAINER)
 

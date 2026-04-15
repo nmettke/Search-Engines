@@ -13,6 +13,7 @@ DISK_WRITER := $(LIB_DIR)/disk_chunk_writer.cpp
 DISK_READER := $(LIB_DIR)/disk_chunk_reader.cpp
 FLUSHER     := $(LIB_DIR)/chunk_flusher.cpp
 SEEK_TABLE  := $(LIB_DIR)/seek_table.cpp
+STATIC_RANK := $(LIB_DIR)/static_rank.cpp
 QUERY_ENGINE := $(LIB_DIR)/query_engine.cpp
 QUERY_TOKENIZER := $(LIB_DIR)/query_tokenizer.cpp
 QUERY_COMPILER := $(LIB_DIR)/query_compiler.cpp
@@ -30,7 +31,7 @@ UTF8         := ../utils/Utf8.cpp
 # All library sources (for main)
 ALL_LIB_SRCS := $(DISK_WRITER) $(VBYTE) $(IN_MEM_IDX) $(COMMON) \
                 $(FLUSHER) $(DISK_READER) $(TOKENIZER) $(SEEK_TABLE) \
-				$(QUERY_ENGINE) $(QUERY_TOKENIZER) $(QUERY_COMPILER) \
+				$(STATIC_RANK) $(QUERY_ENGINE) $(QUERY_TOKENIZER) $(QUERY_COMPILER) \
 				$(ISR) $(ISR_AND) $(ISR_OR) $(ISR_PHRASE) $(ISR_CONTAINER) \
 				$(DOC_FEATURES) $(URL_FEATURES) $(HTML_PARSER) $(UTF8)
 

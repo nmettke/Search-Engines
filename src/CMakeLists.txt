@@ -118,6 +118,7 @@ add_library(index_lib
     index/src/lib/chunk_flusher.cpp
     index/src/lib/indexQueue.cpp
     index/src/lib/tokenizer.cpp
+    index/src/lib/static_rank.cpp
     index/src/lib/query_engine.cpp
     index/src/lib/query_tokenizer.cpp
     index/src/lib/query_compiler.cpp

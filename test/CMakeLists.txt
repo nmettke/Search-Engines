@@ -160,3 +160,22 @@ target_include_directories(document_features_tests SYSTEM BEFORE PRIVATE
 gtest_discover_tests(document_features_tests
     TEST_PREFIX "document_features::"
 )
+
+add_executable(query_engine_tests
+    index/query_engine_test.cpp
+)
+
+target_link_libraries(query_engine_tests
+    PRIVATE
+        index_lib
+        GTest::gtest
+        GTest::gtest_main
+)
+
+target_include_directories(query_engine_tests SYSTEM BEFORE PRIVATE
+    ${FETCHED_GTEST_INCLUDE_DIRS}
+)
+
+gtest_discover_tests(query_engine_tests
+    TEST_PREFIX "query_engine::"
+)
