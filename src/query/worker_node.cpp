@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
@@ -9,7 +10,9 @@
 
 #include "../index/src/lib/disk_chunk_reader.h"
 #include "../index/src/lib/query_engine.h"
+#include "./index/src/lib/Common.h"
 
+#include "../utils/hash/HashTable.h"
 #include "../utils/string.hpp"
 #include "../utils/vector.hpp"
 
@@ -31,11 +34,20 @@ struct ThreadArgs {
     vector<vector<MetaRecord>> *all_meta;
 };
 
+struct Location {
+    size_t chunk_id;
+    size_t doc_id;
+};
+
 string to_string(double score) {
     char buffer[64];
     snprintf(buffer, sizeof(buffer), "%.4f", score);
     return string(buffer);
 }
+
+static bool anchorKeyEqual(string a, string b) { return a == b; }
+
+static uint64_t anchorKeyHash(string key) { return hashString(key.cstr()); }
 
 class TopKHeap {
   private:
@@ -176,6 +188,8 @@ int main(int argc, char **argv) {
     vector<QueryEngine *> engines;
     vector<vector<MetaRecord>> all_meta;
 
+    HashTable<string, Location> index_lookup(anchorKeyEqual, anchorKeyHash);
+
     DIR *dir;
     struct dirent *ent;
     string index_dir = dir_path + "/anchor_parsed_index";
@@ -186,10 +200,7 @@ int main(int argc, char **argv) {
             string file_name = ent->d_name;
 
             if (file_name.length() >= 4 && file_name.substr(file_name.length() - 4) == ".idx") {
-                string base_name = file_name.substr(
-                    7, file_name.length() - 11); // Remove "chunk_" prefix and ".idx" suffix
                 string idx_path = index_dir + "/" + file_name;
-                string meta_path = meta_dir + "/" + base_name + ".meta";
 
                 DiskChunkReader *reader = new DiskChunkReader();
                 if (reader->open(idx_path)) {
@@ -197,36 +208,68 @@ int main(int argc, char **argv) {
                     readers.pushBack(reader);
                     engines.pushBack(engine);
 
-                    vector<MetaRecord> chunk_meta;
-                    FILE *fp = fopen(meta_path.c_str(), "r");
-                    if (fp) {
-                        char line[4096];
-                        while (fgets(line, sizeof(line), fp)) {
-                            string s(line);
-                            if (!s.empty() && s.back() == '\n')
-                                s.pop_back();
+                    auto header = reader->header();
+                    std::cout << "Loaded chunk: " << idx_path << " with " << header.num_documents
+                              << " documents\n";
 
-                            size_t tab1 = s.find('\t');
-                            size_t tab2 = s.find('\t', tab1 + 1);
-
-                            if (tab1 != string::npos && tab2 != string::npos) {
-                                string url = s.substr(0, tab1);
-                                string title = s.substr(tab1 + 1, tab2 - tab1 - 1);
-                                string snippet = s.substr(tab2 + 1);
-                                chunk_meta.pushBack({url, title, snippet});
-                            }
-                        }
-                        fclose(fp);
+                    for (size_t doc_id = 0; doc_id < header.num_documents; ++doc_id) {
+                        auto doc_info = reader->getDocument(doc_id);
+                        index_lookup.Find(doc_info->url, {readers.size() - 1, doc_id});
                     }
-                    all_meta.pushBack(chunk_meta);
-                    std::cout << "Loaded chunk: " << base_name << " (" << chunk_meta.size()
-                              << " docs)\n";
                 }
             }
         }
         closedir(dir);
     } else {
         std::cerr << "Fatal Error: Could not open directory " << dir_path << "\n";
+        return 1;
+    }
+
+    // Initialize all_meta with empty records for each document in each chunk
+    for (size_t i = 0; i < readers.size(); i++) {
+        auto header = readers[i]->header();
+        vector<MetaRecord> chunk_meta(header.num_documents);
+        all_meta.pushBack(chunk_meta);
+    }
+
+    // load all meta data and put into all_meta vector
+    if ((dir = opendir(meta_dir.c_str())) != nullptr) {
+        while ((ent = readdir(dir)) != nullptr) {
+            string file_name = ent->d_name;
+
+            if (file_name.length() >= 5 && file_name.substr(file_name.length() - 5) == ".meta") {
+                string meta_path = meta_dir + "/" + file_name;
+
+                FILE *fp = fopen(meta_path.c_str(), "r");
+                if (fp) {
+                    char line[4096];
+                    while (fgets(line, sizeof(line), fp)) {
+                        string s(line);
+                        if (!s.empty() && s.back() == '\n')
+                            s.pop_back();
+
+                        size_t tab1 = s.find('\t');
+                        size_t tab2 = s.find('\t', tab1 + 1);
+
+                        if (tab1 != string::npos && tab2 != string::npos) {
+                            string url = s.substr(0, tab1);
+                            string title = s.substr(tab1 + 1, tab2 - tab1 - 1);
+                            string snippet = s.substr(tab2 + 1);
+
+                            Tuple<string, Location> *loc_tuple = index_lookup.Find(url);
+                            if (loc_tuple != nullptr) {
+                                Location loc = loc_tuple->value;
+                                all_meta[loc.chunk_id][loc.doc_id] = {url, title, snippet};
+                            }
+                        }
+                    }
+                    fclose(fp);
+                }
+            }
+        }
+        closedir(dir);
+    } else {
+        std::cerr << "Fatal Error: Could not open directory " << meta_dir << "\n";
         return 1;
     }
 
