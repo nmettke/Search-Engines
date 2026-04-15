@@ -288,6 +288,7 @@ void *CheckpointThread(void *) {
         time_t lastHeartbeat = lastHeartbeatTime.load();
         if ((now - lastHeartbeat) >= heartbeatIntervalSecs) {
             tsOut(std::cout) << "still alive; documents processed = " << urlsCrawled.load() << '\n';
+            std::cout.flush();
             lastHeartbeatTime = now;
         }
 
