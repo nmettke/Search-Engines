@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <cstring>
 #include <dirent.h>
 #include <iostream>
@@ -118,8 +119,19 @@ void *handle_master_connection(void *args) {
             query.pop_back();
         }
 
-        // TODO: Default value for K, can be modified to read from query if needed
+        // Message format is either "query" (legacy) or "k\tquery".
         size_t K = 10;
+        size_t sep = query.find('\t');
+        if (sep != string::npos) {
+            string k_prefix = query.substr(0, sep);
+            char *endptr = nullptr;
+            long parsed = std::strtol(k_prefix.c_str(), &endptr, 10);
+            if (endptr != k_prefix.c_str() && *endptr == '\0' && parsed > 0) {
+                K = static_cast<size_t>(parsed);
+                query = query.substr(sep + 1);
+            }
+        }
+
         TopKHeap top_k_heap(K);
         for (size_t i = 0; i < engines->size(); ++i) {
             vector<ScoredDocument> chunk_matches = (*engines)[i]->search(query, K);
