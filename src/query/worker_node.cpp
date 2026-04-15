@@ -9,26 +9,26 @@
 
 #include "../index/src/lib/disk_chunk_reader.h"
 #include "../index/src/lib/query_engine.h"
+#include "./index/src/lib/Common.h"
 
+#include "../utils/hash/HashTable.h"
 #include "../utils/string.hpp"
 #include "../utils/vector.hpp"
 
 struct MetaRecord {
-    string url;
     string title;
     string snippet;
 };
 
 struct GlobalMatch {
-    int chunk_id;
-    uint32_t doc_id;
+    string url;
     double score;
 };
 
 struct ThreadArgs {
     int client_socket;
     vector<QueryEngine *> *engines;
-    vector<vector<MetaRecord>> *all_meta;
+    HashTable<string, MetaRecord> *all_meta;
 };
 
 string to_string(double score) {
@@ -36,6 +36,10 @@ string to_string(double score) {
     snprintf(buffer, sizeof(buffer), "%.4f", score);
     return string(buffer);
 }
+
+static bool anchorKeyEqual(string a, string b) { return a == b; }
+
+static uint64_t anchorKeyHash(string key) { return hashString(key.cstr()); }
 
 class TopKHeap {
   private:
@@ -136,7 +140,7 @@ void *handle_master_connection(void *args) {
         for (size_t i = 0; i < engines->size(); ++i) {
             vector<ScoredDocument> chunk_matches = (*engines)[i]->search(query, K);
             for (const auto &match : chunk_matches) {
-                top_k_heap.push({(int)i, match.doc_id, match.score});
+                top_k_heap.push({match.url, match.score});
             }
         }
         vector<GlobalMatch> matches = top_k_heap.extractSorted();
@@ -144,10 +148,12 @@ void *handle_master_connection(void *args) {
         // Format the response: "url score\n"
         string response = "";
         for (const auto &match : matches) {
-            MetaRecord &meta = (*t_args->all_meta)[match.chunk_id][match.doc_id];
-
-            response += meta.url + "\t" + meta.title + "\t" + meta.snippet + "\t" +
-                        to_string(match.score) + "\n";
+            Tuple<string, MetaRecord> *result = (*t_args->all_meta).Find(match.url);
+            if (result != nullptr) {
+                MetaRecord &meta = result->value;
+                response += match.url + "\t" + meta.title + "\t" + meta.snippet + "\t" +
+                            to_string(match.score) + "\n";
+            }
         }
 
         response += "END_OF_RESULTS\n";
@@ -174,22 +180,55 @@ int main(int argc, char **argv) {
 
     vector<DiskChunkReader *> readers;
     vector<QueryEngine *> engines;
-    vector<vector<MetaRecord>> all_meta;
+    HashTable<string, MetaRecord> all_meta(anchorKeyEqual, anchorKeyHash);
 
     DIR *dir;
     struct dirent *ent;
     string index_dir = dir_path + "/anchor_parsed_index";
     string meta_dir = dir_path + "/meta";
 
+    // load all meta data into hashtable for quick access during query time
+    if ((dir = opendir(meta_dir.c_str())) != nullptr) {
+        while ((ent = readdir(dir)) != nullptr) {
+            string file_name = ent->d_name;
+
+            if (file_name.length() >= 5 && file_name.substr(file_name.length() - 5) == ".meta") {
+                string meta_path = meta_dir + "/" + file_name;
+
+                FILE *fp = fopen(meta_path.c_str(), "r");
+                if (fp) {
+                    char line[4096];
+                    while (fgets(line, sizeof(line), fp)) {
+                        string s(line);
+                        if (!s.empty() && s.back() == '\n')
+                            s.pop_back();
+
+                        size_t tab1 = s.find('\t');
+                        size_t tab2 = s.find('\t', tab1 + 1);
+
+                        if (tab1 != string::npos && tab2 != string::npos) {
+                            string url = s.substr(0, tab1);
+                            string title = s.substr(tab1 + 1, tab2 - tab1 - 1);
+                            string snippet = s.substr(tab2 + 1);
+                            all_meta.Find(url, {title, snippet});
+                        }
+                    }
+                    fclose(fp);
+                }
+            }
+        }
+        closedir(dir);
+    } else {
+        std::cerr << "Fatal Error: Could not open directory " << meta_dir << "\n";
+        return 1;
+    }
+
     if ((dir = opendir(index_dir.c_str())) != nullptr) {
         while ((ent = readdir(dir)) != nullptr) {
             string file_name = ent->d_name;
 
             if (file_name.length() >= 4 && file_name.substr(file_name.length() - 4) == ".idx") {
-                string base_name = file_name.substr(
-                    7, file_name.length() - 11); // Remove "chunk_" prefix and ".idx" suffix
                 string idx_path = index_dir + "/" + file_name;
-                string meta_path = meta_dir + "/" + base_name + ".meta";
 
                 DiskChunkReader *reader = new DiskChunkReader();
                 if (reader->open(idx_path)) {
@@ -197,30 +236,9 @@ int main(int argc, char **argv) {
                     readers.pushBack(reader);
                     engines.pushBack(engine);
 
-                    vector<MetaRecord> chunk_meta;
-                    FILE *fp = fopen(meta_path.c_str(), "r");
-                    if (fp) {
-                        char line[4096];
-                        while (fgets(line, sizeof(line), fp)) {
-                            string s(line);
-                            if (!s.empty() && s.back() == '\n')
-                                s.pop_back();
-
-                            size_t tab1 = s.find('\t');
-                            size_t tab2 = s.find('\t', tab1 + 1);
-
-                            if (tab1 != string::npos && tab2 != string::npos) {
-                                string url = s.substr(0, tab1);
-                                string title = s.substr(tab1 + 1, tab2 - tab1 - 1);
-                                string snippet = s.substr(tab2 + 1);
-                                chunk_meta.pushBack({url, title, snippet});
-                            }
-                        }
-                        fclose(fp);
-                    }
-                    all_meta.pushBack(chunk_meta);
-                    std::cout << "Loaded chunk: " << base_name << " (" << chunk_meta.size()
-                              << " docs)\n";
+                    auto header = reader->header();
+                    std::cout << "Loaded chunk: " << idx_path << " with " << header.num_documents
+                              << " documents\n";
                 }
             }
         }
