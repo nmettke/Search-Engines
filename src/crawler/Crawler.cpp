@@ -12,7 +12,6 @@
 
 static std::atomic<bool> shouldStop{false};
 Frontier *f = nullptr;
-DelayedQueue *delayedQueue = nullptr;
 
 static void signalHandler(int) {
     shouldStop = true;
@@ -62,8 +61,7 @@ void *WorkerThread(void *arg) {
         }
 
         if (check.status == RobotCheckStatus::DELAYED) {
-            // crawl delay imeplemtation
-            delayedQueue->push(*item, check.readyAtMs);
+            f->snoozeCurrent(*item, check.readyAtMs);
             taskCompletionGuard.dismiss();
             continue;
         }
@@ -112,20 +110,6 @@ void *CheckpointThread(void *arg) {
     return nullptr;
 }
 
-// has its own thread, periodically drains the queue
-void *DelayedQueueThread(void *arg) {
-    while (!shouldStop) {
-        sleep(1.5);
-        if (shouldStop)
-            break;
-        vector<FrontierItem> ready = delayedQueue->drainReady(nowMillis());
-        if (ready.size() > 0) {
-            f->pushDeferred(ready);
-        }
-    }
-    return nullptr;
-}
-
 int main() {
     initSSL();
     signal(SIGINT, signalHandler);
@@ -135,7 +119,6 @@ int main() {
     cpConfig.directory = "src/crawler";
     checkpoint = new Checkpoint(cpConfig);
     robotsCache = new RobotsCache();
-    delayedQueue = new DelayedQueue();
 
     vector<FrontierItem> recoveredItems;
     size_t loadedCount = 0;
@@ -156,10 +139,6 @@ int main() {
     pthread_t cpThread;
     pthread_create(&cpThread, nullptr, CheckpointThread, nullptr);
 
-    // Start delayed-queue manager thread
-    pthread_t dqThread;
-    pthread_create(&dqThread, nullptr, DelayedQueueThread, nullptr);
-
     size_t ThreadCount = cores * 3;
     vector<pthread_t> threads(ThreadCount);
 
@@ -171,9 +150,8 @@ int main() {
         pthread_join(threads[i], nullptr);
     }
 
-    // Stop checkpoint and delayed-queue threads
+    // Stop checkpoint thread
     pthread_join(cpThread, nullptr);
-    pthread_join(dqThread, nullptr);
 
     // Final save on exit
     checkpoint->save(*f, bloom, urlsCrawled);
@@ -182,7 +160,6 @@ int main() {
         std::cerr << "Graceful shutdown after SIGINT\n";
 
     delete robotsCache;
-    delete delayedQueue;
     delete f;
     delete checkpoint;
     cleanupSSL();

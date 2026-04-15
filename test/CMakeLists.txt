@@ -83,6 +83,25 @@ gtest_discover_tests(FrontierItemHelper_tests
 )
 
 # -------------------------
+# Frontier Tests
+# -------------------------
+
+add_executable(frontier_tests
+    crawler/frontier_test.cpp
+)
+
+target_link_libraries(frontier_tests
+    PRIVATE
+        crawler_lib
+        GTest::gtest
+        GTest::gtest_main
+)
+
+gtest_discover_tests(frontier_tests
+    TEST_PREFIX "frontier::"
+)
+
+# -------------------------
 # Url Dedup Tests
 # -------------------------
 

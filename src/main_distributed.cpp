@@ -1,6 +1,5 @@
 // Main file, should combine Crawler and Index for the distributed design.
 
-#include "./crawler/DelayedQueue.h"
 #include "./crawler/RobotsCache.h"
 #include "./crawler/UrlFilter.h"
 #include "./crawler/checkpoint.h"
@@ -110,7 +109,6 @@ std::atomic<size_t> urlsCrawled{0};
 UrlBloomFilter bloom(1000000, 0.0001);
 UrlFilter urlFilter;
 RobotsCache *robotsCache = nullptr;
-DelayedQueue *delayedQueue = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
 static std::atomic<time_t> lastCheckpointTime{0};
 static std::atomic<time_t> lastHeartbeatTime{0};
@@ -273,8 +271,10 @@ static void flushAnchorIndexToDisk(bool force) {
         return;
     }
 
-    anchorFlushFileCount++;
-    flushWordSnapshotToDisk(anchorSnapshot, anchorFlushFileCount, anchorIndex, anchorIndexEdited);
+    size_t fileCount = anchorFlushFileCount;
+    if (flushWordSnapshotToDisk(anchorSnapshot, fileCount, anchorIndex, anchorIndexEdited)) {
+        anchorFlushFileCount++;
+    }
 }
 
 void *CheckpointThread(void *) {
@@ -346,7 +346,7 @@ void *CrawlerWorkerThread(void *) {
         }
 
         if (check.status == RobotCheckStatus::DELAYED) {
-            delayedQueue->push(*item, check.readyAtMs);
+            f->snoozeCurrent(*item, check.readyAtMs);
             taskCompletionGuard.dismiss();
             continue;
         }
@@ -386,7 +386,7 @@ void *CrawlerWorkerThread(void *) {
                 batch_lock.lock();
                 batches[destinationMachine].pushBack(std::move(routedLink));
                 if (batches[destinationMachine].size() >= numLinkThreshold.load()) {
-                    batch_cv.notify_one();
+                    batch_cv.notify_all();
                 }
                 batch_lock.unlock();
                 continue;
@@ -405,19 +405,6 @@ void *CrawlerWorkerThread(void *) {
         logCrawled(crawled, item->link);
     }
 
-    return nullptr;
-}
-
-void *DelayedQueueThread(void *) {
-    while (!shouldStop) {
-        sleep(1);
-        if (shouldStop)
-            break;
-        vector<FrontierItem> ready = delayedQueue->drainReady(nowMillis());
-        if (ready.size() > 0) {
-            f->pushDeferred(ready);
-        }
-    }
     return nullptr;
 }
 
@@ -541,15 +528,6 @@ void *IndexWorkerThread(void *) {
     return nullptr;
 }
 
-static bool hasReadyBatch() {
-    for (const auto &batch : batches) {
-        if (batch.size() >= numLinkThreshold.load() || (shouldStop && batch.size() > 0)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static constexpr size_t sendBatchRetryCount = 5;
 static constexpr int sendBatchRetryBaseDelayMs = 1000;
 static constexpr int sendBatchConnectTimeoutSecs = 10;
@@ -557,6 +535,7 @@ static constexpr int sendBatchSendTimeoutSecs = 15;
 static constexpr int receiveBatchRecvTimeoutSecs = 30;
 static constexpr size_t receiveWorkerThreadCount = 32;
 static constexpr size_t maxQueuedReceiveClientFds = 5120;
+static constexpr std::uint32_t maxReceivedBatchPayloadBytes = 32U * 1024U * 1024U;
 
 // Bounded handoff from the accept loop to a fixed pool of receive workers.
 // Replaces "spawn a detached pthread per accept()" so connection bursts or
@@ -564,6 +543,7 @@ static constexpr size_t maxQueuedReceiveClientFds = 5120;
 static deque<int> clientFdQueue;
 static mutex receiveQueueMutex;
 static condition_variable receiveQueueCv;
+static vector<size_t> senderPeerIndices;
 
 // Non-blocking connect with a bounded timeout. Returns true iff the socket is
 // fully connected. On return, the socket is restored to blocking mode so the
@@ -613,16 +593,11 @@ static bool connectWithTimeout(int fd, const sockaddr *addr, socklen_t addrlen, 
     return true;
 }
 
-static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch) {
-    // Common network connection code to send formatted payload of batched links
-    if (batch.size() == 0) {
-        return true;
-    }
-
+static int connectToPeer(const string &peer) {
     size_t colon = peer.find(':');
     if (colon == string::npos || colon == 0 || colon + 1 >= peer.size()) {
         tsOut(std::cerr) << "Invalid peer address: " << peer << '\n';
-        return false;
+        return -1;
     }
 
     string host = peer.substr(0, colon);
@@ -635,7 +610,7 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
     addrinfo *result = nullptr;
     if (getaddrinfo(host.c_str(), port.c_str(), &hints, &result) != 0) {
         tsOut(std::cerr) << "Failed to resolve peer " << peer << '\n';
-        return false;
+        return -1;
     }
 
     int socketFd = -1;
@@ -658,19 +633,41 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
 
     if (socketFd < 0) {
         tsOut(std::cerr) << "Failed to connect to peer " << peer << '\n';
-        return false;
+        return -1;
     }
 
-    // Bound how long send() can block on a dead peer.
     timeval sendTimeout{};
     sendTimeout.tv_sec = sendBatchSendTimeoutSecs;
     sendTimeout.tv_usec = 0;
     setsockopt(socketFd, SOL_SOCKET, SO_SNDTIMEO, &sendTimeout, sizeof(sendTimeout));
+    int keepAlive = 1;
+    setsockopt(socketFd, SOL_SOCKET, SO_KEEPALIVE, &keepAlive, sizeof(keepAlive));
 
+    return socketFd;
+}
+
+static bool sendAll(int socketFd, const char *data, size_t length) {
+    size_t remaining = length;
+    while (remaining > 0) {
+        ssize_t sent = send(socketFd, data, remaining, 0);
+        if (sent < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return false;
+        }
+
+        data += sent;
+        remaining -= static_cast<size_t>(sent);
+    }
+
+    return true;
+}
+
+static string buildBatchPayload(const vector<RoutedLink> &batch) {
     string payload;
-    payload.reserve(batch.size() * 96); // heuristic. can be changed
+    payload.reserve(batch.size() * 96);
 
-    // Write in format URL \t seedDistance \t anchor \t ... \n
     for (const RoutedLink &link : batch) {
         payload += link.url;
         payload.pushBack('\t');
@@ -682,22 +679,31 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
         payload.pushBack('\n');
     }
 
-    const char *data = payload.data();
-    size_t remaining = payload.size();
-    while (remaining > 0) {
-        ssize_t sent = send(socketFd, data, remaining, 0);
-        if (sent < 0) {
-            tsOut(std::cerr) << "Failed while sending to peer " << peer << ": "
-                             << std::strerror(errno) << '\n';
-            close(socketFd);
-            return false;
-        }
+    return payload;
+}
 
-        data += sent;
-        remaining -= static_cast<size_t>(sent);
+static bool sendBatchToPeer(int &socketFd, const string &peer, const vector<RoutedLink> &batch) {
+    if (batch.size() == 0) {
+        return true;
     }
 
-    close(socketFd);
+    if (socketFd < 0) {
+        socketFd = connectToPeer(peer);
+        if (socketFd < 0) {
+            return false;
+        }
+    }
+
+    string payload = buildBatchPayload(batch);
+    std::uint32_t payloadLength = htonl(static_cast<std::uint32_t>(payload.size()));
+    if (!sendAll(socketFd, reinterpret_cast<const char *>(&payloadLength), sizeof(payloadLength)) ||
+        !sendAll(socketFd, payload.data(), payload.size())) {
+        tsOut(std::cerr) << "Failed while sending to peer " << peer << ": " << std::strerror(errno)
+                         << '\n';
+        close(socketFd);
+        socketFd = -1;
+        return false;
+    }
 
     if (debug) {
         tsOut(std::cout) << "Send Batch Successful\n";
@@ -706,9 +712,10 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
     return true;
 }
 
-static bool sendBatchToPeerWithRetry(const string &peer, const vector<RoutedLink> &batch) {
+static bool sendBatchToPeerWithRetry(int &socketFd, const string &peer,
+                                     const vector<RoutedLink> &batch) {
     for (size_t attempt = 0; attempt <= sendBatchRetryCount; ++attempt) {
-        if (sendBatchToPeer(peer, batch)) {
+        if (sendBatchToPeer(socketFd, peer, batch)) {
             return true;
         }
 
@@ -728,70 +735,51 @@ static bool sendBatchToPeerWithRetry(const string &peer, const vector<RoutedLink
     return false;
 }
 
-void *SendToMachineThread(void *) {
+static bool isBatchReadyForPeer(size_t peerIndex) {
+    return peerIndex < batches.size() &&
+           (batches[peerIndex].size() >= numLinkThreshold.load() ||
+            (shouldStop && batches[peerIndex].size() > 0));
+}
+
+void *SendToMachineThread(void *arg) {
+    const size_t peerIndex = *static_cast<size_t *>(arg);
+    int socketFd = -1;
+
     while (true) {
-        vector<vector<RoutedLink>> readyBatches;
+        vector<RoutedLink> readyBatch;
 
         batch_lock.lock();
-        while (!shouldStop && !hasReadyBatch()) {
+        while (!shouldStop && !isBatchReadyForPeer(peerIndex)) {
             batch_cv.wait(batch_lock);
         }
 
-        if (shouldStop && !hasReadyBatch()) {
+        if (shouldStop && !isBatchReadyForPeer(peerIndex)) {
             batch_lock.unlock();
             break;
         }
 
-        // We consider batch ready if it is big enough or when process
-        // stopped and there are remaining batches
-        readyBatches = vector<vector<RoutedLink>>(batches.size());
-        for (size_t i = 0; i < batches.size(); ++i) {
-            if (batches[i].size() >= numLinkThreshold.load() ||
-                (shouldStop && batches[i].size() > 0)) {
-                readyBatches[i] = std::move(batches[i]);
-                batches[i] = vector<RoutedLink>();
-            }
-        }
-
+        readyBatch = std::move(batches[peerIndex]);
+        batches[peerIndex] = vector<RoutedLink>();
         batch_lock.unlock();
 
-        for (size_t i = 0; i < readyBatches.size(); ++i) {
-            if (readyBatches[i].size() == 0) {
-                continue;
-            }
-
-            if (i == machine_id.load()) {
-                // batch of the local machine should always be empty, so
-                // shouldn't happen but still safeguarding
-                vector<FrontierItem> localLinks;
-                for (const RoutedLink &link : readyBatches[i]) {
-                    string canonicalOut;
-                    if (!passesUrlQualityChecks(link.url, canonicalOut) ||
-                        !urlFilter.isAllowed(canonicalOut)) {
-                        continue;
-                    }
-
-                    appendAnchorTerms(canonicalOut, link.anchorText);
-                    if (bloom.checkAndInsert(canonicalOut)) {
-                        localLinks.pushBack(
-                            FrontierItem::withSeedDistance(canonicalOut, link.seedDistance));
-                    }
-                }
-                f->pushMany(localLinks);
-                continue;
-            }
-
-            if (!sendBatchToPeerWithRetry(peer_address[i], readyBatches[i])) {
-                // Put failed batch back without notifying batch_cv so it only
-                // retries once real new URLs make the batch ready again.
-                // batch_lock.lock();
-                // for (Link &link : readyBatches[i]) {
-                //     batches[i].pushBack(std::move(link));
-                // }
-                // batch_lock.unlock();
-                tsOut(std::cerr) << "Send Batch Failed; Give up\n";
-            }
+        if (readyBatch.size() == 0) {
+            continue;
         }
+
+        if (!sendBatchToPeerWithRetry(socketFd, peer_address[peerIndex], readyBatch)) {
+            batch_lock.lock();
+            for (size_t i = 0; i < readyBatch.size(); ++i) {
+                batches[peerIndex].pushBack(std::move(readyBatch[i]));
+            }
+            batch_cv.notify_all();
+            batch_lock.unlock();
+            tsOut(std::cerr) << "Send Batch Failed; re-queued for peer " << peer_address[peerIndex]
+                             << '\n';
+        }
+    }
+
+    if (socketFd >= 0) {
+        close(socketFd);
     }
 
     return nullptr;
@@ -822,80 +810,95 @@ static bool parseSizeField(const string &raw, size_t &value) {
     return true;
 }
 
-static void processReceivedBatch(int clientFd) {
-    // Bound how long a stalled peer can pin this worker + FD.
-    // Without this, a half-open TCP connection leaves recv() blocked
-    // until the kernel's TCP keepalive expires (hours), leaking FDs
-    // over a long run.
-    timeval recvTimeout{};
-    recvTimeout.tv_sec = receiveBatchRecvTimeoutSecs;
-    recvTimeout.tv_usec = 0;
-    setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &recvTimeout, sizeof(recvTimeout));
+enum class RecvResult { OK, CLOSED, ERROR };
 
-    int keepAlive = 1;
-    setsockopt(clientFd, SOL_SOCKET, SO_KEEPALIVE, &keepAlive, sizeof(keepAlive));
-
-    // read payload into a string
-    string payload;
-    char buffer[4096];
-    while (true) {
-        ssize_t received = recv(clientFd, buffer, sizeof(buffer), 0);
+static RecvResult recvExactly(int clientFd, char *buffer, size_t length) {
+    size_t receivedTotal = 0;
+    while (receivedTotal < length) {
+        ssize_t received = recv(clientFd, buffer + receivedTotal, length - receivedTotal, 0);
         if (received == 0) {
-            break;
+            return receivedTotal == 0 ? RecvResult::CLOSED : RecvResult::ERROR;
         }
         if (received < 0) {
             if (errno == EINTR) {
                 continue;
             }
-            tsOut(std::cerr) << "Receive failed: " << std::strerror(errno) << '\n';
-            break;
+            return RecvResult::ERROR;
         }
-        payload.append(buffer, static_cast<size_t>(received));
+
+        receivedTotal += static_cast<size_t>(received);
     }
 
-    close(clientFd);
+    return RecvResult::OK;
+}
+
+static RecvResult recvFramedPayload(int clientFd, string &payload) {
+    std::uint32_t lengthNetwork = 0;
+    RecvResult headerResult =
+        recvExactly(clientFd, reinterpret_cast<char *>(&lengthNetwork), sizeof(lengthNetwork));
+    if (headerResult != RecvResult::OK) {
+        return headerResult;
+    }
+
+    std::uint32_t payloadLength = ntohl(lengthNetwork);
+    if (payloadLength > maxReceivedBatchPayloadBytes) {
+        tsOut(std::cerr) << "Dropping oversized incoming batch payload of " << payloadLength
+                         << " bytes\n";
+        return RecvResult::ERROR;
+    }
+
+    payload = "";
+    size_t remaining = payloadLength;
+    char buffer[4096];
+    while (remaining > 0) {
+        size_t chunkSize = remaining < sizeof(buffer) ? remaining : sizeof(buffer);
+        RecvResult bodyResult = recvExactly(clientFd, buffer, chunkSize);
+        if (bodyResult != RecvResult::OK) {
+            return bodyResult;
+        }
+
+        payload.append(buffer, chunkSize);
+        remaining -= chunkSize;
+    }
+
+    return RecvResult::OK;
+}
+
+static void processReceivedPayload(const string &payload) {
+    if (payload.empty()) {
+        return;
+    }
 
     if (debug) {
         tsOut(std::cout) << "Receive batch\n";
     }
 
-    if (payload.empty()) {
-        return;
-    }
-
-    // decode payload based on our encoding method into vector of urls and anchors
     vector<FrontierItem> discoveredLinks;
     size_t lineStart = 0;
     while (lineStart < payload.size()) {
         size_t lineEnd = findCharFrom(payload, '\n', lineStart);
-        size_t lineLength =
-            lineEnd != string::npos ? lineEnd - lineStart : payload.size() - lineStart;
+        size_t lineLength = lineEnd != string::npos ? lineEnd - lineStart : payload.size() - lineStart;
 
         string line = payload.substr(lineStart, lineLength);
 
         if (!line.empty()) {
-            // parse line
             size_t fieldEnd = findCharFrom(line, '\t', 0);
             string rawUrl = fieldEnd == string::npos ? line : line.substr(0, fieldEnd);
             vector<string> anchorWords;
             size_t receivedSeedDistance = 0;
 
-            // New payload format includes seed distance as second field.
-            // For backward compatibility with old payloads, if parsing fails,
-            // we treat the field as the first anchor word.
             if (fieldEnd != string::npos) {
                 size_t fieldStart = fieldEnd + 1;
                 size_t secondFieldEnd = findCharFrom(line, '\t', fieldStart);
-                size_t secondFieldLength = secondFieldEnd == string::npos
-                                               ? line.size() - fieldStart
-                                               : secondFieldEnd - fieldStart;
+                size_t secondFieldLength =
+                    secondFieldEnd == string::npos ? line.size() - fieldStart
+                                                  : secondFieldEnd - fieldStart;
                 string maybeSeedDistance = line.substr(fieldStart, secondFieldLength);
                 if (parseSizeField(maybeSeedDistance, receivedSeedDistance)) {
                     fieldEnd = secondFieldEnd;
                 }
             }
 
-            // add anchor text if tab char was found
             while (fieldEnd != string::npos) {
                 size_t fieldStart = fieldEnd + 1;
                 fieldEnd = findCharFrom(line, '\t', fieldStart);
@@ -906,7 +909,6 @@ static void processReceivedBatch(int clientFd) {
                 }
             }
 
-            // add the links to our frontier and anchor
             string canonicalOut;
             if (passesUrlQualityChecks(rawUrl, canonicalOut) && urlFilter.isAllowed(canonicalOut) &&
                 shouldOwnUrl(canonicalOut)) {
@@ -928,6 +930,35 @@ static void processReceivedBatch(int clientFd) {
     if (discoveredLinks.size() > 0) {
         f->pushMany(discoveredLinks);
     }
+}
+
+static void processReceivedBatch(int clientFd) {
+    // Bound how long a stalled peer can pin this worker + FD.
+    // Without this, a half-open TCP connection leaves recv() blocked
+    // until the kernel's TCP keepalive expires (hours), leaking FDs
+    // over a long run.
+    timeval recvTimeout{};
+    recvTimeout.tv_sec = receiveBatchRecvTimeoutSecs;
+    recvTimeout.tv_usec = 0;
+    setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &recvTimeout, sizeof(recvTimeout));
+
+    int keepAlive = 1;
+    setsockopt(clientFd, SOL_SOCKET, SO_KEEPALIVE, &keepAlive, sizeof(keepAlive));
+
+    while (true) {
+        string payload;
+        RecvResult recvResult = recvFramedPayload(clientFd, payload);
+        if (recvResult == RecvResult::CLOSED) {
+            break;
+        }
+        if (recvResult == RecvResult::ERROR) {
+            tsOut(std::cerr) << "Receive failed: " << std::strerror(errno) << '\n';
+            break;
+        }
+        processReceivedPayload(payload);
+    }
+
+    close(clientFd);
 }
 
 void *ReceiveWorkerThread(void *) {
@@ -1101,7 +1132,6 @@ int main(int argc, char **argv) {
     checkpoint = new Checkpoint(cpConfig);
     q = new IndexQueue(maxIndexQueueItems);
     robotsCache = new RobotsCache();
-    delayedQueue = new DelayedQueue();
     anchorIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
 
     peer_address = {"10.128.0.21:8081", "10.128.0.22:8081", "10.128.0.23:8081", "10.128.0.25:8081",
@@ -1229,14 +1259,13 @@ int main(int argc, char **argv) {
     size_t indexThreadCount = 1;
     vector<pthread_t> crawlerThreads(crawlerThreadCount);
     vector<pthread_t> indexThreads(indexThreadCount);
+    vector<pthread_t> senderThreads(peer_address.size());
 
-    pthread_t senderThread{};
     pthread_t receiverThread{};
-    pthread_t dqThread{};
     pthread_t checkpointThread{};
     // pthread_t anchorThread{};
     vector<pthread_t> receiveWorkers(receiveWorkerThreadCount);
-    bool senderStarted = false;
+    bool senderThreadsStarted = false;
     bool receiverStarted = false;
     bool receiveWorkersStarted = false;
     bool checkpointStarted = false;
@@ -1254,13 +1283,19 @@ int main(int argc, char **argv) {
 
     pthread_create(&checkpointThread, nullptr, CheckpointThread, nullptr);
     checkpointStarted = true;
-    pthread_create(&dqThread, nullptr, DelayedQueueThread, nullptr);
 
     if (peer_address.size() > 1) {
         // start network threads only if we have multi-machine
-        pthread_create(&senderThread, nullptr, SendToMachineThread, nullptr);
+        senderPeerIndices = vector<size_t>(peer_address.size(), 0);
+        for (size_t i = 0; i < peer_address.size(); ++i) {
+            senderPeerIndices[i] = i;
+            if (i == machine_id.load()) {
+                continue;
+            }
+            pthread_create(&senderThreads[i], nullptr, SendToMachineThread, &senderPeerIndices[i]);
+        }
         pthread_create(&receiverThread, nullptr, ReceiveFromMachineThread, nullptr);
-        senderStarted = true;
+        senderThreadsStarted = true;
         receiverStarted = true;
 
         // Fixed pool of receive workers. Replaces per-accept pthread_create
@@ -1289,8 +1324,13 @@ int main(int argc, char **argv) {
         pthread_join(indexThreads[i], nullptr);
     }
 
-    if (senderStarted) {
-        pthread_join(senderThread, nullptr);
+    if (senderThreadsStarted) {
+        for (size_t i = 0; i < senderThreads.size(); ++i) {
+            if (i == machine_id.load()) {
+                continue;
+            }
+            pthread_join(senderThreads[i], nullptr);
+        }
     }
 
     if (receiverStarted) {
@@ -1318,7 +1358,6 @@ int main(int argc, char **argv) {
         receiveQueueMutex.unlock();
     }
 
-    pthread_join(dqThread, nullptr);
     // pthread_join(anchorThread, nullptr);
 
     checkpoint->save(*f, bloom, urlsCrawled.load());
@@ -1332,7 +1371,6 @@ int main(int argc, char **argv) {
 
     delete anchorIndex;
     delete robotsCache;
-    delete delayedQueue;
     delete f;
     delete q;
     delete checkpoint;
