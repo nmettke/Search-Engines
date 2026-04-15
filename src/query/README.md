@@ -1,4 +1,5 @@
 ## Dummy Index
+
 ```
 make create_dummy_index
 ```
@@ -24,12 +25,15 @@ echo "cat" | nc localhost <port>
 ```
 make broker_server
 
-./broker_server
+./broker_server <port> <rootdirectory>
 ```
+
+broker / search server serves static files and intercepts magic path via search plugon
 
 ## Test
 
 1. Create files and executables
+
 ```
 make create_dummy_index
 make worker_node
@@ -37,26 +41,21 @@ make broker_server
 ```
 
 2. Run two worker in separate terminal
+
 ```
 ./worker_node 8081 chunk1
 ./worker_node 8082 chunk2
 ```
 
 3. Start broker server
-```
-./broker_server
-```
 
-4. Query through your web browser. e.g. http://localhost:8080/search?q=cat
-
-You can also query from the terminal:
 ```
-curl "http://localhost:8080/search?q=cat"
+./broker_server 8080 website
 ```
 
-The JSON response includes the worker-computed static `score` for each result.
-
+4. Open http://localhost:8080 in your browser
 
 ## TODOs
+
 - Implement two-tier searching (Every worker should search anchor_chunks/ first then search body_chunks/).
 - load the config using config files.
