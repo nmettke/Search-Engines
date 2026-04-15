@@ -1,10 +1,31 @@
 #include "frontier.h"
 
+#include <cstdlib>
 #include <time.h>
 
 namespace {
 
 thread_local std::string frontierActiveHostKey;
+
+std::size_t resolveFrontierMaxQueuedItems(std::size_t configuredMaxQueuedItems) {
+    if (configuredMaxQueuedItems != 0) {
+        return configuredMaxQueuedItems;
+    }
+
+    const char *raw = std::getenv("SEARCH_FRONTIER_MAX_ITEMS");
+    if (raw == nullptr || raw[0] == '\0') {
+        return 0;
+    }
+
+    char *end = nullptr;
+    unsigned long parsed = std::strtoul(raw, &end, 10);
+    if (end == raw || (end != nullptr && *end != '\0')) {
+        std::cerr << "Ignoring invalid SEARCH_FRONTIER_MAX_ITEMS value: " << raw << '\n';
+        return 0;
+    }
+
+    return static_cast<std::size_t>(parsed);
+}
 
 } // namespace
 
@@ -32,8 +53,10 @@ std::string Frontier::extractHostKey(const string &url) {
     return std::string(url.cstr() + hostStart, url.cstr() + hostEnd);
 }
 
-Frontier::Frontier(const string &seed_list_str, bool autoCloseWhenDrainedArg)
-    : closed(false), autoCloseWhenDrained(autoCloseWhenDrainedArg), pending(0), queued(0) {
+Frontier::Frontier(const string &seed_list_str, bool autoCloseWhenDrainedArg,
+                   size_t maxQueuedItemsArg)
+    : closed(false), autoCloseWhenDrained(autoCloseWhenDrainedArg), pending(0), queued(0),
+      maxQueuedItems(resolveFrontierMaxQueuedItems(maxQueuedItemsArg)) {
     std::ifstream seedList(seed_list_str.c_str());
     if (!seedList.is_open()) {
         throw std::runtime_error("seedList could not be opened");
@@ -49,8 +72,10 @@ Frontier::Frontier(const string &seed_list_str, bool autoCloseWhenDrainedArg)
     }
 }
 
-Frontier::Frontier(vector<FrontierItem> items, bool autoCloseWhenDrainedArg)
-    : closed(false), autoCloseWhenDrained(autoCloseWhenDrainedArg), pending(0), queued(0) {
+Frontier::Frontier(vector<FrontierItem> items, bool autoCloseWhenDrainedArg,
+                   size_t maxQueuedItemsArg)
+    : closed(false), autoCloseWhenDrained(autoCloseWhenDrainedArg), pending(0), queued(0),
+      maxQueuedItems(resolveFrontierMaxQueuedItems(maxQueuedItemsArg)) {
     for (size_t i = 0; i < items.size(); ++i) {
         if (!items[i].link.empty()) {
             pushInternal(items[i], true);
@@ -111,8 +136,61 @@ void Frontier::promoteSleepingHostsUnlocked(std::int64_t nowMs) {
     }
 }
 
-void Frontier::pushInternal(const FrontierItem &item, bool countTowardsPending) {
+bool Frontier::evictWorstQueuedItemUnlocked(const FrontierItem *incoming) {
+    if (queued == 0) {
+        return false;
+    }
+
+    auto worstHostIt = hostQueues.end();
+    std::deque<FrontierItem>::iterator worstItemIt;
+    double worstScore = 0.0;
+    bool foundWorst = false;
+
+    for (auto hostIt = hostQueues.begin(); hostIt != hostQueues.end(); ++hostIt) {
+        std::deque<FrontierItem> &items = hostIt->second.items;
+        for (auto itemIt = items.begin(); itemIt != items.end(); ++itemIt) {
+            double candidateScore = itemIt->getScore();
+            if (!foundWorst || candidateScore < worstScore) {
+                foundWorst = true;
+                worstScore = candidateScore;
+                worstHostIt = hostIt;
+                worstItemIt = itemIt;
+            }
+        }
+    }
+
+    if (!foundWorst) {
+        return false;
+    }
+
+    if (incoming != nullptr && !(incoming->getScore() > worstScore)) {
+        return false;
+    }
+
+    worstHostIt->second.items.erase(worstItemIt);
+    --queued;
+    if (pending > 0) {
+        --pending;
+    }
+
+    return true;
+}
+
+bool Frontier::makeRoomForUnlocked(const FrontierItem &incoming, bool preserveIncomingWhenFull) {
+    if (maxQueuedItems == 0 || queued < maxQueuedItems) {
+        return true;
+    }
+
+    return evictWorstQueuedItemUnlocked(preserveIncomingWhenFull ? nullptr : &incoming);
+}
+
+void Frontier::pushInternal(const FrontierItem &item, bool countTowardsPending,
+                            bool preserveIncomingWhenFull) {
     if (item.link.empty()) {
+        return;
+    }
+
+    if (!makeRoomForUnlocked(item, preserveIncomingWhenFull)) {
         return;
     }
 
@@ -196,7 +274,7 @@ void Frontier::pushDeferred(const vector<FrontierItem> &items) {
 
     for (const FrontierItem &item : items) {
         if (!item.link.empty()) {
-            pushInternal(item, false);
+            pushInternal(item, false, true);
         }
     }
 
@@ -221,6 +299,11 @@ void Frontier::snoozeCurrent(const FrontierItem &item, std::int64_t readyAtMs) {
     host.inFlight = false;
 
     if (!item.link.empty()) {
+        if (!makeRoomForUnlocked(item, true)) {
+            hostKey.clear();
+            cv.notify_all();
+            return;
+        }
         host.items.push_front(item);
         ++queued;
     }

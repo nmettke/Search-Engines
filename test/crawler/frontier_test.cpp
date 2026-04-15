@@ -55,3 +55,59 @@ TEST(FrontierTest, SnoozedHostRequeuesAndBecomesReadyLater) {
 
     frontier.taskDone();
 }
+
+TEST(FrontierTest, BetterUrlEvictsWorstQueuedItemWhenFrontierIsFull) {
+    FrontierItem good = FrontierItem::withSeedDistance(string("https://a.example/root"), 0);
+    FrontierItem worse = FrontierItem::withSeedDistance(string("https://b.example/deep/page"), 6);
+    Frontier frontier(vector<FrontierItem>{good, worse}, false, 2);
+
+    FrontierItem betterIncoming =
+        FrontierItem::withSeedDistance(string("https://c.example/root"), 1);
+    frontier.push(betterIncoming);
+
+    EXPECT_EQ(frontier.size(), 2u);
+    EXPECT_TRUE(frontier.contains(good.link));
+    EXPECT_TRUE(frontier.contains(betterIncoming.link));
+    EXPECT_FALSE(frontier.contains(worse.link));
+}
+
+TEST(FrontierTest, WorseUrlIsDroppedWhenFrontierIsFull) {
+    FrontierItem good = FrontierItem::withSeedDistance(string("https://a.example/root"), 0);
+    FrontierItem medium = FrontierItem::withSeedDistance(string("https://b.example/root"), 1);
+    Frontier frontier(vector<FrontierItem>{good, medium}, false, 2);
+
+    FrontierItem worseIncoming =
+        FrontierItem::withSeedDistance(string("https://c.example/deep/page"), 8);
+    frontier.push(worseIncoming);
+
+    EXPECT_EQ(frontier.size(), 2u);
+    EXPECT_TRUE(frontier.contains(good.link));
+    EXPECT_TRUE(frontier.contains(medium.link));
+    EXPECT_FALSE(frontier.contains(worseIncoming.link));
+}
+
+TEST(FrontierTest, SnoozedItemMakesRoomWhenFrontierIsFull) {
+    FrontierItem first = FrontierItem::withSeedDistance(string("https://a.example/root"), 0);
+    FrontierItem queued = FrontierItem::withSeedDistance(string("https://b.example/queued"), 1);
+    Frontier frontier(vector<FrontierItem>{first}, false, 1);
+
+    std::optional<FrontierItem> popped = frontier.pop();
+    ASSERT_TRUE(popped.has_value());
+    frontier.push(queued);
+    ASSERT_TRUE(frontier.contains(queued.link));
+
+    timespec ts{};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    std::int64_t readyAtMs =
+        static_cast<std::int64_t>(ts.tv_sec) * 1000 + static_cast<std::int64_t>(ts.tv_nsec / 1000000);
+    frontier.snoozeCurrent(*popped, readyAtMs);
+
+    EXPECT_EQ(frontier.size(), 1u);
+    EXPECT_TRUE(frontier.contains(popped->link));
+    EXPECT_FALSE(frontier.contains(queued.link));
+
+    std::optional<FrontierItem> resumed = frontier.pop();
+    ASSERT_TRUE(resumed.has_value());
+    EXPECT_EQ(std::string(resumed->link.cstr()), std::string(popped->link.cstr()));
+    frontier.taskDone();
+}

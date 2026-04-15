@@ -20,9 +20,11 @@
 
 class Frontier {
   public:
-    Frontier(const string &seed_list_str, bool autoCloseWhenDrained = true);
+    Frontier(const string &seed_list_str, bool autoCloseWhenDrained = true,
+             size_t maxQueuedItems = 0);
 
-    Frontier(vector<FrontierItem> items, bool autoCloseWhenDrained = true);
+    Frontier(vector<FrontierItem> items, bool autoCloseWhenDrained = true,
+             size_t maxQueuedItems = 0);
 
     ~Frontier() = default;
 
@@ -76,7 +78,10 @@ class Frontier {
     static std::int64_t nowMillis();
     static std::string extractHostKey(const string &url);
 
-    void pushInternal(const FrontierItem &item, bool countTowardsPending);
+    void pushInternal(const FrontierItem &item, bool countTowardsPending,
+                      bool preserveIncomingWhenFull = false);
+    bool makeRoomForUnlocked(const FrontierItem &incoming, bool preserveIncomingWhenFull);
+    bool evictWorstQueuedItemUnlocked(const FrontierItem *incoming);
     void scheduleHostUnlocked(const std::string &hostKey, HostQueue &host, std::int64_t nowMs);
     void promoteSleepingHostsUnlocked(std::int64_t nowMs);
     void releaseActiveHostUnlocked(std::int64_t nowMs);
@@ -91,4 +96,5 @@ class Frontier {
     bool autoCloseWhenDrained;
     std::size_t pending;
     std::size_t queued;
+    std::size_t maxQueuedItems;
 };
