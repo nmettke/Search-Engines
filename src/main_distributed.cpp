@@ -100,7 +100,7 @@ const string indexDirectory("data/body_index");
 const string metaDirectory("data/meta");
 const size_t FLUSHBODYTOKENSIZE = 25000000;
 static constexpr size_t maxIndexQueueItems = 1024;
-static constexpr size_t crawlerThreadsPerCore = 100;
+static constexpr size_t crawlerThreadsPerCore = 200;
 static constexpr size_t fallbackCrawlerThreadCount = 8;
 static constexpr size_t maxCrawlerThreadCount = 1600;
 
@@ -113,7 +113,7 @@ RobotsCache *robotsCache = nullptr;
 DelayedQueue *delayedQueue = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
 static std::atomic<time_t> lastCheckpointTime{0};
-static constexpr int checkpointIntervalSecs = 600; // 10 minutes
+static constexpr int checkpointIntervalSecs = 1800; // 30 minutes
 mutex crawlLogLock;
 bool debug = false;
 
