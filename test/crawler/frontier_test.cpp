@@ -56,34 +56,34 @@ TEST(FrontierTest, SnoozedHostRequeuesAndBecomesReadyLater) {
     frontier.taskDone();
 }
 
-TEST(FrontierTest, BetterUrlEvictsWorstQueuedItemWhenFrontierIsFull) {
-    FrontierItem good = FrontierItem::withSeedDistance(string("https://a.example/root"), 0);
-    FrontierItem worse = FrontierItem::withSeedDistance(string("https://b.example/deep/page"), 6);
-    Frontier frontier(vector<FrontierItem>{good, worse}, false, 2);
+TEST(FrontierTest, FrontierFullTrimsReservoirTailAndAcceptsIncomingUrl) {
+    FrontierItem first = FrontierItem::withSeedDistance(string("https://a.example/root"), 0);
+    FrontierItem tail = FrontierItem::withSeedDistance(string("https://b.example/root"), 1);
+    Frontier frontier(vector<FrontierItem>{first, tail}, false, 2);
 
-    FrontierItem betterIncoming =
-        FrontierItem::withSeedDistance(string("https://c.example/root"), 1);
-    frontier.push(betterIncoming);
+    FrontierItem incoming =
+        FrontierItem::withSeedDistance(string("https://c.example/deep/page"), 8);
+    frontier.push(incoming);
 
     EXPECT_EQ(frontier.size(), 2u);
-    EXPECT_TRUE(frontier.contains(good.link));
-    EXPECT_TRUE(frontier.contains(betterIncoming.link));
-    EXPECT_FALSE(frontier.contains(worse.link));
+    EXPECT_TRUE(frontier.contains(first.link));
+    EXPECT_TRUE(frontier.contains(incoming.link));
+    EXPECT_FALSE(frontier.contains(tail.link));
 }
 
-TEST(FrontierTest, WorseUrlIsDroppedWhenFrontierIsFull) {
-    FrontierItem good = FrontierItem::withSeedDistance(string("https://a.example/root"), 0);
-    FrontierItem medium = FrontierItem::withSeedDistance(string("https://b.example/root"), 1);
-    Frontier frontier(vector<FrontierItem>{good, medium}, false, 2);
+TEST(FrontierTest, FrontierFullUsesReservoirPositionRatherThanGlobalWorstScore) {
+    FrontierItem worse = FrontierItem::withSeedDistance(string("https://a.example/deep/page"), 6);
+    FrontierItem best = FrontierItem::withSeedDistance(string("https://b.example/root"), 0);
+    Frontier frontier(vector<FrontierItem>{worse, best}, false, 2);
 
-    FrontierItem worseIncoming =
-        FrontierItem::withSeedDistance(string("https://c.example/deep/page"), 8);
-    frontier.push(worseIncoming);
+    FrontierItem incoming =
+        FrontierItem::withSeedDistance(string("https://c.example/root"), 2);
+    frontier.push(incoming);
 
     EXPECT_EQ(frontier.size(), 2u);
-    EXPECT_TRUE(frontier.contains(good.link));
-    EXPECT_TRUE(frontier.contains(medium.link));
-    EXPECT_FALSE(frontier.contains(worseIncoming.link));
+    EXPECT_TRUE(frontier.contains(worse.link));
+    EXPECT_TRUE(frontier.contains(incoming.link));
+    EXPECT_FALSE(frontier.contains(best.link));
 }
 
 TEST(FrontierTest, SnoozedItemMakesRoomWhenFrontierIsFull) {
@@ -109,5 +109,32 @@ TEST(FrontierTest, SnoozedItemMakesRoomWhenFrontierIsFull) {
     std::optional<FrontierItem> resumed = frontier.pop();
     ASSERT_TRUE(resumed.has_value());
     EXPECT_EQ(std::string(resumed->link.cstr()), std::string(popped->link.cstr()));
+    frontier.taskDone();
+}
+
+TEST(FrontierTest, ReservoirItemsAppearInContainsAndSnapshotBeforePromotion) {
+    FrontierItem first = FrontierItem::withSeedDistance(string("https://a.example/root"), 0);
+    FrontierItem second = FrontierItem::withSeedDistance(string("https://b.example/root"), 1);
+    Frontier frontier(vector<FrontierItem>{first, second}, false);
+
+    EXPECT_EQ(frontier.size(), 2u);
+    EXPECT_TRUE(frontier.contains(first.link));
+    EXPECT_TRUE(frontier.contains(second.link));
+
+    vector<FrontierItem> snapshot = frontier.snapshot();
+    EXPECT_EQ(snapshot.size(), 2u);
+}
+
+TEST(FrontierTest, ReservoirSweepPromotesBestItemFromChunkFirst) {
+    FrontierItem best = FrontierItem::withSeedDistance(string("https://a.example/root"), 0);
+    FrontierItem medium = FrontierItem::withSeedDistance(string("https://b.example/root"), 2);
+    FrontierItem worse = FrontierItem::withSeedDistance(string("https://c.example/deep/page"), 6);
+    FrontierItem worst = FrontierItem::withSeedDistance(string("https://d.example/deeper/page"), 8);
+    Frontier frontier(vector<FrontierItem>{worse, medium, worst, best}, false);
+
+    std::optional<FrontierItem> popped = frontier.pop();
+    ASSERT_TRUE(popped.has_value());
+    EXPECT_EQ(std::string(popped->link.cstr()), std::string(best.link.cstr()));
+
     frontier.taskDone();
 }

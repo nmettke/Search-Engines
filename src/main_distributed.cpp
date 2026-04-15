@@ -120,7 +120,7 @@ bool debug = false;
 static std::ostream &tsOut(std::ostream &stream);
 
 static void logCrawled(size_t count, const string &url) {
-    lock_guard guard(crawlLogLock);
+    lock_guard<mutex> guard(crawlLogLock);
     if (debug) {
         tsOut(std::cerr) << "Crawled [" << count << "] " << url << '\n';
     }
@@ -175,7 +175,7 @@ static void appendAnchorTerms(const string &url, const vector<string> &words) {
         return;
     }
 
-    lock_guard guard(anchor_lock);
+    lock_guard<mutex> guard(anchor_lock);
     Tuple<string, WordPosting> *entry = anchorIndex->Find(url, WordPosting());
     vector<string> &target = entry->value.words;
     for (string word : words) {
@@ -189,7 +189,7 @@ static void appendAnchorTerms(const string &url, const vector<string> &words) {
 
 static void restoreWordSnapshot(HashTable<string, WordPosting> *targetIndex, bool &editedFlag,
                                 const vector<WordSnapshot> &snapshot) {
-    lock_guard guard(anchor_lock);
+    lock_guard<mutex> guard(anchor_lock);
     for (const WordSnapshot &record : snapshot) {
         Tuple<string, WordPosting> *entry = targetIndex->Find(record.url, WordPosting());
         for (const string &word : record.words) {

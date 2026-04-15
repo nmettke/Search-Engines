@@ -33,7 +33,7 @@ unsigned int cores = std::thread::hardware_concurrency();
 mutex crawlLogLock;
 
 static void logCrawled(size_t count, const string &url) {
-    lock_guard guard(crawlLogLock);
+    lock_guard<mutex> guard(crawlLogLock);
     (void)count;
     (void)url;
 }
