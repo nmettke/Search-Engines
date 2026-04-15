@@ -100,9 +100,9 @@ const string indexDirectory("data/body_index");
 const string metaDirectory("data/meta");
 const size_t FLUSHBODYTOKENSIZE = 25000000;
 static constexpr size_t maxIndexQueueItems = 1024;
-static constexpr size_t crawlerThreadsPerCore = 100;
+static constexpr size_t crawlerThreadsPerCore = 300;
 static constexpr size_t fallbackCrawlerThreadCount = 8;
-static constexpr size_t maxCrawlerThreadCount = 800;
+static constexpr size_t maxCrawlerThreadCount = 2400;
 
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint = nullptr;
@@ -113,14 +113,18 @@ RobotsCache *robotsCache = nullptr;
 DelayedQueue *delayedQueue = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
 static std::atomic<time_t> lastCheckpointTime{0};
-static constexpr int checkpointIntervalSecs = 600; // 10 minutes
+static std::atomic<time_t> lastHeartbeatTime{0};
+static constexpr int checkpointIntervalSecs = 1800; // 30 minutes
+static constexpr int heartbeatIntervalSecs = 300;   // 5 minutes
 mutex crawlLogLock;
 bool debug = false;
+
+static std::ostream &tsOut(std::ostream &stream);
 
 static void logCrawled(size_t count, const string &url) {
     lock_guard guard(crawlLogLock);
     if (debug) {
-        std::cerr << "Crawled [" << count << "] " << url << '\n';
+        tsOut(std::cerr) << "Crawled [" << count << "] " << url << '\n';
     }
 }
 
@@ -128,6 +132,21 @@ static int64_t nowMillis() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static std::string timestampPrefix() {
+    std::time_t now = std::time(nullptr);
+    std::tm localTime{};
+    localtime_r(&now, &localTime);
+
+    char buffer[32];
+    std::strftime(buffer, sizeof(buffer), "[%Y-%m-%d %H:%M:%S] ", &localTime);
+    return std::string(buffer);
+}
+
+static std::ostream &tsOut(std::ostream &stream) {
+    stream << timestampPrefix();
+    return stream;
 }
 // size_t anchorFlushIntervalSeconds = 30;
 
@@ -198,7 +217,7 @@ static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, size_t
     FILE *fp = fopen(tmpPath.c_str(), "wb");
 
     if (fp == nullptr) {
-        std::cerr << "Failed to open anchor index temp file: " << tmpPath << '\n';
+        tsOut(std::cerr) << "Failed to open anchor index temp file: " << tmpPath << '\n';
         restoreWordSnapshot(targetIndex, editedFlag, snapshot);
         return false;
     }
@@ -222,7 +241,7 @@ static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, size_t
     fclose(fp);
 
     if (rename(tmpPath.c_str(), indexPath.c_str()) != 0) {
-        std::cerr << "Failed to rename anchor index file to " << indexPath << '\n';
+        tsOut(std::cerr) << "Failed to rename anchor index file to " << indexPath << '\n';
         restoreWordSnapshot(targetIndex, editedFlag, snapshot);
         return false;
     }
@@ -266,6 +285,12 @@ void *CheckpointThread(void *) {
         }
 
         time_t now = time(nullptr);
+        time_t lastHeartbeat = lastHeartbeatTime.load();
+        if ((now - lastHeartbeat) >= heartbeatIntervalSecs) {
+            tsOut(std::cout) << "still alive; documents processed = " << urlsCrawled.load() << '\n';
+            lastHeartbeatTime = now;
+        }
+
         time_t last = lastCheckpointTime.load();
         if ((now - last) < checkpointIntervalSecs) {
             continue;
@@ -279,14 +304,14 @@ void *CheckpointThread(void *) {
         }
         const int64_t snapshotEnd = nowMillis();
 
-        std::cout << "Starting checkpoint at " << crawled << " URLs\n";
+        tsOut(std::cout) << "Starting checkpoint at " << crawled << " URLs\n";
         if (!checkpoint->writeSnapshot(snapshot)) {
-            std::cerr << "Checkpoint write failed at " << crawled << " URLs\n";
+            tsOut(std::cerr) << "Checkpoint write failed at " << crawled << " URLs\n";
             continue;
         }
         const int64_t writeEnd = nowMillis();
-        std::cerr << "Checkpoint snapshot took " << (snapshotEnd - snapshotStart)
-                  << " ms; write took " << (writeEnd - snapshotEnd) << " ms\n";
+        tsOut(std::cerr) << "Checkpoint snapshot took " << (snapshotEnd - snapshotStart)
+                         << " ms; write took " << (writeEnd - snapshotEnd) << " ms\n";
 
         lastCheckpointTime = now;
     }
@@ -470,10 +495,10 @@ void *IndexWorkerThread(void *) {
                 flushIndexChunk(mem_index, path);
                 flushMetaData(chunk_metadata, meta_path);
                 flushAnchorIndexToDisk(false);
-                std::cout << "Successfully wrote chunk with " << docsProcessed
-                          << " docs to: " << path << '\n';
+                tsOut(std::cout) << "Successfully wrote chunk with " << docsProcessed
+                                 << " docs to: " << path << '\n';
             } catch (const std::exception &e) {
-                std::cerr << "Failed to write chunk: " << e.what() << '\n';
+                tsOut(std::cerr) << "Failed to write chunk: " << e.what() << '\n';
                 return nullptr;
             }
 
@@ -485,7 +510,7 @@ void *IndexWorkerThread(void *) {
         }
 
         if (docsProcessed > 0 && docsProcessed % 10000 == 0) {
-            std::cout << "Processed" << docsProcessed << "documents\n";
+            tsOut(std::cout) << "Processed " << docsProcessed << " documents\n";
         }
     }
 
@@ -505,10 +530,10 @@ void *IndexWorkerThread(void *) {
             flushIndexChunk(mem_index, path);
             flushMetaData(chunk_metadata, meta_path);
             flushAnchorIndexToDisk(false);
-            std::cout << "Successfully wrote final chunk with " << docsProcessed
-                      << " docs to: " << path << '\n';
+            tsOut(std::cout) << "Successfully wrote final chunk with " << docsProcessed
+                             << " docs to: " << path << '\n';
         } catch (const std::exception &e) {
-            std::cerr << "Failed to write final chunk: " << e.what() << '\n';
+            tsOut(std::cerr) << "Failed to write final chunk: " << e.what() << '\n';
         }
     }
 
@@ -529,8 +554,8 @@ static constexpr int sendBatchRetryBaseDelayMs = 1000;
 static constexpr int sendBatchConnectTimeoutSecs = 10;
 static constexpr int sendBatchSendTimeoutSecs = 15;
 static constexpr int receiveBatchRecvTimeoutSecs = 30;
-static constexpr size_t receiveWorkerThreadCount = 8;
-static constexpr size_t maxQueuedReceiveClientFds = 256;
+static constexpr size_t receiveWorkerThreadCount = 32;
+static constexpr size_t maxQueuedReceiveClientFds = 5120;
 
 // Bounded handoff from the accept loop to a fixed pool of receive workers.
 // Replaces "spawn a detached pthread per accept()" so connection bursts or
@@ -595,7 +620,7 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
 
     size_t colon = peer.find(':');
     if (colon == string::npos || colon == 0 || colon + 1 >= peer.size()) {
-        std::cerr << "Invalid peer address: " << peer << '\n';
+        tsOut(std::cerr) << "Invalid peer address: " << peer << '\n';
         return false;
     }
 
@@ -608,7 +633,7 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
 
     addrinfo *result = nullptr;
     if (getaddrinfo(host.c_str(), port.c_str(), &hints, &result) != 0) {
-        std::cerr << "Failed to resolve peer " << peer << '\n';
+        tsOut(std::cerr) << "Failed to resolve peer " << peer << '\n';
         return false;
     }
 
@@ -631,7 +656,7 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
     freeaddrinfo(result);
 
     if (socketFd < 0) {
-        std::cerr << "Failed to connect to peer " << peer << '\n';
+        tsOut(std::cerr) << "Failed to connect to peer " << peer << '\n';
         return false;
     }
 
@@ -661,8 +686,8 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
     while (remaining > 0) {
         ssize_t sent = send(socketFd, data, remaining, 0);
         if (sent < 0) {
-            std::cerr << "Failed while sending to peer " << peer << ": " << std::strerror(errno)
-                      << '\n';
+            tsOut(std::cerr) << "Failed while sending to peer " << peer << ": "
+                             << std::strerror(errno) << '\n';
             close(socketFd);
             return false;
         }
@@ -674,7 +699,7 @@ static bool sendBatchToPeer(const string &peer, const vector<RoutedLink> &batch)
     close(socketFd);
 
     if (debug) {
-        std::cout << "Send Batch Successful\n";
+        tsOut(std::cout) << "Send Batch Successful\n";
     }
 
     return true;
@@ -687,12 +712,12 @@ static bool sendBatchToPeerWithRetry(const string &peer, const vector<RoutedLink
         }
 
         if (attempt == sendBatchRetryCount) {
-            std::cout << "Send Batch Failed; Give up\n";
+            tsOut(std::cout) << "Send Batch Failed; Give up\n";
             break;
         }
 
         if (debug) {
-            std::cout << "Send Batch Failed; Retrying\n";
+            tsOut(std::cout) << "Send Batch Failed; Retrying\n";
         }
 
         const int delayMs = sendBatchRetryBaseDelayMs * (1 << attempt);
@@ -763,7 +788,7 @@ void *SendToMachineThread(void *) {
                 //     batches[i].pushBack(std::move(link));
                 // }
                 // batch_lock.unlock();
-                std::cerr << "Send Batch Failed; Give up\n";
+                tsOut(std::cerr) << "Send Batch Failed; Give up\n";
             }
         }
     }
@@ -821,7 +846,7 @@ static void processReceivedBatch(int clientFd) {
             if (errno == EINTR) {
                 continue;
             }
-            std::cerr << "Receive failed: " << std::strerror(errno) << '\n';
+            tsOut(std::cerr) << "Receive failed: " << std::strerror(errno) << '\n';
             break;
         }
         payload.append(buffer, static_cast<size_t>(received));
@@ -830,7 +855,7 @@ static void processReceivedBatch(int clientFd) {
     close(clientFd);
 
     if (debug) {
-        std::cout << "Receive batch\n";
+        tsOut(std::cout) << "Receive batch\n";
     }
 
     if (payload.empty()) {
@@ -943,15 +968,15 @@ static int openListeningSocket() {
 
     size_t colon = selfPeer.find(':');
     if (colon == string::npos || colon + 1 >= selfPeer.size()) {
-        std::cerr << "Invalid listen address for machine " << machine_id.load() << ": " << selfPeer
-                  << '\n';
+        tsOut(std::cerr) << "Invalid listen address for machine " << machine_id.load() << ": "
+                         << selfPeer << '\n';
         return -1;
     }
 
     string port = selfPeer.substr(colon + 1);
     if (port.empty()) {
-        std::cerr << "Invalid listen address for machine " << machine_id.load() << ": " << selfPeer
-                  << '\n';
+        tsOut(std::cerr) << "Invalid listen address for machine " << machine_id.load() << ": "
+                         << selfPeer << '\n';
         return -1;
     }
 
@@ -963,7 +988,7 @@ static int openListeningSocket() {
     addrinfo *result = nullptr;
     // Bind to 0.0.0.0:8081
     if (getaddrinfo(nullptr, port.c_str(), &hints, &result) != 0) {
-        std::cerr << "Failed to resolve listen port for " << selfPeer << '\n';
+        tsOut(std::cerr) << "Failed to resolve listen port for " << selfPeer << '\n';
         return -1;
     }
 
@@ -988,8 +1013,8 @@ static int openListeningSocket() {
     freeaddrinfo(result);
 
     if (listenFd >= 0) {
-        std::cerr << "Listening for batches on 0.0.0.0:" << port << " (configured as " << selfPeer
-                  << ")\n";
+        tsOut(std::cerr) << "Listening for batches on 0.0.0.0:" << port << " (configured as "
+                         << selfPeer << ")\n";
     }
     return listenFd;
 }
@@ -1014,7 +1039,7 @@ void *ReceiveFromMachineThread(void *) {
             if (errno == EINTR) {
                 continue;
             }
-            std::cerr << "Listener select failed: " << std::strerror(errno) << '\n';
+            tsOut(std::cerr) << "Listener select failed: " << std::strerror(errno) << '\n';
             break;
         }
         if (ready == 0) {
@@ -1026,7 +1051,7 @@ void *ReceiveFromMachineThread(void *) {
             if (errno == EINTR) {
                 continue;
             }
-            std::cerr << "Accept failed: " << std::strerror(errno) << '\n';
+            tsOut(std::cerr) << "Accept failed: " << std::strerror(errno) << '\n';
             continue;
         }
 
@@ -1036,7 +1061,7 @@ void *ReceiveFromMachineThread(void *) {
         receiveQueueMutex.lock();
         if (clientFdQueue.size() >= maxQueuedReceiveClientFds) {
             receiveQueueMutex.unlock();
-            std::cerr << "Receive queue full; dropping incoming batch connection\n";
+            tsOut(std::cerr) << "Receive queue full; dropping incoming batch connection\n";
             close(clientFd);
             continue;
         }
@@ -1078,52 +1103,8 @@ int main(int argc, char **argv) {
     delayedQueue = new DelayedQueue();
     anchorIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
 
-    peer_address = {
-        "34.130.43.20:8081",   // 0  Ashmit
-        "34.130.82.156:8081",  // 1
-        "34.124.113.238:8081", // 2
-        "34.130.64.46:8081",   // 3
-        "34.130.43.3:8081",    // 4
-        "34.130.137.49:8081",  // 5
-        "34.130.64.163:8081",  // 6
-        "34.130.229.83:8081",  // 7  Will
-        "34.130.16.28:8081",   // 8
-        "34.130.91.157:8081",  // 9
-        "34.130.93.78:8081",   // 10
-        "34.130.21.35:8081",   // 11
-        "34.130.79.253:8081",  // 12 Andrew
-        "34.130.0.117:8081",   // 13
-        "34.130.198.23:8081",  // 14
-        "34.130.157.28:8081",  // 15
-        "34.130.190.162:8081", // 16
-        "34.130.122.145:8081", // 17 Anthony
-        "34.130.29.159:8081",  // 18
-        "34.130.82.240:8081",  // 19
-        "34.130.157.196:8081", // 20
-        "34.130.214.145:8081", // 21
-        "34.130.119.2:8081",   // 22
-        "34.130.216.240:8081", // 23
-        "34.130.243.215:8081", // 24
-        "34.130.130.196:8081", // 25 Satvik
-        "34.130.230.21:8081",  // 26
-        "34.130.161.223:8081", // 27
-        "34.130.5.230:8081",   // 28
-        "34.130.138.190:8081", // 29
-        "34.130.249.128:8081", // 30
-        "34.130.93.208:8081",  // 31
-        "34.130.104.67:8081",  // 32 Vasu
-        "34.130.81.209:8081",  // 33
-        "34.130.117.222:8081", // 34
-        "34.130.62.205:8081",  // 35
-        "34.124.120.173:8081", // 36
-        "34.130.240.109:8081", // 37
-        "34.130.84.218:8081",  // 38
-        "34.45.219.149:8081",  // 39 Nate
-        "34.9.132.225:8081",   // 40
-        "34.9.191.70:8081",    // 41
-        "136.116.245.6:8081",  // 42
-        "34.9.119.101:8081",   // 43
-    };
+    peer_address = {"10.128.0.21:8081", "10.128.0.22:8081", "10.128.0.23:8081", "10.128.0.25:8081",
+                    "10.128.0.26:8081", "10.128.0.27:8081", "10.128.0.28:8081", "10.128.0.29:8081"};
 
     // machine_id = parseEnv("SEARCH_MACHINE_ID", 0);
     // numLinkThreshold = parseEnv("SEARCH_BATCH_THRESHOLD", numLinkThreshold.load());
@@ -1131,14 +1112,14 @@ int main(int argc, char **argv) {
     // anchorFlushIntervalSeconds);
 
     if (argc != 3 && argc != 4) {
-        std::cerr << "Usage: " << argv[0] << " <machine_id> <batch_threshold> [debug]\n";
+        tsOut(std::cerr) << "Usage: " << argv[0] << " <machine_id> <batch_threshold> [debug]\n";
         return 1;
     }
 
     size_t parsedMachineId = 0;
     size_t parsedBatchThreshold = 0;
     if (!parseSizeArg(argv[1], parsedMachineId) || !parseSizeArg(argv[2], parsedBatchThreshold)) {
-        std::cerr << "machine_id and batch_threshold must both be unsigned integers\n";
+        tsOut(std::cerr) << "machine_id and batch_threshold must both be unsigned integers\n";
         return 1;
     }
 
@@ -1146,7 +1127,7 @@ int main(int argc, char **argv) {
     numLinkThreshold = parsedBatchThreshold;
     if (argc == 4) {
         if (string(argv[3]) != "debug") {
-            std::cerr << "Optional third argument must be 'debug'\n";
+            tsOut(std::cerr) << "Optional third argument must be 'debug'\n";
             return 1;
         }
         debug = true;
@@ -1157,8 +1138,8 @@ int main(int argc, char **argv) {
     // }
 
     if (machine_id.load() >= peer_address.size()) {
-        std::cerr << "Machine id " << machine_id.load()
-                  << " is out of range for configured peers; Halting\n";
+        tsOut(std::cerr) << "Machine id " << machine_id.load()
+                         << " is out of range for configured peers; Halting\n";
         return 1;
     }
 
@@ -1191,10 +1172,11 @@ int main(int argc, char **argv) {
 
         if (ownedRecoveredItems.size() > 0) {
             f = new Frontier(std::move(ownedRecoveredItems), false);
-            std::cerr << "Recovered from checkpoint at " << urlsCrawled.load() << " URLs\n";
+            tsOut(std::cerr) << "Recovered from checkpoint at " << urlsCrawled.load() << " URLs\n";
         } else {
-            std::cerr << "Checkpoint has empty frontier for this machine; starting fresh from seed "
-                         "list\n";
+            tsOut(std::cerr)
+                << "Checkpoint has empty frontier for this machine; starting fresh from seed "
+                   "list\n";
 
             std::ifstream seedList("src/crawler/seedList.txt");
             if (!seedList.is_open()) {
@@ -1214,7 +1196,7 @@ int main(int argc, char **argv) {
 
             f = new Frontier(std::move(ownedSeedItems), false);
             urlsCrawled = 0;
-            std::cerr << "Starting fresh from seed list\n";
+            tsOut(std::cerr) << "Starting fresh from seed list\n";
         }
     } else {
         // We filter to ensure we should own link on the seed list
@@ -1235,7 +1217,7 @@ int main(int argc, char **argv) {
         }
 
         f = new Frontier(std::move(ownedSeedItems), false);
-        std::cerr << "Starting fresh from seed list\n";
+        tsOut(std::cerr) << "Starting fresh from seed list\n";
     }
 
     size_t crawlerThreadCount = (cores == 0 ? fallbackCrawlerThreadCount
@@ -1259,6 +1241,7 @@ int main(int argc, char **argv) {
     bool checkpointStarted = false;
 
     lastCheckpointTime = time(nullptr);
+    lastHeartbeatTime = lastCheckpointTime.load();
 
     for (size_t i = 0; i < crawlerThreadCount; ++i) {
         pthread_create(&crawlerThreads[i], nullptr, CrawlerWorkerThread, nullptr);
@@ -1343,7 +1326,7 @@ int main(int argc, char **argv) {
     flushAnchorIndexToDisk(true);
 
     if (shouldStop) {
-        std::cerr << "Graceful shutdown after SIGINT\n";
+        tsOut(std::cerr) << "Graceful shutdown after SIGINT\n";
     }
 
     delete anchorIndex;
