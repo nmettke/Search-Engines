@@ -100,9 +100,9 @@ const string indexDirectory("data/body_index");
 const string metaDirectory("data/meta");
 const size_t FLUSHBODYTOKENSIZE = 25000000;
 static constexpr size_t maxIndexQueueItems = 1024;
-static constexpr size_t crawlerThreadsPerCore = 200;
+static constexpr size_t crawlerThreadsPerCore = 300;
 static constexpr size_t fallbackCrawlerThreadCount = 8;
-static constexpr size_t maxCrawlerThreadCount = 1600;
+static constexpr size_t maxCrawlerThreadCount = 2400;
 
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint = nullptr;
