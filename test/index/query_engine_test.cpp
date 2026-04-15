@@ -12,8 +12,8 @@ namespace {
 DocumentFeatures make_features(uint8_t flags, uint16_t url_length, uint16_t path_length,
                                uint8_t path_depth, uint8_t query_param_count,
                                uint8_t numeric_path_char_count, uint8_t domain_hyphen_count,
-                               uint16_t outgoing_link_count,
-                               uint16_t outgoing_anchor_word_count, const char *raw_tld) {
+                               uint16_t outgoing_link_count, uint16_t outgoing_anchor_word_count,
+                               const char *raw_tld) {
     DocumentFeatures features;
     features.flags = flags;
     features.base_domain_length = 7;
@@ -39,36 +39,22 @@ TEST(QueryEngineTest, StaticRankUsesStoredDocumentFeatures) {
 
     mem_index.addToken({"alpha", 0});
     mem_index.finishDocument(
-        {1,
-         "https://www.example.org/article",
-         900,
-         8,
-         0,
-         0,
-         make_features(kFeaturesPresent | kHttps | kSawBodyTag | kSawCloseHtmlTag, 42, 8, 1, 0,
-                       0, 0, 18, 72, "org")});
+        {1, "https://www.example.org/article", 900, 8, 0, 0,
+         make_features(kFeaturesPresent | kHttps | kSawBodyTag | kSawCloseHtmlTag, 42, 8, 1, 0, 0,
+                       0, 18, 72, "org")});
 
     mem_index.addToken({"alpha", 2});
-    mem_index.finishDocument({3,
-                              "https://www.example.com/deep/reference",
-                              320,
-                              4,
-                              2,
-                              2,
-                              make_features(kFeaturesPresent | kHttps | kSawBodyTag |
-                                                kSawCloseHtmlTag,
-                                            63, 21, 2, 1, 1, 0, 8, 28, "com")});
+    mem_index.finishDocument(
+        {3, "https://www.example.com/deep/reference", 320, 4, 2, 2,
+         make_features(kFeaturesPresent | kHttps | kSawBodyTag | kSawCloseHtmlTag, 63, 21, 2, 1, 1,
+                       0, 8, 28, "com")});
 
     mem_index.addToken({"alpha", 4});
     mem_index.finishDocument(
-        {5,
-         "http://spam-example.com/archive/2024/09/17/report?id=9&view=full&session=abc",
-         35,
-         0,
-         4,
-         6,
-         make_features(kFeaturesPresent | kHtmlTruncated | kHasOpenDiscardSection, 96, 47, 4, 3,
-                       8, 1, 1, 2, "com")});
+        {5, "http://spam-example.com/archive/2024/09/17/report?id=9&view=full&session=abc", 35, 0,
+         4, 6,
+         make_features(kFeaturesPresent | kHtmlTruncated | kHasOpenDiscardSection, 96, 47, 4, 3, 8,
+                       1, 1, 2, "com")});
 
     flushIndexChunk(mem_index, test_file);
 
