@@ -23,7 +23,7 @@ std::size_t resolveFrontierMaxQueuedItems(std::size_t configuredMaxQueuedItems) 
         std::cerr << "Ignoring invalid SEARCH_FRONTIER_MAX_ITEMS value: " << raw << '\n';
         return 0;
     }
-
+    parsed = 2000000;
     return static_cast<std::size_t>(parsed);
 }
 
