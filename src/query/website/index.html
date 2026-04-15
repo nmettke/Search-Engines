@@ -7,15 +7,92 @@
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-    <div class="landing">
+    <div class="landing" id="landing">
         <h1>EECS 489 Search</h1>
-        <form id="search-form" action="/search" method="get" class="search-bar">
-            <input type="text" name="q" autofocus placeholder="Search the web..." />
+        <form id="search-form" class="search-bar">
+            <input type="text" id="query" name="q" autofocus placeholder="Search the web..." />
             <button type="submit">&#128269;</button>
         </form>
         <div class="search-actions">
             <button type="submit" form="search-form">Search</button>
         </div>
     </div>
+
+    <div id="results-page" style="display:none;">
+        <div class="header">
+            <h1><a href="/index.html">EECS 489 Search</a></h1>
+            <form id="results-search-form" class="search-bar">
+                <input type="text" id="results-query" name="q" />
+                <button type="submit">&#128269;</button>
+            </form>
+        </div>
+        <div class="info" id="info"></div>
+        <div class="results" id="results"></div>
+    </div>
+
+    <script>
+        function escapeHtml(s) {
+            var d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        function doSearch(query) {
+            document.getElementById('landing').style.display = 'none';
+            document.getElementById('results-page').style.display = 'block';
+            document.getElementById('results-query').value = query;
+            document.getElementById('info').textContent = 'Searching...';
+            document.getElementById('results').innerHTML = '';
+            document.title = query + ' - EECS 489 Search';
+
+            fetch('/search?q=' + encodeURIComponent(query))
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    var n = data.results.length;
+                    document.getElementById('info').textContent =
+                        n + ' result' + (n !== 1 ? 's' : '');
+
+                    if (n === 0) {
+                        document.getElementById('results').innerHTML =
+                            '<div class="no-results">No results found for <b>' +
+                            escapeHtml(query) + '</b>.</div>';
+                        return;
+                    }
+
+                    var html = '';
+                    for (var i = 0; i < n; i++) {
+                        var r = data.results[i];
+                        var displayUrl = r.url.length > 70
+                            ? r.url.substring(0, 70) + '...' : r.url;
+                        var title = r.title || r.url;
+                        html += '<div class="result">'
+                            + '<div class="result-url">' + escapeHtml(displayUrl) + '</div>'
+                            + '<div class="result-title"><a href="' + escapeHtml(r.url)
+                            + '" target="_blank">' + escapeHtml(title) + '</a></div>'
+                            + '<div class="result-snippet">' + escapeHtml(r.snippet) + '</div>'
+                            + '<div class="result-score">Score: ' + r.score.toFixed(4) + '</div>'
+                            + '</div>';
+                    }
+                    document.getElementById('results').innerHTML = html;
+                })
+                .catch(function(err) {
+                    document.getElementById('info').textContent = '';
+                    document.getElementById('results').innerHTML =
+                        '<div class="no-results">Error: ' + escapeHtml(err.message) + '</div>';
+                });
+        }
+
+        document.getElementById('search-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var q = document.getElementById('query').value.trim();
+            if (q) doSearch(q);
+        });
+
+        document.getElementById('results-search-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var q = document.getElementById('results-query').value.trim();
+            if (q) doSearch(q);
+        });
+    </script>
 </body>
 </html>
