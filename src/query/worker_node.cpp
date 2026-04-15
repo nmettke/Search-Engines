@@ -178,7 +178,7 @@ int main(int argc, char **argv) {
 
     DIR *dir;
     struct dirent *ent;
-    string index_dir = dir_path + "/body_index";
+    string index_dir = dir_path + "/anchor_parsed_index";
     string meta_dir = dir_path + "/meta";
 
     if ((dir = opendir(index_dir.c_str())) != nullptr) {
@@ -186,7 +186,8 @@ int main(int argc, char **argv) {
             string file_name = ent->d_name;
 
             if (file_name.length() >= 4 && file_name.substr(file_name.length() - 4) == ".idx") {
-                string base_name = file_name.substr(0, file_name.length() - 4);
+                string base_name = file_name.substr(
+                    7, file_name.length() - 11); // Remove "chunk_" prefix and ".idx" suffix
                 string idx_path = index_dir + "/" + file_name;
                 string meta_path = meta_dir + "/" + base_name + ".meta";
 

@@ -14,8 +14,8 @@ fi
 mkdir data
 mkdir data/body_index
 mkdir data/anchor_index
-mkdir data/title_index
 mkdir data/meta
+mkdir data/anchor_parsed_index/
 
 mkdir build 
 cd build
