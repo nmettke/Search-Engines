@@ -97,15 +97,15 @@ int main(int argc, char **argv) {
         closedir(dir);
     }
 
-    std::cout << "Building Synchronized Anchor Indices (" << chunk_files.size()
-              << " chunks)..." << std::endl;
+    std::cout << "Building Synchronized Anchor Indices (" << chunk_files.size() << " chunks)..."
+              << std::endl;
     Tokenizer tokenizer;
 
     // Process one body_index chunk at a time to avoid loading all anchor text into memory
     for (size_t ci = 0; ci < chunk_files.size(); ++ci) {
         string file_name = chunk_files[ci];
-        std::cout << "\n[Chunk " << (ci + 1) << "/" << chunk_files.size() << "] Processing: "
-                  << file_name << std::endl;
+        std::cout << "\n[Chunk " << (ci + 1) << "/" << chunk_files.size()
+                  << "] Processing: " << file_name << std::endl;
         string base_name = file_name.substr(0, file_name.length() - 4);
 
         DiskChunkReader reader;

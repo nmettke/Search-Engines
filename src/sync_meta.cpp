@@ -193,7 +193,7 @@ int main(int argc, char **argv) {
                 size_t line_buf_cap = 0;
                 ssize_t read_len = 0;
 
-                    // Lambda to process a complete meta entry
+                // Lambda to process a complete meta entry
                 auto process_entry = [&](const string &entry) {
                     string single = to_single_line(entry);
                     string url = parse_url(single);
