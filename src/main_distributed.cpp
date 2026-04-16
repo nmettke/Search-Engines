@@ -122,7 +122,7 @@ static constexpr size_t maxCrawlerThreadCount = 2400;
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint = nullptr;
 std::atomic<size_t> urlsCrawled{0};
-UrlBloomFilter bloom(1000000, 0.0001);
+UrlBloomFilter bloom(75000000, 0.0001);
 UrlFilter urlFilter;
 RobotsCache *robotsCache = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
@@ -311,7 +311,8 @@ void *CheckpointThread(void *) {
         time_t now = time(nullptr);
         time_t lastHeartbeat = lastHeartbeatTime.load();
         if ((now - lastHeartbeat) >= heartbeatIntervalSecs) {
-            tsOut(std::cout) << "still alive; documents processed = " << urlsCrawled.load() << '\n';
+            tsOut(std::cout) << "still alive; documents processed = " << urlsCrawled.load()
+                             << "; frontier = " << (f != nullptr ? f->size() : 0) << '\n';
             std::cout.flush();
             lastHeartbeatTime = now;
         }
