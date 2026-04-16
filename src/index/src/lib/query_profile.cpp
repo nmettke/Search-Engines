@@ -11,38 +11,6 @@ bool containsTerm(const ::vector<::string> &terms, const ::string &term) {
     return false;
 }
 
-// Update the rare and common count
-void updateRareCount(const ::string &term, const DiskChunkReader &body_reader,
-                     const DiskChunkReader *anchor_reader, size_t &rare_count,
-                     size_t &common_count) {
-    uint64_t total_locations = body_reader.header().total_locations;
-    uint64_t collection_frequency = 0;
-
-    if (std::optional<TermInfo> body_info = body_reader.getTermInfo(term)) {
-        collection_frequency += body_info->collection_frequency;
-    }
-
-    if (anchor_reader != nullptr) {
-        if (std::optional<TermInfo> anchor_info = anchor_reader->getTermInfo(term)) {
-            collection_frequency += anchor_info->collection_frequency;
-            total_locations += anchor_reader->header().total_locations;
-        }
-    }
-
-    if (collection_frequency == 0 || total_locations == 0) {
-        return;
-    }
-
-    double estimated_period =
-        static_cast<double>(total_locations) / static_cast<double>(collection_frequency);
-
-    if (estimated_period >= 50000.0) {
-        ++rare_count;
-    } else if (estimated_period <= 250.0) {
-        ++common_count;
-    }
-}
-
 // Retain the queryCompiler structure to traverse the query and add words to the profile
 // code is mostly taken from the compiler (since this allows us to handle adding complicated query)
 // for example NOT (A or B) both should not be added to the term counts
@@ -57,10 +25,6 @@ class QueryProfileBuilder {
             parseOr(true);
         }
 
-        for (const ::string &term : profile_.unique_terms) {
-            updateRareCount(term, body_reader, anchor_reader, profile_.rare_word_count,
-                            profile_.common_word_count);
-        }
         return profile_;
     }
 
@@ -81,7 +45,6 @@ class QueryProfileBuilder {
     }
 
     void addWord(const ::string &term) {
-        profile_.flattened_terms.pushBack(term);
         if (!containsTerm(profile_.unique_terms, term)) {
             profile_.unique_terms.pushBack(term);
         }

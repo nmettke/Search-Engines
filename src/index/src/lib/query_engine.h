@@ -24,7 +24,6 @@ class QueryEngine {
     vector<ScoredDocument> search(const string &query, size_t K = 500) const;
     vector<ScoredDocument> search(const string &query, size_t K,
                                   const std::atomic<double> *shared_min_score) const;
-    double maxStaticScore() const { return max_static_score_; }
 
   private:
     const DiskChunkReader &body_reader_;

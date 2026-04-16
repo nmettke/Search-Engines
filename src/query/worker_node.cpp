@@ -30,12 +30,10 @@ struct MetaRecord {
 
 // bind previous chunk related thread args into a struct
 struct ChunkDescriptor {
-    string base_name;
     DiskChunkReader *body_reader = nullptr;
     DiskChunkReader *anchor_reader = nullptr;
     QueryEngine *engine = nullptr;
     vector<MetaRecord> meta;
-    double max_static_score = 0.0;
 };
 
 struct GlobalMatch {
@@ -55,20 +53,12 @@ struct ThreadArgs {
 };
 
 namespace {
-struct Location {
-    size_t chunk_id;
-    size_t doc_id;
-};
 
 string to_string(double score) {
     char buffer[64];
     snprintf(buffer, sizeof(buffer), "%.4f", score);
     return string(buffer);
 }
-
-static bool anchorKeyEqual(string a, string b) { return a == b; }
-
-static uint64_t anchorKeyHash(string key) { return hashString(key.cstr()); }
 
 class TopKHeap {
   public:
@@ -365,12 +355,10 @@ int main(int argc, char **argv) {
                                       : new QueryEngine(*body_reader);
 
             ChunkDescriptor chunk;
-            chunk.base_name = base_name;
             chunk.body_reader = body_reader;
             chunk.anchor_reader = anchor_reader;
             chunk.engine = engine;
             chunk.meta = load_meta_records(meta_path);
-            chunk.max_static_score = engine->maxStaticScore();
             chunks.push_back(std::move(chunk));
 
             std::cout << "Loaded chunk: " << base_name << " (" << chunks.back().meta.size()

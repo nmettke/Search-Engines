@@ -435,8 +435,7 @@ double DynamicRankScorer::score(const DiskChunkReader &body_reader,
             streamWeight(config_, StreamKind::Anchor) *
             (config_.all_words_bonus + config_.exact_phrase_bonus + config_.short_span_bonus +
              config_.ordered_span_bonus + config_.short_ordered_span_bonus + config_.triple_bonus +
-             config_.near_top_bonus + config_.first_span_bonus +
-             config_.occurrence_bonus * config_.max_counted_occurrences);
+             config_.near_top_bonus + config_.occurrence_bonus * config_.max_counted_occurrences);
 
         if (total + remaining <= min_competitive_score) {
             // if this score is not competitive we can skip the rest
@@ -456,11 +455,11 @@ double DynamicRankScorer::score(const DiskChunkReader &body_reader,
         total += scoreStreamFeatures(title_features, profile, StreamKind::Title, config_);
     }
 
-    remaining -= streamWeight(config_, StreamKind::Title) *
-                 (config_.all_words_bonus + config_.exact_phrase_bonus + config_.short_span_bonus +
-                  config_.ordered_span_bonus + config_.short_ordered_span_bonus +
-                  config_.triple_bonus + config_.near_top_bonus + config_.first_span_bonus +
-                  config_.occurrence_bonus * config_.max_counted_occurrences);
+    remaining -=
+        streamWeight(config_, StreamKind::Title) *
+        (config_.all_words_bonus + config_.exact_phrase_bonus + config_.short_span_bonus +
+         config_.ordered_span_bonus + config_.short_ordered_span_bonus + config_.triple_bonus +
+         config_.near_top_bonus + config_.occurrence_bonus * config_.max_counted_occurrences);
     // Similarly we score title and skip if score is bad
     if (total + remaining <= min_competitive_score) {
         return total;
@@ -487,7 +486,7 @@ double DynamicRankScorer::maxDynamicScore(const QueryProfile &profile, bool incl
     double stream_cap = config_.all_words_bonus + config_.exact_phrase_bonus +
                         config_.short_span_bonus + config_.ordered_span_bonus +
                         config_.short_ordered_span_bonus + config_.double_bonus +
-                        config_.triple_bonus + config_.near_top_bonus + config_.first_span_bonus +
+                        config_.triple_bonus + config_.near_top_bonus +
                         config_.occurrence_bonus * config_.max_counted_occurrences;
 
     double total = 0.0;

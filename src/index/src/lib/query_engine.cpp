@@ -121,7 +121,6 @@ double computeMaxStaticScore(const DiskChunkReader &reader, const StaticRankScor
 }
 
 CompiledQuery compileQuery(const DiskChunkReader &body_reader, const DiskChunkReader *anchor_reader,
-                           double max_static_score, const DynamicRankScorer &dynamic_scorer,
                            const string &query) {
     CompiledQuery compiled;
 
@@ -194,8 +193,7 @@ vector<ScoredDocument> QueryEngine::search(const string &query, size_t K) const 
 vector<ScoredDocument> QueryEngine::search(const string &query, size_t K,
                                            const std::atomic<double> *shared_min_score) const {
     TopKHeap top_k(K);
-    CompiledQuery compiled =
-        compileQuery(body_reader_, anchor_reader_, max_static_score_, dynamic_scorer_, query);
+    CompiledQuery compiled = compileQuery(body_reader_, anchor_reader_, query);
     if (!compiled.can_match) {
         return top_k.extractSorted();
     }
