@@ -44,7 +44,7 @@ struct GlobalMatch {
     double score = 0.0;
 };
 
-// Query wrapper 
+// Query wrapper
 struct QueryTask {
     size_t chunk_id = 0;
 };
@@ -173,8 +173,8 @@ void *QueryWorkerThread(void *arg) {
 
         const QueryTask &task = (*worker_args->tasks)[task_index];
         ChunkDescriptor &chunk = (*worker_args->chunks)[task.chunk_id];
-        vector<ScoredDocument> chunk_matches =
-            chunk.engine->search(*worker_args->query, worker_args->K, worker_args->shared_threshold);
+        vector<ScoredDocument> chunk_matches = chunk.engine->search(
+            *worker_args->query, worker_args->K, worker_args->shared_threshold);
         if (chunk_matches.empty()) {
             continue;
         }

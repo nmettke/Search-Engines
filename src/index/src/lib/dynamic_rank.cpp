@@ -19,7 +19,7 @@ struct StreamFeatures {
     bool short_ordered_span = false;
     bool has_double = false;
     bool has_triple = false;
-    bool near_top = false; // span is near top
+    bool near_top = false;     // span is near top
     bool too_frequent = false; // occurence exceed cap
     size_t earliest_span_start = std::numeric_limits<size_t>::max();
     int rarest_term_index = -1;
@@ -88,7 +88,7 @@ bool hasExactSequence(const vector<vector<uint32_t>> &positions, const vector<in
 bool findOrderedSpan(const vector<vector<uint32_t>> &positions, size_t &best_width,
                      size_t &best_start) {
     // returns whether a ordered span exists
-    // edits best_width and best start to smallest width 
+    // edits best_width and best start to smallest width
     // and corresponding start loc of that span
     if (positions.empty() || positions[0].empty()) {
         return false;
@@ -133,7 +133,8 @@ bool findOrderedSpan(const vector<vector<uint32_t>> &positions, size_t &best_wid
 bool findUnorderedSpan(const vector<vector<uint32_t>> &positions, size_t &best_width,
                        size_t &best_start) {
     // similar to ordered span ..... but unordered!
-    // We use a two pointer approach on a sorted positions array (essentially the body but only query terms)
+    // We use a two pointer approach on a sorted positions array (essentially the body but only
+    // query terms)
     struct Event {
         uint32_t loc;
         int term_index;
@@ -176,7 +177,7 @@ bool findUnorderedSpan(const vector<vector<uint32_t>> &positions, size_t &best_w
             }
 
             if (--counts[events[left].term_index] == 0) {
-                // We no longer cover all terms 
+                // We no longer cover all terms
                 --covered;
             }
             ++left;
@@ -373,8 +374,7 @@ double scoreStreamFeatures(const StreamFeatures &features, const QueryProfile &p
     double score = 0.0;
     if (features.present_terms == profile.unique_terms.size()) {
         score += config.all_words_bonus;
-    } else if (features.present_terms >=
-               profile.unique_terms.size() * config.most_words_percent) {
+    } else if (features.present_terms >= profile.unique_terms.size() * config.most_words_percent) {
         score += config.most_words_bonus;
     } else {
         score += config.some_words_bonus;
