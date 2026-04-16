@@ -190,7 +190,7 @@ int main(int argc, char **argv) {
 
     DIR *dir;
     struct dirent *ent;
-    string index_dir = dir_path + "/anchor_parsed_index";
+    string index_dir = dir_path + "/parsed_anchor_index";
     string meta_dir = dir_path + "/meta";
 
     {

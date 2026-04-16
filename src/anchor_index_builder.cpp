@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
 
     string anchor_text_dir = dir_path + "/anchor_index/";
     string index_dir = dir_path + "/body_index/";
-    string anchor_index_output_dir = dir_path + "/anchor_parsed_index/";
+    string anchor_index_output_dir = dir_path + "/parsed_anchor_index/";
 
     HashTable<string, string> global_anchors(anchorKeyEqual, anchorKeyHash);
 
