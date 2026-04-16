@@ -13,6 +13,8 @@
         <form id="search-form" class="search-bar">
             <input type="text" id="query" name="q" autofocus autocomplete="off"
                 placeholder="Can we find all of our bugs before we have to present?" />
+            <label class="k-label" for="k">k</label>
+            <input type="number" id="k" name="k" min="1" max="10000" value="1000" class="k-input" />
             <button type="submit" aria-label="Search">&#x1F50D;</button>
         </form>
         <div class="search-actions" id="search-actions">
@@ -27,6 +29,8 @@
             </a>
             <form id="results-search-form" class="search-bar">
                 <input type="text" id="results-query" name="q" autocomplete="off" />
+                <label class="k-label" for="results-k">k</label>
+                <input type="number" id="results-k" name="k" min="1" max="10000" value="1000" class="k-input" />
                 <button type="submit" aria-label="Search">&#x1F50D;</button>
             </form>
         </div>
@@ -47,7 +51,33 @@
             return Math.round(ms) + ' ms';
         }
 
-        function doSearch(query) {
+        function showLanding() {
+            document.getElementById('landing').style.display = '';
+            document.getElementById('results-page').style.display = 'none';
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('info').textContent = '';
+            document.title = 'Cache Me If You Can';
+            var q = document.getElementById('query');
+            if (q) { q.value = ''; q.focus(); }
+        }
+
+        function normalizeK(raw) {
+            var n = parseInt(raw, 10);
+            if (!isFinite(n) || n < 1) n = 1000;
+            if (n > 10000) n = 10000;
+            return n;
+        }
+
+        function doSearch(query, opts) {
+            opts = opts || {};
+            var landingK = document.getElementById('k');
+            var resultsK = document.getElementById('results-k');
+            var k = normalizeK(opts.k != null ? opts.k :
+                (document.getElementById('results-page').style.display !== 'none'
+                    ? resultsK.value : landingK.value));
+            landingK.value = k;
+            resultsK.value = k;
+
             document.getElementById('landing').style.display = 'none';
             document.getElementById('results-page').style.display = 'block';
             document.getElementById('results-query').value = query;
@@ -55,7 +85,12 @@
             document.getElementById('results').innerHTML = '';
             document.title = query + ' \u2014 Cache Me If You Can';
 
-            fetch('/search?q=' + encodeURIComponent(query))
+            if (opts.pushHistory !== false) {
+                var url = '/search?q=' + encodeURIComponent(query) + '&k=' + k;
+                window.history.pushState({ q: query, k: k }, '', url);
+            }
+
+            fetch('/api/search?q=' + encodeURIComponent(query) + '&k=' + k)
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     var n = data.results.length;
@@ -234,6 +269,33 @@
             var q = document.getElementById('results-query').value.trim();
             if (q) doSearch(q);
         });
+
+        // Sharable URLs: sync the page with ?q=...&k=... in the address bar.
+        function paramsFromLocation() {
+            var out = {};
+            var search = window.location.search || '';
+            if (search.charAt(0) === '?') search = search.slice(1);
+            var parts = search.split('&');
+            for (var i = 0; i < parts.length; i++) {
+                var eq = parts[i].indexOf('=');
+                if (eq === -1) continue;
+                var key = decodeURIComponent(parts[i].slice(0, eq).replace(/\+/g, ' '));
+                var val = decodeURIComponent(parts[i].slice(eq + 1).replace(/\+/g, ' '));
+                out[key] = val;
+            }
+            return out;
+        }
+
+        window.addEventListener('popstate', function() {
+            var params = paramsFromLocation();
+            if (params.q) doSearch(params.q, { pushHistory: false, k: params.k });
+            else showLanding();
+        });
+
+        (function() {
+            var params = paramsFromLocation();
+            if (params.q) doSearch(params.q, { pushHistory: false, k: params.k });
+        })();
     </script>
 </body>
 </html>

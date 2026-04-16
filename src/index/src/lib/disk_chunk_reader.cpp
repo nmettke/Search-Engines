@@ -10,6 +10,53 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+namespace {
+
+struct DictionaryLookup {
+    const BucketDisk *bucket = nullptr;
+    const uint8_t *posting_ptr = nullptr;
+};
+
+bool lookupTerm(const uint8_t *data, const FileHeader &header, const ::string &term,
+                DictionaryLookup &lookup) {
+    if (data == nullptr) {
+        return false;
+    }
+
+    uint64_t hash_val = hashString(term.c_str());
+    const uint8_t *dict_ptr = data + header.dict_offset;
+    size_t num_buckets = *reinterpret_cast<const size_t *>(dict_ptr);
+    if (num_buckets == 0) {
+        return false;
+    }
+
+    const size_t *buckets_array = reinterpret_cast<const size_t *>(dict_ptr + sizeof(size_t));
+    size_t chain_offset = buckets_array[hash_val % num_buckets];
+    if (chain_offset == 0) {
+        return false;
+    }
+
+    BufferReader reader(dict_ptr + chain_offset);
+    while (true) {
+        const BucketDisk *bucket = reader.readPOD<BucketDisk>();
+        if (bucket->occupied == 0) {
+            return false;
+        }
+
+        ::string_view current_term(reinterpret_cast<const char *>(reader.current()),
+                                   bucket->string_length);
+        reader.skip(bucket->string_length);
+
+        if (::string(current_term) == term) {
+            lookup.bucket = bucket;
+            lookup.posting_ptr = data + header.postings_offset + bucket->posting_offset;
+            return true;
+        }
+    }
+}
+
+} // namespace
+
 DiskChunkReader::DiskChunkReader() : fd_(-1), mapped_size_(0), data_(nullptr) {}
 
 DiskChunkReader::~DiskChunkReader() {
@@ -62,52 +109,39 @@ bool DiskChunkReader::open(const ::string &filename) {
 }
 
 std::unique_ptr<ISRWord> DiskChunkReader::createISR(const ::string &term) const {
-    if (!data_)
+    DictionaryLookup lookup;
+    if (!lookupTerm(data_, header_, term, lookup)) {
         return nullptr;
-
-    uint64_t hash_val = hashString(term.c_str());
-    const uint8_t *dict_ptr = data_ + header_.dict_offset;
-    size_t num_buckets = *reinterpret_cast<const size_t *>(dict_ptr);
-    if (num_buckets == 0)
-        return nullptr;
-
-    const size_t *buckets_array = reinterpret_cast<const size_t *>(dict_ptr + sizeof(size_t));
-    size_t chain_offset = buckets_array[hash_val % num_buckets];
-    if (chain_offset == 0)
-        return nullptr;
-
-    BufferReader reader(dict_ptr + chain_offset);
-
-    while (true) {
-        const BucketDisk *b_disk = reader.readPOD<BucketDisk>();
-        if (b_disk->occupied == 0)
-            break;
-
-        ::string_view current_term(reinterpret_cast<const char *>(reader.current()),
-                                   b_disk->string_length);
-        reader.skip(b_disk->string_length);
-
-        if (::string(current_term) == term) {
-            BufferReader p_reader(data_ + header_.postings_offset + b_disk->posting_offset);
-            const PostingListHeader *p_header = p_reader.readPOD<PostingListHeader>();
-            std::optional<SeekTable> table = std::nullopt;
-
-            if (p_header->has_seek_table) {
-                const uint8_t *table_data = p_reader.current();
-                p_reader.skip(SeekTable::SerializedSize);
-                const uint8_t *compressed_data = p_reader.current();
-                table = SeekTable::deserialize(table_data, compressed_data, p_header->data_size,
-                                               p_header->num_postings);
-
-                return std::make_unique<ISRWord>(compressed_data, p_header->num_postings, table);
-            } else {
-                const uint8_t *compressed_data = p_reader.current();
-                return std::make_unique<ISRWord>(compressed_data, p_header->num_postings);
-            }
-        }
     }
 
-    return nullptr;
+    BufferReader p_reader(lookup.posting_ptr);
+    const PostingListHeader *p_header = p_reader.readPOD<PostingListHeader>();
+    std::optional<SeekTable> table = std::nullopt;
+
+    if (p_header->has_seek_table) {
+        const uint8_t *table_data = p_reader.current();
+        p_reader.skip(SeekTable::SerializedSize);
+        const uint8_t *compressed_data = p_reader.current();
+        table = SeekTable::deserialize(table_data, compressed_data, p_header->data_size,
+                                       p_header->num_postings);
+
+        return std::make_unique<ISRWord>(compressed_data, p_header->num_postings, table);
+    }
+
+    const uint8_t *compressed_data = p_reader.current();
+    return std::make_unique<ISRWord>(compressed_data, p_header->num_postings);
+}
+
+std::optional<TermInfo> DiskChunkReader::getTermInfo(const ::string &term) const {
+    DictionaryLookup lookup;
+    if (!lookupTerm(data_, header_, term, lookup)) {
+        return std::nullopt;
+    }
+
+    TermInfo info;
+    info.doc_frequency = lookup.bucket->doc_frequency;
+    info.collection_frequency = lookup.bucket->collection_frequency;
+    return info;
 }
 
 std::optional<DocumentRecord> DiskChunkReader::getDocument(uint32_t doc_id) const {

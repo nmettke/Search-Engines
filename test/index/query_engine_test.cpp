@@ -3,8 +3,11 @@
 #include "index/src/lib/in_memory_index.h"
 #include "index/src/lib/query_engine.h"
 #include "index/src/lib/static_rank.h"
+#include "index/src/lib/tokenizer.h"
 #include "index/src/lib/types.h"
+#include "parser/HtmlParser.h"
 #include <gtest/gtest.h>
+#include <vector>
 #include <unistd.h>
 
 namespace {
@@ -27,6 +30,36 @@ DocumentFeatures make_features(uint8_t flags, uint16_t url_length, uint16_t path
     features.outgoing_anchor_word_count = outgoing_anchor_word_count;
     features.raw_tld = raw_tld;
     return features;
+}
+
+void build_index_from_docs(const std::vector<HtmlParser> &docs, const char *path) {
+    unlink(path);
+
+    Tokenizer tokenizer;
+    InMemoryIndex mem_index;
+    for (const HtmlParser &doc : docs) {
+        TokenizedDocument tokenized = tokenizer.processDocument(doc);
+        for (const TokenOutput &token : tokenized.tokens) {
+            mem_index.addToken(token);
+        }
+        mem_index.finishDocument(tokenized.doc_end);
+    }
+
+    flushIndexChunk(mem_index, path);
+}
+
+HtmlParser make_body_doc(const char *url, std::initializer_list<const char *> words,
+                         std::initializer_list<const char *> title_words, uint8_t seed_distance = 0) {
+    HtmlParser doc;
+    doc.sourceUrl = url;
+    doc.seedDistance = seed_distance;
+    for (const char *word : words) {
+        doc.words.pushBack(word);
+    }
+    for (const char *word : title_words) {
+        doc.titleWords.pushBack(word);
+    }
+    return doc;
 }
 
 } // namespace
@@ -138,4 +171,78 @@ TEST(QueryEngineTest, MissingFeatureFlagFallsBackToNonFeatureSignals) {
     same_non_feature_signals.features.raw_tld = "gov";
 
     EXPECT_DOUBLE_EQ(plain_score, scorer.score(same_non_feature_signals));
+}
+
+TEST(QueryEngineTest, PhraseQueriesMatchTitleStream) {
+    const char *body_file = "query_engine_title_phrase.idx";
+    unlink(body_file);
+
+    std::vector<HtmlParser> body_docs = {
+        make_body_doc("https://docs.example/title-hit", {"alpha"}, {"special", "phrase"}),
+        make_body_doc("https://docs.example/body-miss", {"special", "noise", "phrase"}, {}),
+    };
+
+    build_index_from_docs(body_docs, body_file);
+
+    DiskChunkReader body_reader;
+    ASSERT_TRUE(body_reader.open(body_file));
+
+    QueryEngine engine(body_reader);
+    vector<ScoredDocument> results = engine.search("\"special phrase\"", 5);
+
+    ASSERT_EQ(results.size(), 1u);
+    auto doc = body_reader.getDocument(results[0].doc_id);
+    ASSERT_TRUE(doc.has_value());
+    EXPECT_EQ(doc->url, "https://docs.example/title-hit");
+
+    unlink(body_file);
+}
+
+TEST(QueryEngineTest, AnchorExactMatchesOutrankTitleAndBodyMatches) {
+    const char *body_file = "query_engine_federated_body.idx";
+    const char *anchor_file = "query_engine_federated_anchor.idx";
+    unlink(body_file);
+    unlink(anchor_file);
+
+    std::vector<HtmlParser> body_docs = {
+        make_body_doc("https://docs.example/body", {"dog", "noise", "cat"}, {}),
+        make_body_doc("https://docs.example/title", {"alpha"}, {"dog", "cat"}),
+        make_body_doc("https://docs.example/anchor", {"alpha"}, {}),
+    };
+
+    std::vector<HtmlParser> anchor_docs = {
+        make_body_doc("https://docs.example/body", {}, {}),
+        make_body_doc("https://docs.example/title", {"beta"}, {}),
+        make_body_doc("https://docs.example/anchor", {"dog", "cat"}, {}),
+    };
+
+    build_index_from_docs(body_docs, body_file);
+    build_index_from_docs(anchor_docs, anchor_file);
+
+    DiskChunkReader body_reader;
+    DiskChunkReader anchor_reader;
+    ASSERT_TRUE(body_reader.open(body_file));
+    ASSERT_TRUE(anchor_reader.open(anchor_file));
+
+    QueryEngine engine(body_reader, anchor_reader);
+    vector<ScoredDocument> results = engine.search("dog cat", 5);
+
+    ASSERT_EQ(results.size(), 3u);
+
+    auto best = body_reader.getDocument(results[0].doc_id);
+    auto second = body_reader.getDocument(results[1].doc_id);
+    auto third = body_reader.getDocument(results[2].doc_id);
+
+    ASSERT_TRUE(best.has_value());
+    ASSERT_TRUE(second.has_value());
+    ASSERT_TRUE(third.has_value());
+
+    EXPECT_EQ(best->url, "https://docs.example/anchor");
+    EXPECT_EQ(second->url, "https://docs.example/title");
+    EXPECT_EQ(third->url, "https://docs.example/body");
+    EXPECT_GT(results[0].score, results[1].score);
+    EXPECT_GT(results[1].score, results[2].score);
+
+    unlink(body_file);
+    unlink(anchor_file);
 }

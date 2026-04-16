@@ -66,7 +66,6 @@
 //     ::string query2 = "cat OR dog";
 //     ::string query3 = "\"my cat\" -dog";
 //     ::string query4 = "\"my dog\"";
-
 //     auto results1 = engine.search(query1);
 //     auto results2 = engine.search(query2);
 //     auto results3 = engine.search(query3);
