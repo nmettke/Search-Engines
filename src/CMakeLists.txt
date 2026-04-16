@@ -182,3 +182,14 @@ target_link_libraries(anchor_index_builder
 )
 
 target_compile_features(anchor_index_builder PUBLIC cxx_std_17)
+
+add_executable(sync_meta
+    sync_meta.cpp
+)
+
+target_link_libraries(sync_meta
+    PRIVATE
+        index_lib
+)
+
+target_compile_features(sync_meta PUBLIC cxx_std_17)
