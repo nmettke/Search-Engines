@@ -66,10 +66,6 @@ string to_string(double score) {
     return string(buffer);
 }
 
-static bool anchorKeyEqual(string a, string b) { return a == b; }
-
-static uint64_t anchorKeyHash(string key) { return hashString(key.cstr()); }
-
 class TopKHeap {
   public:
     explicit TopKHeap(size_t k) : k_(k) { heap_.reserve(k + 1); }
