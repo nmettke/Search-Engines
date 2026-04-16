@@ -316,7 +316,7 @@ int main(int argc, char **argv) {
     struct dirent *ent;
 
     string body_index_dir = dir_path + "/body_index";
-    string anchor_index_dir = dir_path + "/anchor_parsed_index";
+    string anchor_index_dir = dir_path + "/parsed_anchor_index";
     string meta_dir = dir_path + "/meta";
 
     if ((dir = opendir(body_index_dir.c_str())) != nullptr) {
