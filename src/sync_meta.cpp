@@ -193,15 +193,15 @@ int main(int argc, char **argv) {
                 size_t line_buf_cap = 0;
                 ssize_t read_len = 0;
 
-                while ((read_len = getline(&line_buf, &line_buf_cap, fp)) != -1) {
-                    (void)read_len;
-                    string line(line_buf);
-                    line = strip_newline(line);
-
-                    string url = parse_url(line);
+                // Lambda to process a complete meta entry
+                auto process_entry = [&](const string &entry) {
+                    string single = to_single_line(entry);
+                    string url = parse_url(single);
+                    if (url.empty()) {
+                        return;
+                    }
                     auto location_ptr = index_lookup.Find(url);
                     if (location_ptr == nullptr) {
-                        std::cerr << "Warning: URL in meta not found in index: " << url << "\n";
                         if (url.back() == '/') {
                             string url_no_slash = url.substr(0, url.size() - 1);
                             location_ptr = index_lookup.Find(url_no_slash);
@@ -209,12 +209,43 @@ int main(int argc, char **argv) {
                             string url_with_slash = url + "/";
                             location_ptr = index_lookup.Find(url_with_slash);
                         }
+                        if (location_ptr == nullptr) {
+                            std::cerr << "Warning: URL in meta not found in index: " << url << "\n";
+                        }
                     }
 
                     if (location_ptr != nullptr) {
                         Location loc = location_ptr->value;
-                        all_meta[loc.chunk_id][loc.doc_id] = line;
+                        all_meta[loc.chunk_id][loc.doc_id] = single;
                     }
+                };
+
+                string current_entry;
+
+                while ((read_len = getline(&line_buf, &line_buf_cap, fp)) != -1) {
+                    (void)read_len;
+                    string line(line_buf);
+                    line = strip_newline(line);
+
+                    // A complete meta entry has at least 2 tabs (URL\ttitle\tsnippet).
+                    // Lines with fewer tabs are continuations of the previous entry
+                    // caused by embedded newlines in metadata fields.
+                    if (count_tabs(line) >= 2) {
+                        // Process the previous complete entry
+                        if (!current_entry.empty()) {
+                            process_entry(current_entry);
+                        }
+                        current_entry = line;
+                    } else {
+                        // Continuation line - append to current entry
+                        if (!current_entry.empty()) {
+                            current_entry += " " + line;
+                        }
+                    }
+                }
+                // Process the last entry
+                if (!current_entry.empty()) {
+                    process_entry(current_entry);
                 }
 
                 if (line_buf != nullptr) {
