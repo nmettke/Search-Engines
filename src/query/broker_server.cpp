@@ -69,7 +69,7 @@ void *fetch_from_worker(void *args) {
     // Set a 500ms timeout
     struct timeval timeout;
     timeout.tv_sec = 0;
-    timeout.tv_usec = 50000000;
+    timeout.tv_usec = 5000000;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) >= 0) {
