@@ -28,34 +28,6 @@ string to_string(size_t n) {
     return string(buffer);
 }
 
-// Escapes a string for inclusion inside a JSON string literal. The caller is
-// responsible for wrapping the return value in surrounding `"` quotes.
-string json_escape(const string &s) {
-    string out;
-    out.reserve(s.size() + 8);
-    for (size_t i = 0; i < s.size(); ++i) {
-        unsigned char c = static_cast<unsigned char>(s[i]);
-        switch (c) {
-        case '"':  out += "\\\""; break;
-        case '\\': out += "\\\\"; break;
-        case '\b': out += "\\b";  break;
-        case '\f': out += "\\f";  break;
-        case '\n': out += "\\n";  break;
-        case '\r': out += "\\r";  break;
-        case '\t': out += "\\t";  break;
-        default:
-            if (c < 0x20) {
-                char buf[8];
-                snprintf(buf, sizeof(buf), "\\u%04x", c);
-                out += buf;
-            } else {
-                out += static_cast<char>(c);
-            }
-        }
-    }
-    return out;
-}
-
 void *fetch_from_worker(void *args) {
     WorkerArgs *wa = (WorkerArgs *)args;
 
@@ -111,8 +83,6 @@ void *fetch_from_worker(void *args) {
                 wa->local_results.pushBack({url, title, snippet, score});
             }
         }
-        std::cout << "Received " << wa->local_results.size() << " results from worker " << wa->ip
-                  << ":" << wa->port << "\n";
     }
     close(sock);
     return nullptr;
@@ -181,14 +151,6 @@ void *handle_frontend(void *args) {
             return nullptr;
         }
 
-        // "/" and "/search" both load the single-page app (the client-side
-        // JS then reads ?q=... from window.location and runs the search if
-        // present). "/search?q=..." is the shareable URL; the JSON API lives
-        // at "/api/search?q=...".
-        if (path_only == "/" || path_only == "/search") {
-            path_only = "/index.html";
-        }
-
         // serves files statically
         string method = http_request.substr(0, sp1);
         if (method == "GET" && RootDirectory) {
@@ -252,9 +214,9 @@ void *handle_frontend(void *args) {
         }
     }
 
-    // Parse HTTP GET /api/search?q=cat HTTP/1.1
+    // Parse HTTP GET /search?q=cat HTTP/1.1
     string query = "";
-    size_t k = 20;
+    size_t k = 10;
     size_t get_pos = http_request.find("GET ");
     if (get_pos != string::npos) {
         size_t target_start = get_pos + 4;
@@ -264,7 +226,7 @@ void *handle_frontend(void *args) {
             size_t qmark = target.find('?');
             string path = target.substr(0, qmark);
 
-            if (path == "/api/search" && qmark != string::npos) {
+            if (path == "/search" && qmark != string::npos) {
                 string query_string = target.substr(qmark + 1);
                 string raw_query;
                 string raw_k;
@@ -329,7 +291,7 @@ void *handle_frontend(void *args) {
         {"10.128.0.27", 8081, query, k, {}},
         {"10.128.0.28", 8081, query, k, {}},
         {"10.128.0.29", 8081, query, k, {}}};
-    
+
     ::vector<pthread_t> threads(workers.size());
     for (size_t i = 0; i < workers.size(); ++i) {
         pthread_create(&threads[i], nullptr, fetch_from_worker, &workers[i]);
@@ -349,21 +311,18 @@ void *handle_frontend(void *args) {
 
     ::vector<GlobalResult> final_results = top_k.extractSorted();
 
-    std::cout << "Number of results from workers: " << final_results.size() << std::endl;
-
     auto query_end = std::chrono::steady_clock::now();
     double elapsed_ms = std::chrono::duration<double, std::milli>(query_end - query_start).count();
 
     // Manually format the JSON response
-    string json = "{\n  \"query\": \"" + json_escape(query) +
-                  "\",\n  \"elapsed_ms\": " + to_string(elapsed_ms) +
+    string json = "{\n  \"query\": \"" + query + "\",\n  \"elapsed_ms\": " + to_string(elapsed_ms) +
                   ",\n  \"total_results\": " + to_string(final_results.size()) +
                   ",\n  \"results\": [\n";
     for (size_t i = 0; i < final_results.size(); ++i) {
         json += "    {\n";
-        json += "      \"url\": \"" + json_escape(final_results[i].url) + "\",\n";
-        json += "      \"title\": \"" + json_escape(final_results[i].title) + "\",\n";
-        json += "      \"snippet\": \"" + json_escape(final_results[i].snippet) + "\",\n";
+        json += "      \"url\": \"" + final_results[i].url + "\",\n";
+        json += "      \"title\": \"" + final_results[i].title + "\",\n";
+        json += "      \"snippet\": \"" + final_results[i].snippet + "\",\n";
         json += "      \"score\": " + to_string(final_results[i].score) + "\n";
         json += "    }";
         if (i < final_results.size() - 1)
