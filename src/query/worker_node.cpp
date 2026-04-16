@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
@@ -16,7 +17,9 @@
 
 #include "../index/src/lib/disk_chunk_reader.h"
 #include "../index/src/lib/query_engine.h"
+#include "./index/src/lib/Common.h"
 
+#include "../utils/hash/HashTable.h"
 #include "../utils/string.hpp"
 #include "../utils/vector.hpp"
 
@@ -53,6 +56,10 @@ struct ThreadArgs {
 };
 
 namespace {
+struct Location {
+    size_t chunk_id;
+    size_t doc_id;
+};
 
 string to_string(double score) {
     char buffer[64];
@@ -78,6 +85,10 @@ string derive_anchor_path(const string &anchor_dir, const string &base_name) {
 
     return "";
 }
+  
+static bool anchorKeyEqual(string a, string b) { return a == b; }
+
+static uint64_t anchorKeyHash(string key) { return hashString(key.cstr()); }
 
 class TopKHeap {
   public:
@@ -357,10 +368,6 @@ int main(int argc, char **argv) {
             }
             std::cout << ")\n";
         }
-        closedir(dir);
-    } else {
-        std::cerr << "Fatal Error: Could not open directory " << dir_path << "\n";
-        return 1;
     }
 
     if (chunks.empty()) {

@@ -15,7 +15,7 @@ UrlBloomFilter::Snapshot UrlBloomFilter::snapshot() const {
     Snapshot snap;
     vector<bool> bitsCopy;
     {
-        lock_guard guard(m_);
+        lock_guard<mutex> guard(m_);
         snap.bitCount = bitCount;
         snap.hashCount = hashCount;
         bitsCopy = bits;
@@ -62,6 +62,10 @@ string trim(const string &input) {
 
     std::size_t last = input.size();
     while (last > first && std::isspace(static_cast<unsigned char>(input[last - 1]))) {
+        last--;
+    }
+
+    while (last > first && input[last - 1] == '/') {
         last--;
     }
 
@@ -443,7 +447,7 @@ bool UrlBloomFilter::getBit(std::size_t index) const { return bits[index]; }
 void UrlBloomFilter::setBit(std::size_t index) { bits[index] = true; }
 
 bool UrlBloomFilter::probablyContains(const string &key) const {
-    lock_guard guard(m_);
+    lock_guard<mutex> guard(m_);
     if (key.empty()) {
         return false;
     }
@@ -460,7 +464,7 @@ bool UrlBloomFilter::probablyContains(const string &key) const {
 }
 
 void UrlBloomFilter::insert(const string &key) {
-    lock_guard guard(m_);
+    lock_guard<mutex> guard(m_);
     if (key.empty()) {
         return;
     }
@@ -474,7 +478,7 @@ void UrlBloomFilter::insert(const string &key) {
 }
 
 bool UrlBloomFilter::checkAndInsert(const string &key) {
-    lock_guard guard(m_);
+    lock_guard<mutex> guard(m_);
     if (key.empty()) {
         return false;
     }

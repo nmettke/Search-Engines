@@ -35,7 +35,7 @@ bool Checkpoint::createSnapshot(const Frontier &frontier, const UrlBloomFilter &
 }
 
 bool Checkpoint::writeSnapshot(const CheckpointSnapshot &snapshot) {
-    lock_guard guard(saveMutex_);
+    lock_guard<mutex> guard(saveMutex_);
 
     FILE *f = fopen(tmpPath().c_str(), "wb");
     if (!f) {

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cache Me If You Can</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="landing" id="landing">
+        <img class="logo" src="/assets/cachemeifyoucan.png" alt="Cache Me If You Can">
+
+        <form id="search-form" class="search-bar">
+            <input type="text" id="query" name="q" autofocus autocomplete="off"
+                placeholder="Can we find all of our bugs before we have to present?" />
+            <button type="submit" aria-label="Search">&#x1F50D;</button>
+        </form>
+        <div class="search-actions" id="search-actions">
+            <button type="submit" form="search-form" id="runaway-search-button">Search</button>
+        </div>
+    </div>
+
+    <div id="results-page" style="display:none;">
+        <div class="header">
+            <a class="brand" href="/index.html" aria-label="Cache Me If You Can — home">
+                <img src="/assets/small_logo.png" alt="Cache Me If You Can">
+            </a>
+            <form id="results-search-form" class="search-bar">
+                <input type="text" id="results-query" name="q" autocomplete="off" />
+                <button type="submit" aria-label="Search">&#x1F50D;</button>
+            </form>
+        </div>
+        <div class="info" id="info"></div>
+        <div class="results" id="results"></div>
+    </div>
+
+    <script>
+        function escapeHtml(s) {
+            var d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        function formatElapsed(ms) {
+            if (ms == null || isNaN(ms)) return '';
+            if (ms < 10) return ms.toFixed(2) + ' ms';
+            return Math.round(ms) + ' ms';
+        }
+
+        function doSearch(query) {
+            document.getElementById('landing').style.display = 'none';
+            document.getElementById('results-page').style.display = 'block';
+            document.getElementById('results-query').value = query;
+            document.getElementById('info').textContent = 'Searching\u2026';
+            document.getElementById('results').innerHTML = '';
+            document.title = query + ' \u2014 Cache Me If You Can';
+
+            fetch('/search?q=' + encodeURIComponent(query))
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    var n = data.results.length;
+                    var elapsed = formatElapsed(data.elapsed_ms);
+                    document.getElementById('info').textContent =
+                        'About ' + n + ' result' + (n !== 1 ? 's' : '') +
+                        (elapsed ? ' (' + elapsed + ')' : '');
+
+                    if (n === 0) {
+                        document.getElementById('results').innerHTML =
+                            '<div class="no-results">No results found for <b>' +
+                            escapeHtml(query) + '</b>.</div>';
+                        return;
+                    }
+
+                    var html = '';
+                    for (var i = 0; i < n; i++) {
+                        var r = data.results[i];
+                        var displayUrl = r.url.length > 70
+                            ? r.url.substring(0, 70) + '\u2026' : r.url;
+                        var title = r.title || r.url;
+                        html += '<div class="result">'
+                           
+                            + '<div class="result-title"><a href="' + escapeHtml(r.url)
+                            + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(title) + '</a></div>'
+                            + '<div class="result-url">' + escapeHtml(displayUrl) + '</div>'
+                            + '<div class="result-snippet">' + escapeHtml(r.snippet) + '</div>'
+                            + '<div class="result-score">Score: ' + r.score.toFixed(4) + '</div>'
+                            + '</div>';
+                    }
+                    document.getElementById('results').innerHTML = html;
+                })
+                .catch(function(err) {
+                    document.getElementById('info').textContent = '';
+                    document.getElementById('results').innerHTML =
+                        '<div class="no-results">Error: ' + escapeHtml(err.message) + '</div>';
+                });
+        }
+
+        (function() {
+            var landing = document.getElementById('landing');
+            var buttonArea = document.getElementById('search-actions');
+            var btn = document.getElementById('runaway-search-button');
+
+            var offset = { x: 0, y: 0 };
+            var velocity = { x: 0, y: 0 };
+            var mouse = { x: -9999, y: -9999 };
+            var prevMouse = { x: -9999, y: -9999 };
+            var mouseSpeed = 0;
+
+            var escapeStart = 0;
+            var ESCAPE_MS = 10000;
+            var TRIGGER_RADIUS_MIN = 60;
+            var TRIGGER_RADIUS_MAX = 200;
+            var FRICTION = 0.84;
+            var settled = false;
+            var animating = false;
+
+            function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+            function bounds() {
+
+                var a = buttonArea.getBoundingClientRect();
+                var b = btn.getBoundingClientRect();
+
+                return { 
+                    x: (a.width - b.width) / 2, y:  (a.height - b.height) / 2 
+                };
+            }
+
+            function applyOffset() {
+                btn.style.setProperty('--button-offset-x', offset.x + 'px'); 
+                btn.style.setProperty('--button-offset-y', offset.y + 'px');
+
+            }
+
+            function settle() {
+
+                settled = true;
+                landing.removeEventListener('pointermove', onPointerMove);
+                velocity.x = 0;
+                velocity.y = 0;
+
+                btn.classList.remove('is-running');
+            }
+
+            function tick() {
+                if (settled) return;
+
+                var now = performance.now();
+                if (escapeStart && now - escapeStart >= ESCAPE_MS) {
+                    settle();
+                    return;
+                }
+
+                var br = btn.getBoundingClientRect();
+                var cx = br.left + br.width / 2;
+                var cy = br.top + br.height / 2;
+                var dx = cx - mouse.x;
+                var dy = cy - mouse.y;
+                var dist = Math.hypot(dx, dy);
+
+
+
+                var elapsed = now - escapeStart;
+                var ramp = clamp(elapsed / ESCAPE_MS, 0, 1);
+                var triggerRadius = TRIGGER_RADIUS_MIN + (TRIGGER_RADIUS_MAX - TRIGGER_RADIUS_MIN) * ramp;
+
+                if (dist < triggerRadius && escapeStart) {
+
+                    var mag = dist > 0.5 ? dist : 1;
+                    var ux = dx / mag;
+                    var uy = dy / mag;
+
+                    if (dist < 2) {
+                        var a = Math.random() * Math.PI * 2;
+                        ux = Math.cos(a); uy = Math.sin(a);
+                    }
+
+                    var proximity = 1 - dist / triggerRadius;
+                    var speedFactor = clamp(mouseSpeed / 8, 0.2, 5.0);
+                    var force = proximity * speedFactor * 6;
+
+                    velocity.x += ux * force;
+                    velocity.y += uy * force;
+                }
+
+                velocity.x *= FRICTION;
+                velocity.y *= FRICTION;
+
+                var b = bounds();
+                offset.x = clamp(offset.x + velocity.x, -b.x, b.x);
+                offset.y = clamp(offset.y + velocity.y, -b.y, b.y);
+
+                if (offset.x <= -b.x || offset.x >= b.x) velocity.x *= -0.3;
+                if (offset.y <= -b.y || offset.y >= b.y) velocity.y *= -0.3;
+
+                applyOffset();
+
+                requestAnimationFrame(tick);
+            }
+
+            function onPointerMove(event) {
+                if (event.pointerType && event.pointerType !== 'mouse') return;
+
+                prevMouse.x = mouse.x;
+                prevMouse.y = mouse.y;
+                
+                mouse.x = event.clientX;
+                mouse.y = event.clientY;
+                mouseSpeed = Math.hypot(mouse.x - prevMouse.x, mouse.y - prevMouse.y);
+
+                if (!escapeStart) {
+                    var br = btn.getBoundingClientRect();
+                    var cx = br.left + br.width / 2;
+                    var cy = br.top + br.height / 2;
+                    if (Math.hypot(cx - mouse.x, cy - mouse.y) < TRIGGER_RADIUS_MIN) {
+                        escapeStart = performance.now();
+                        btn.classList.add('is-running');
+                        if (!animating) { animating = true; requestAnimationFrame(tick); }
+                    }
+                }
+            }
+
+            landing.addEventListener('pointermove', onPointerMove);
+        })();
+
+        document.getElementById('search-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var q = document.getElementById('query').value.trim();
+            if (q) doSearch(q);
+        });
+
+        document.getElementById('results-search-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var q = document.getElementById('results-query').value.trim();
+            if (q) doSearch(q);
+        });
+    </script>
+</body>
+</html>

@@ -1,109 +1,20 @@
 #include <arpa/inet.h>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <fcntl.h>
 #include <iostream>
 #include <netinet/in.h>
 #include <pthread.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <sys/stat.h>
 
-#include "../utils/string.hpp"
 #include "../utils/vector.hpp"
+#include "Plugin.h"
+#include "SearchCommon.h"
 
-struct GlobalResult {
-    string url;
-    string title;
-    string snippet;
-    double score;
+PluginObject *Plugin = nullptr;
 
-    bool operator>(const GlobalResult &other) const { return score > other.score; }
-    bool operator<(const GlobalResult &other) const { return score < other.score; }
-};
-
-class GlobalTopKHeap {
-  private:
-    ::vector<GlobalResult> heap_;
-    size_t k_;
-
-    void heapifyUp(int index) {
-        while (index > 0) {
-            int parent = (index - 1) / 2;
-            if (heap_[index].score < heap_[parent].score) {
-                GlobalResult temp = heap_[index];
-                heap_[index] = heap_[parent];
-                heap_[parent] = temp;
-
-                index = parent;
-            } else {
-                break;
-            }
-        }
-    }
-
-    void heapifyDown(int index) {
-        int size = heap_.size();
-        while (true) {
-            int left = 2 * index + 1;
-            int right = 2 * index + 2;
-            int smallest = index;
-
-            if (left < size && heap_[left].score < heap_[smallest].score)
-                smallest = left;
-            if (right < size && heap_[right].score < heap_[smallest].score)
-                smallest = right;
-
-            if (smallest != index) {
-                GlobalResult temp = heap_[index];
-                heap_[index] = heap_[smallest];
-                heap_[smallest] = temp;
-
-                index = smallest;
-            } else {
-                break;
-            }
-        }
-    }
-
-  public:
-    GlobalTopKHeap(size_t k) : k_(k) { heap_.reserve(k + 1); }
-
-    void push(const GlobalResult &item) {
-        if (heap_.size() < k_) {
-            heap_.pushBack(item);
-            heapifyUp(heap_.size() - 1);
-        } else if (item.score > heap_[0].score) {
-            heap_[0] = item;
-            heapifyDown(0);
-        }
-    }
-
-    ::vector<GlobalResult> extractSorted() {
-        ::vector<GlobalResult> sorted;
-        while (!heap_.empty()) {
-            sorted.pushBack(heap_[0]);
-            heap_[0] = heap_.back();
-            heap_.popBack();
-            if (!heap_.empty())
-                heapifyDown(0);
-        }
-
-        size_t n = sorted.size();
-        for (size_t i = 0; i < n / 2; ++i) {
-            GlobalResult temp = sorted[i];
-            sorted[i] = sorted[n - 1 - i];
-            sorted[n - 1 - i] = temp;
-        }
-        return sorted;
-    }
-};
-
-struct WorkerArgs {
-    string ip;
-    int port;
-    string query;
-    size_t k;
-    ::vector<GlobalResult> local_results;
-};
+char *RootDirectory;
 
 string to_string(double score) {
     char buffer[64];
@@ -132,7 +43,6 @@ void *fetch_from_worker(void *args) {
     timeout.tv_sec = 0;
     timeout.tv_usec = 500000;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    // std::cout << "[MASTER NODE] Broker HTTP Server listening on port 8080...\n";
 
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) >= 0) {
         string msg = to_string(wa->k) + "\t" + wa->query + "\n";
@@ -223,7 +133,88 @@ void *handle_frontend(void *args) {
     read(client_sock, buffer, sizeof(buffer) - 1);
     string http_request(buffer);
 
-    // Parse HTTP GET /search?q=cat&k=20 HTTP/1.1
+    // plugin stuff
+    size_t sp1 = http_request.find(' ');
+    size_t sp2 = http_request.find(' ', sp1 + 1);
+    if (sp1 != string::npos && sp2 != string::npos) {
+        string raw_path = http_request.substr(sp1 + 1, sp2 - sp1 - 1);
+        string path_only = raw_path;
+        size_t qmark = path_only.find('?');
+        if (qmark != string::npos)
+            path_only = path_only.substr(0, qmark);
+
+        if (Plugin && Plugin->MagicPath(path_only)) {
+            string response = Plugin->ProcessRequest(string(buffer));
+            send(client_sock, response.c_str(), response.size(), 0);
+            close(client_sock);
+            delete ca;
+            return nullptr;
+        }
+
+        // serves files statically
+        string method = http_request.substr(0, sp1);
+        if (method == "GET" && RootDirectory) {
+            string fullpath = string(RootDirectory) + "/" + path_only;
+            int f = open(fullpath.c_str(), O_RDONLY);
+            if (f >= 0) {
+                struct stat info;
+                fstat(f, &info);
+                if ((info.st_mode & S_IFMT) != S_IFDIR) {
+
+                    const char *content_type = "application/octet-stream";
+                    size_t dot = string::npos;
+                    for (size_t i = path_only.size(); i > 0; --i)
+                        if (path_only[i - 1] == '.') {
+                            dot = i - 1;
+                            break;
+                        }
+                    if (dot != string::npos) {
+                        string ext = path_only.substr(dot);
+                        if (ext == ".html" || ext == ".htm")
+                            content_type = "text/html";
+                        else if (ext == ".css")
+                            content_type = "text/css";
+                        else if (ext == ".js")
+                            content_type = "application/javascript";
+                        else if (ext == ".json")
+                            content_type = "application/json";
+                        else if (ext == ".png")
+                            content_type = "image/png";
+                        else if (ext == ".jpg" || ext == ".jpeg")
+                            content_type = "image/jpeg";
+                        else if (ext == ".gif")
+                            content_type = "image/gif";
+                        else if (ext == ".svg")
+                            content_type = "image/svg+xml";
+                        else if (ext == ".ico")
+                            content_type = "image/x-icon";
+                    }
+
+                    char header[1024];
+                    int hlen = snprintf(header, sizeof(header),
+                                        "HTTP/1.1 200 OK\r\n"
+                                        "Content-Length: %lld\r\n"
+                                        "Connection: close\r\n"
+                                        "Content-Type: %s\r\n\r\n",
+                                        (long long)info.st_size, content_type);
+                    send(client_sock, header, hlen, 0);
+
+                    char filebuf[10240];
+                    ssize_t r;
+                    while ((r = read(f, filebuf, sizeof(filebuf))) > 0)
+                        send(client_sock, filebuf, r, 0);
+
+                    close(f);
+                    close(client_sock);
+                    delete ca;
+                    return nullptr;
+                }
+                close(f);
+            }
+        }
+    }
+
+    // Parse HTTP GET /search?q=cat HTTP/1.1
     string query = "";
     size_t k = 10;
     size_t get_pos = http_request.find("GET ");
@@ -287,6 +278,8 @@ void *handle_frontend(void *args) {
         return nullptr;
     }
 
+    auto query_start = std::chrono::steady_clock::now();
+
     // Launch concurrent pthreads to query the Workers
     // TODO: load these from a config file
     ::vector<WorkerArgs> workers = {{"localhost", 8081, query, k, {}},
@@ -311,8 +304,13 @@ void *handle_frontend(void *args) {
 
     ::vector<GlobalResult> final_results = top_k.extractSorted();
 
+    auto query_end = std::chrono::steady_clock::now();
+    double elapsed_ms = std::chrono::duration<double, std::milli>(query_end - query_start).count();
+
     // Manually format the JSON response
-    string json = "{\n  \"query\": \"" + query + "\",\n  \"results\": [\n";
+    string json = "{\n  \"query\": \"" + query + "\",\n  \"elapsed_ms\": " + to_string(elapsed_ms) +
+                  ",\n  \"total_results\": " + to_string(final_results.size()) +
+                  ",\n  \"results\": [\n";
     for (size_t i = 0; i < final_results.size(); ++i) {
         json += "    {\n";
         json += "      \"url\": \"" + final_results[i].url + "\",\n";
@@ -343,7 +341,15 @@ void *handle_frontend(void *args) {
     return nullptr;
 }
 
-int main() {
+int main(int argc, char **argv) {
+    if (argc != 3) {
+        std::cerr << "Usage:  " << argv[0] << " port rootdirectory" << std::endl;
+        return 1;
+    }
+
+    int port = atoi(argv[1]);
+    RootDirectory = argv[2];
+
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
@@ -352,12 +358,15 @@ int main() {
     memset(&address, 0, sizeof(address));
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(8080); // Broker always listens on 8080
+    address.sin_port = htons(port);
 
-    bind(server_fd, (struct sockaddr *)&address, sizeof(address));
+    ::bind(server_fd, (struct sockaddr *)&address, sizeof(address));
     listen(server_fd, 100);
 
-    std::cout << "[MASTER NODE] Broker HTTP Server listening on port 8080...\n";
+    std::cout << "[MASTER NODE] Broker HTTP Server listening on port " << port << "...\n";
+    std::cout << "Serving files from " << RootDirectory << "/\n";
+    if (Plugin)
+        std::cout << "Search plugin loaded.\n";
 
     while (true) {
         int client_sock = accept(server_fd, nullptr, nullptr);
