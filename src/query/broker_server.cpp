@@ -318,8 +318,11 @@ void *handle_frontend(void *args) {
 
     // Launch concurrent pthreads to query the Workers
     // TODO: load these from a config file
-    ::vector<WorkerArgs> workers = {{"localhost", 8081, query, k, {}},
-                                    {"localhost", 8082, query, k, {}}};
+    ::vector<WorkerArgs> workers = {
+        {"10.128.0.21", 8081, query, k, {}}, {"10.128.0.22", 8081, query, k, {}},
+        {"10.128.0.23", 8081, query, k, {}}, {"10.128.0.25", 8081, query, k, {}},
+        {"10.128.0.26", 8081, query, k, {}}, {"10.128.0.27", 8081, query, k, {}},
+        {"10.128.0.28", 8081, query, k, {}}, {"10.128.0.29", 8081, query, k, {}}};
 
     ::vector<pthread_t> threads(workers.size());
     for (size_t i = 0; i < workers.size(); ++i) {
