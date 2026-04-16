@@ -1,8 +1,8 @@
 #include "dynamic_rank.h"
+#include "../../../utils/vector.hpp"
 #include <algorithm>
 #include <limits>
 #include <utility>
-#include <vector>
 
 namespace {
 
@@ -23,7 +23,7 @@ struct StreamFeatures {
     bool too_frequent = false; // occurence exceed cap
     size_t earliest_span_start = std::numeric_limits<size_t>::max();
     int rarest_term_index = -1;
-    std::vector<std::vector<uint32_t>> positions; // vector of positions of each term 
+    vector<vector<uint32_t>> positions; // vector of positions of each term
 };
 
 size_t shortSpanLimit(const DynamicRankConfig &config, StreamKind kind, size_t term_count) {
@@ -59,21 +59,20 @@ double streamWeight(const DynamicRankConfig &config, StreamKind kind) {
     return config.body_stream_weight;
 }
 
-bool hasExactSequence(const std::vector<std::vector<uint32_t>> &positions,
-                      const std::vector<int> &term_indexes) {
+bool hasExactSequence(const vector<vector<uint32_t>> &positions, const vector<int> &term_indexes) {
     // given an vector of indices that represent exact phrase
     // we check whether they appear together in the whole doc
     if (term_indexes.empty()) {
         return false;
     }
 
-    const std::vector<uint32_t> &first_positions = positions[term_indexes[0]];
+    const vector<uint32_t> &first_positions = positions[term_indexes[0]];
     for (uint32_t start : first_positions) {
         uint32_t expected = start;
         bool matches = true;
         for (size_t i = 1; i < term_indexes.size(); ++i) {
             ++expected;
-            const std::vector<uint32_t> &next_positions = positions[term_indexes[i]];
+            const vector<uint32_t> &next_positions = positions[term_indexes[i]];
             if (!std::binary_search(next_positions.begin(), next_positions.end(), expected)) {
                 matches = false;
                 break;
@@ -86,7 +85,7 @@ bool hasExactSequence(const std::vector<std::vector<uint32_t>> &positions,
     return false;
 }
 
-bool findOrderedSpan(const std::vector<std::vector<uint32_t>> &positions, size_t &best_width,
+bool findOrderedSpan(const vector<vector<uint32_t>> &positions, size_t &best_width,
                      size_t &best_start) {
     // returns whether a ordered span exists
     // edits best_width and best start to smallest width 
@@ -104,7 +103,7 @@ bool findOrderedSpan(const std::vector<std::vector<uint32_t>> &positions, size_t
         uint32_t current = start;
         bool matched = true;
         for (size_t i = 1; i < positions.size(); ++i) {
-            const std::vector<uint32_t> &next_positions = positions[i];
+            const vector<uint32_t> &next_positions = positions[i];
             // if any subsequent word does not have a location after current, no match
             auto it = std::lower_bound(next_positions.begin(), next_positions.end(), current);
             if (it == next_positions.end()) {
@@ -131,7 +130,7 @@ bool findOrderedSpan(const std::vector<std::vector<uint32_t>> &positions, size_t
     return found;
 }
 
-bool findUnorderedSpan(const std::vector<std::vector<uint32_t>> &positions, size_t &best_width,
+bool findUnorderedSpan(const vector<vector<uint32_t>> &positions, size_t &best_width,
                        size_t &best_start) {
     // similar to ordered span ..... but unordered!
     // We use a two pointer approach on a sorted positions array (essentially the body but only query terms)
@@ -140,10 +139,10 @@ bool findUnorderedSpan(const std::vector<std::vector<uint32_t>> &positions, size
         int term_index;
     };
 
-    std::vector<Event> events;
+    vector<Event> events;
     for (size_t i = 0; i < positions.size(); ++i) {
         for (uint32_t loc : positions[i]) {
-            events.push_back({loc, static_cast<int>(i)});
+            events.pushBack({loc, static_cast<int>(i)});
         }
     }
     if (events.empty()) {
@@ -153,7 +152,7 @@ bool findUnorderedSpan(const std::vector<std::vector<uint32_t>> &positions, size
     std::sort(events.begin(), events.end(),
               [](const Event &lhs, const Event &rhs) { return lhs.loc < rhs.loc; });
 
-    std::vector<size_t> counts(positions.size(), 0);
+    vector<size_t> counts(positions.size(), 0);
     size_t covered = 0;
     size_t left = 0;
     bool found = false;
@@ -187,7 +186,7 @@ bool findUnorderedSpan(const std::vector<std::vector<uint32_t>> &positions, size
     return found;
 }
 
-bool hasNearbyOccurrence(const std::vector<uint32_t> &term_positions, uint32_t anchor_loc, size_t gap) {
+bool hasNearbyOccurrence(const vector<uint32_t> &term_positions, uint32_t anchor_loc, size_t gap) {
     // Whether the postions for term is within a circle of diameter gap centered at anchor loc
     if (term_positions.empty()) {
         return false;
@@ -231,8 +230,8 @@ StreamFeatures extractStreamFeatures(const DiskChunkReader &reader, const QueryP
     uint64_t rarest_frequency = std::numeric_limits<uint64_t>::max();
     for (size_t i = 0; i < stream_terms.size(); ++i) {
         // populate locations, add simple stuff such as rarest index and num present terms
-        std::vector<uint32_t> positions;
-        std::unique_ptr<ISRWord> isr = reader.createISR(term);
+        vector<uint32_t> positions;
+        std::unique_ptr<ISRWord> isr = reader.createISR(stream_terms[i]);
         if (isr) {
             uint32_t loc = isr->seek(start);
             while (loc != ISRSentinel && loc <= end) {
@@ -267,7 +266,7 @@ StreamFeatures extractStreamFeatures(const DiskChunkReader &reader, const QueryP
         }
 
         // indices of phrase term in query
-        std::vector<int> indexes;
+        vector<int> indexes;
         bool complete = true;
         for (const ::string &term : phrase.terms) {
             int found_index = -1;
@@ -323,10 +322,10 @@ StreamFeatures extractStreamFeatures(const DiskChunkReader &reader, const QueryP
     }
 
     if (features.rarest_term_index >= 0 && profile.unique_terms.size() >= 2) {
-        const std::vector<uint32_t> &anchor_positions = features.positions[features.rarest_term_index];
+        const vector<uint32_t> &anchor_positions = features.positions[features.rarest_term_index];
         // Where rarest terms occur
         for (uint32_t anchor_loc : anchor_positions) {
-            std::vector<int> nearby_terms;
+            vector<int> nearby_terms;
             for (size_t i = 0; i < features.positions.size(); ++i) {
                 if (static_cast<int>(i) == features.rarest_term_index ||
                     features.positions[i].empty()) {
@@ -353,7 +352,7 @@ StreamFeatures extractStreamFeatures(const DiskChunkReader &reader, const QueryP
         // or one term occurred more than capped per term
         features.too_frequent = true;
     } else {
-        for (const std::vector<uint32_t> &positions : features.positions) {
+        for (const vector<uint32_t> &positions : features.positions) {
             if (positions.size() > config.max_counted_occurrences) {
                 features.too_frequent = true;
                 break;

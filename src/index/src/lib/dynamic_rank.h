@@ -27,8 +27,8 @@ struct DynamicRankConfig {
     double first_span_bonus = 0.35;
     double occurrence_bonus = 0.12;
     double too_frequent_penalty = 0.80; // if occurence greater than capped occurence
+    double most_words_percent = 0.6;
 
-    size_t most_words_percent = 0.6;
     size_t near_top_limit_anchor = 8;
     size_t near_top_limit_title = 3;
     size_t near_top_limit_body = 24;

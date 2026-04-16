@@ -6,14 +6,11 @@
 #include <dirent.h>
 #include <iostream>
 #include <limits>
-#include <mutex>
 #include <netinet/in.h>
 #include <pthread.h>
 #include <string>
 #include <sys/socket.h>
-#include <thread>
 #include <unistd.h>
-#include <vector>
 
 #include "../index/src/lib/disk_chunk_reader.h"
 #include "../index/src/lib/query_engine.h"
@@ -21,6 +18,8 @@
 
 #include "../utils/hash/HashTable.h"
 #include "../utils/string.hpp"
+#include "../utils/threads/lock_guard.hpp"
+#include "../utils/threads/mutex.hpp"
 #include "../utils/vector.hpp"
 
 struct MetaRecord {
@@ -52,7 +51,7 @@ struct QueryTask {
 
 struct ThreadArgs {
     int client_socket;
-    std::vector<ChunkDescriptor> *chunks;
+    vector<ChunkDescriptor> *chunks;
 };
 
 namespace {
@@ -171,6 +170,44 @@ class TopKHeap {
     }
 };
 
+struct QueryWorkerArgs {
+    const vector<QueryTask> *tasks = nullptr;
+    vector<ChunkDescriptor> *chunks = nullptr;
+    const string *query = nullptr;
+    size_t K = 0;
+    TopKHeap *top_k_heap = nullptr;
+    mutex *heap_mutex = nullptr;
+    std::atomic<double> *shared_threshold = nullptr;
+    std::atomic<size_t> *next_task = nullptr;
+};
+
+void *QueryWorkerThread(void *arg) {
+    QueryWorkerArgs *worker_args = static_cast<QueryWorkerArgs *>(arg);
+
+    while (true) {
+        size_t task_index = worker_args->next_task->fetch_add(1);
+        if (task_index >= worker_args->tasks->size()) {
+            break;
+        }
+
+        const QueryTask &task = (*worker_args->tasks)[task_index];
+        ChunkDescriptor &chunk = (*worker_args->chunks)[task.chunk_id];
+        vector<ScoredDocument> chunk_matches =
+            chunk.engine->search(*worker_args->query, worker_args->K, worker_args->shared_threshold);
+        if (chunk_matches.empty()) {
+            continue;
+        }
+
+        lock_guard<mutex> guard(*worker_args->heap_mutex);
+        for (const ScoredDocument &match : chunk_matches) {
+            worker_args->top_k_heap->push({task.chunk_id, match.doc_id, match.score});
+        }
+        worker_args->shared_threshold->store(worker_args->top_k_heap->minScore());
+    }
+
+    return nullptr;
+}
+
 vector<MetaRecord> load_meta_records(const string &meta_path) {
     vector<MetaRecord> chunk_meta;
     FILE *fp = fopen(meta_path.c_str(), "r");
@@ -226,52 +263,46 @@ void *handle_master_connection(void *args) {
             }
         }
 
-        std::vector<QueryTask> tasks;
+        vector<QueryTask> tasks;
         tasks.reserve(t_args->chunks->size());
         for (size_t i = 0; i < t_args->chunks->size(); ++i) {
             QueryTask task;
             task.chunk_id = i;
-            tasks.push_back(task);
+            tasks.pushBack(task);
         }
 
         TopKHeap top_k_heap(K);
-        std::mutex heap_mutex;
+        mutex heap_mutex;
         std::atomic<double> shared_threshold(-std::numeric_limits<double>::infinity());
         std::atomic<size_t> next_task(0);
 
-        size_t thread_count =
-            std::min(tasks.size(), std::max<size_t>(1, std::thread::hardware_concurrency()));
-        std::vector<std::thread> workers;
+        size_t thread_count = tasks.size();
+        vector<pthread_t> workers;
+        vector<QueryWorkerArgs> worker_args;
         workers.reserve(thread_count);
+        worker_args.reserve(thread_count);
 
         for (size_t worker_id = 0; worker_id < thread_count; ++worker_id) {
-            workers.emplace_back([&]() {
-                while (true) {
-                    size_t task_index = next_task.fetch_add(1);
-                    if (task_index >= tasks.size()) {
-                        break;
-                    }
+            QueryWorkerArgs args;
+            args.tasks = &tasks;
+            args.chunks = t_args->chunks;
+            args.query = &query;
+            args.K = K;
+            args.top_k_heap = &top_k_heap;
+            args.heap_mutex = &heap_mutex;
+            args.shared_threshold = &shared_threshold;
+            args.next_task = &next_task;
+            worker_args.pushBack(args);
 
-                    const QueryTask &task = tasks[task_index];
-                    ChunkDescriptor &chunk = (*t_args->chunks)[task.chunk_id];
-                    vector<ScoredDocument> chunk_matches =
-                        chunk.engine->search(query, K, &shared_threshold);
-                    if (chunk_matches.empty()) {
-                        continue;
-                    }
-
-                    std::lock_guard<std::mutex> guard(heap_mutex);
-                    for (const ScoredDocument &match : chunk_matches) {
-                        top_k_heap.push({task.chunk_id, match.doc_id, match.score});
-                    }
-                    // we share a min score of top_k_heap to skip docs
-                    shared_threshold.store(top_k_heap.minScore());
-                }
-            });
+            pthread_t worker;
+            if (pthread_create(&worker, nullptr, QueryWorkerThread,
+                               &worker_args[worker_args.size() - 1]) == 0) {
+                workers.pushBack(worker);
+            }
         }
 
-        for (std::thread &worker : workers) {
-            worker.join();
+        for (pthread_t &worker : workers) {
+            pthread_join(worker, nullptr);
         }
 
         vector<GlobalMatch> matches = top_k_heap.extractSorted();
@@ -309,7 +340,7 @@ int main(int argc, char **argv) {
         dir_path.pop_back();
     }
 
-    std::vector<ChunkDescriptor> chunks;
+    vector<ChunkDescriptor> chunks;
     DIR *dir;
     struct dirent *ent;
 
