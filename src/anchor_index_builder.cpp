@@ -4,7 +4,6 @@
 #include <functional>
 #include <iostream>
 
-// Include your existing engine headers
 #include "./index/src/lib/chunk_flusher.h"
 #include "./index/src/lib/disk_chunk_reader.h"
 #include "./index/src/lib/in_memory_index.h"
