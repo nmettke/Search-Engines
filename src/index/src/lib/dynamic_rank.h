@@ -24,7 +24,6 @@ struct DynamicRankConfig {
     double double_bonus = 0.55;
     double triple_bonus = 0.90;
     double near_top_bonus = 0.45;
-    double first_span_bonus = 0.35;
     double occurrence_bonus = 0.12;
     double too_frequent_penalty = 0.80; // if occurence greater than capped occurence
     double most_words_percent = 0.6;
@@ -36,7 +35,6 @@ struct DynamicRankConfig {
     size_t short_span_multiplier_title = 2;
     size_t short_span_multiplier_body = 4;
     size_t max_gap_for_double = 2;
-    size_t max_gap_for_triple = 3;
     size_t max_counted_occurrences = 6; // capped number of occurence of each term
 };
 
