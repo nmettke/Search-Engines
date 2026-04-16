@@ -347,6 +347,8 @@ void *handle_frontend(void *args) {
 
     ::vector<GlobalResult> final_results = top_k.extractSorted();
 
+    std::cout << "Number of results from workers: " << final_results.size() << std::endl;
+
     auto query_end = std::chrono::steady_clock::now();
     double elapsed_ms = std::chrono::duration<double, std::milli>(query_end - query_start).count();
 
