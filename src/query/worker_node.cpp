@@ -291,6 +291,7 @@ void *handle_master_connection(void *args) {
 
         response += "END_OF_RESULTS\n";
         send(sock, response.c_str(), response.size(), 0);
+        std::cout << "Sent response with " << matches.size() << " results\n";
     }
 
     close(sock);
