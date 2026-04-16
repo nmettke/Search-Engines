@@ -104,6 +104,37 @@ body {
 
 .search-bar button:hover { color: var(--cmiyc-blue); }
 
+.search-bar .k-label {
+    color: var(--cmiyc-muted);
+    font-size: 13px;
+    font-weight: 500;
+    margin-left: 12px;
+    padding-left: 12px;
+    border-left: 1px solid var(--cmiyc-hairline);
+    user-select: none;
+}
+
+.search-bar .k-input {
+    flex: 0 0 auto;
+    width: 56px;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: #000;
+    font-family: inherit;
+    font-size: 15px;
+    text-align: right;
+    padding: 0 4px 0 6px;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.search-bar .k-input::-webkit-outer-spin-button,
+.search-bar .k-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
 
 .search-actions button {
     --button-offset-x: 0px;
