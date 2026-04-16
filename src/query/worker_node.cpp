@@ -233,6 +233,7 @@ void *handle_master_connection(void *args) {
                 query = query.substr(sep + 1);
             }
         }
+        std::cout << "Received query: \"" << query << "\" with K=" << K << "\n";
 
         vector<QueryTask> tasks;
         tasks.reserve(t_args->chunks->size());
