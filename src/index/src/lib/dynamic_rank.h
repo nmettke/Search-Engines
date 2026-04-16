@@ -6,7 +6,7 @@
 #include <limits>
 
 struct DynamicRankConfig {
-    double static_weight = 0.18;
+    double static_weight = 0.3;
 
     double anchor_stream_weight = 2.8;
     double title_stream_weight = 1.75;
