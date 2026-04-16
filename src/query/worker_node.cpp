@@ -66,25 +66,6 @@ string to_string(double score) {
     return string(buffer);
 }
 
-string derive_anchor_path(const string &anchor_dir, const string &base_name) {
-    if (anchor_dir.empty()) {
-        return "";
-    }
-
-    string candidate;
-
-    if (base_name.find("chunk_") == 0 && base_name.length() > 6) {
-        string suffix = base_name.substr(6);
-        candidate = anchor_dir + "/anchor_" + suffix + ".idx";
-    }
-
-    if (access(candidate.c_str(), F_OK) == 0) {
-        return candidate;
-    }
-
-    return "";
-}
-  
 static bool anchorKeyEqual(string a, string b) { return a == b; }
 
 static uint64_t anchorKeyHash(string key) { return hashString(key.cstr()); }
@@ -345,7 +326,7 @@ int main(int argc, char **argv) {
     struct dirent *ent;
 
     string body_index_dir = dir_path + "/body_index";
-    string anchor_index_dir = dir_path + "/anchor_index";
+    string anchor_index_dir = dir_path + "/anchor_parsed_index";
     string meta_dir = dir_path + "/meta";
 
     if ((dir = opendir(body_index_dir.c_str())) != nullptr) {
@@ -361,7 +342,7 @@ int main(int argc, char **argv) {
 
             string base_name = file_name.substr(0, file_name.length() - 4);
             string body_path = body_index_dir + "/" + file_name;
-            string anchor_path = derive_anchor_path(anchor_index_dir, base_name);
+            string anchor_path = anchor_index_dir + "/" + file_name;
             string meta_path = meta_dir + "/" + base_name + ".meta";
 
             DiskChunkReader *body_reader = new DiskChunkReader();
