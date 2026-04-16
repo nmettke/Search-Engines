@@ -111,6 +111,8 @@ void *fetch_from_worker(void *args) {
                 wa->local_results.pushBack({url, title, snippet, score});
             }
         }
+        std::cout << "Received " << wa->local_results.size() << " results from worker " << wa->ip
+                  << ":" << wa->port << "\n";
     }
     close(sock);
     return nullptr;
