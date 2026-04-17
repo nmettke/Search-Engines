@@ -183,17 +183,23 @@ class Frontier {
     static string extractHostKey(const string &url);
 
     // Requires: m is held.
-    void pushInternal(const FrontierItem &item, bool countTowardsPending,
-                      bool preserveIncomingWhenFull = false);
+    void pushInternal(const FrontierItem &item, bool countTowardsPending);
 
     // Requires: m is held.
-    bool makeRoom(bool preserveIncomingWhenFull);
+    void doBackUp(); // backs up reservoir if full
 
     // Requires: m is held.
-    std::size_t trimReservoirTail(std::size_t minimumSlotsNeeded);
+    void refillReservoirFromDiskBacked();
 
     // Requires: m is held.
-    std::size_t trimScheduledQueues(std::size_t minimumSlotsNeeded);
+    bool loadDiskBackedChunkFromDisk();
+
+    void recoverDiskBackedChunkCount();
+    string diskChunkPath(std::size_t chunkIndex, std::size_t chunkItemCount) const;
+    bool findDiskChunkPath(std::size_t chunkIndex, string &path) const;
+
+    bool writeDiskChunk(const vector<FrontierItem> &items, std::size_t chunkIndex) const;
+    bool readDiskChunk(std::size_t chunkIndex, vector<FrontierItem> &items) const;
 
     // Requires: m is held.
     void enqueueScheduledItem(const FrontierItem &item, std::int64_t nowMs);
@@ -217,6 +223,9 @@ class Frontier {
     BufferedQueue<string> readyHosts;
     PriorityQueue<SleepingHost, SleepingHostCompare> sleepingHosts;
     vector<FrontierItem> reservoir;
+    vector<FrontierItem> disk_back_reservoir; // backup reservoir for when full
+    std::size_t diskBackedChunksOnDisk = 0;
+    string diskBackFilePrefix;
     std::size_t reservoirSweepCursor = 0;
     mutable mutex m;
     condition_variable cv;

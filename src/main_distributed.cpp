@@ -46,7 +46,7 @@ std::atomic<bool> shouldStop{false};
 // Key constraint: there should always only be URL that belong to this machine on the frontier
 Frontier *f = nullptr;
 IndexQueue *q = nullptr;
-InMemoryIndex mem_index;
+std::atomic<size_t> nextIndexChunkId{0};
 
 std::atomic<size_t> numLinkThreshold{128};
 struct RoutedLink {
@@ -122,7 +122,7 @@ static constexpr size_t maxCrawlerThreadCount = 2400;
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint = nullptr;
 std::atomic<size_t> urlsCrawled{0};
-UrlBloomFilter bloom(1000000, 0.0001);
+UrlBloomFilter bloom(150000000, 0.0001);
 UrlFilter urlFilter;
 RobotsCache *robotsCache = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
@@ -475,8 +475,8 @@ void flushMetaData(const vector<string> &chunk_metadata, const string &meta_path
 
 void *IndexWorkerThread(void *) {
     Tokenizer tokenizer;
+    InMemoryIndex mem_index;
     size_t docsProcessed = 0;
-    size_t chunksWritten = 0;
     size_t tokensProcessed = 0;
 
     vector<string> chunk_metadata;
@@ -493,14 +493,15 @@ void *IndexWorkerThread(void *) {
         tokensProcessed += tokenized.tokens.size();
 
         if (tokensProcessed >= FLUSHBODYTOKENSIZE) {
+            const size_t chunkId = nextIndexChunkId.fetch_add(1);
             char buffer[64] = {};
             std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
-                          chunksWritten);
+                          chunkId);
             const string path(buffer);
 
             char meta_buffer[64] = {};
             std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta",
-                          metaDirectory.c_str(), chunksWritten);
+                          metaDirectory.c_str(), chunkId);
             const string meta_path(meta_buffer);
 
             try {
@@ -518,7 +519,6 @@ void *IndexWorkerThread(void *) {
             chunk_metadata = vector<string>();
             docsProcessed = 0;
             tokensProcessed = 0;
-            ++chunksWritten;
         }
 
         if (docsProcessed > 0 && docsProcessed % 10000 == 0) {
@@ -528,14 +528,15 @@ void *IndexWorkerThread(void *) {
 
     // Write final partial chunk
     if (docsProcessed > 0) {
+        const size_t chunkId = nextIndexChunkId.fetch_add(1);
         char buffer[64] = {};
         std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
-                      chunksWritten);
+                      chunkId);
         const string path(buffer);
 
         char meta_buffer[64] = {};
-        std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta", metaDirectory.c_str(),
-                      chunksWritten);
+        std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta",
+                      metaDirectory.c_str(), chunkId);
         const string meta_path(meta_buffer);
 
         try {

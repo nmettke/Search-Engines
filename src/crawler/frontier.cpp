@@ -1,6 +1,9 @@
 #include "frontier.h"
 
+#include <dirent.h>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <time.h>
 
 namespace {
@@ -8,7 +11,11 @@ namespace {
 thread_local string frontierActiveHostKey;
 constexpr std::size_t frontierReservoirSweepChunkSize = 256;
 constexpr std::size_t frontierReservoirPromotionPercent = 25;
-constexpr std::size_t frontierReservoirTrimChunkSize = 256;
+
+constexpr std::size_t frontierDiskBackBackupPercent = 70; // when do we push to disk
+constexpr std::size_t frontierReservoirRefillPercent = 50; // when to we refill reservoir
+constexpr std::size_t frontierDiskBackRefillPercent = 30; // when do we refill disk back
+constexpr const char *frontierDiskBackChunkPrefix = "frontier_disk_back_chunk";
 
 bool frontierHostKeyEqual(const string a, const string b) { return a == b; }
 
@@ -30,7 +37,6 @@ std::size_t resolveFrontierMaxQueuedItems(std::size_t configuredMaxQueuedItems) 
     std::size_t parsed = 2000000; // I have chosen to hard code this for simplicity
     return parsed;
 }
-
 } // namespace
 
 std::int64_t Frontier::nowMillis() {
@@ -62,6 +68,8 @@ Frontier::Frontier(const string &seed_list_str, bool autoCloseWhenDrainedArg,
     : hostQueues(frontierHostKeyEqual, frontierHostKeyHash), closed(false),
       autoCloseWhenDrained(autoCloseWhenDrainedArg), pending(0), queued(0),
       maxQueuedItems(resolveFrontierMaxQueuedItems(maxQueuedItemsArg)) {
+    recoverDiskBackedChunkCount();
+
     std::ifstream seedList(seed_list_str.c_str());
     if (!seedList.is_open()) {
         throw std::runtime_error("seedList could not be opened");
@@ -82,6 +90,8 @@ Frontier::Frontier(vector<FrontierItem> items, bool autoCloseWhenDrainedArg,
     : hostQueues(frontierHostKeyEqual, frontierHostKeyHash), closed(false),
       autoCloseWhenDrained(autoCloseWhenDrainedArg), pending(0), queued(0),
       maxQueuedItems(resolveFrontierMaxQueuedItems(maxQueuedItemsArg)) {
+    recoverDiskBackedChunkCount();
+
     for (size_t i = 0; i < items.size(); ++i) {
         if (!items[i].link.empty()) {
             pushInternal(items[i], true);
@@ -141,80 +151,6 @@ void Frontier::promoteSleepingHosts(std::int64_t nowMs) {
     }
 }
 
-std::size_t Frontier::trimReservoirTail(std::size_t minimumSlotsNeeded) {
-    if (minimumSlotsNeeded == 0 || reservoir.empty()) {
-        return 0;
-    }
-
-    std::size_t trimCount = minimumSlotsNeeded;
-    if (reservoir.size() > frontierReservoirTrimChunkSize &&
-        trimCount < frontierReservoirTrimChunkSize) {
-        trimCount = frontierReservoirTrimChunkSize;
-    }
-    if (trimCount > reservoir.size()) {
-        trimCount = reservoir.size();
-    }
-
-    for (std::size_t i = 0; i < trimCount; ++i) {
-        reservoir.popBack();
-        --queued;
-        if (pending > 0) {
-            --pending;
-        }
-    }
-
-    if (reservoir.empty()) {
-        reservoirSweepCursor = 0;
-    } else if (reservoirSweepCursor > reservoir.size()) {
-        reservoirSweepCursor = reservoir.size();
-    }
-
-    return trimCount;
-}
-
-std::size_t Frontier::trimScheduledQueues(std::size_t minimumSlotsNeeded) {
-    if (minimumSlotsNeeded == 0) {
-        return 0;
-    }
-
-    std::size_t removed = 0;
-    for (HostTable::Iterator hostIt = hostQueues.begin();
-         hostIt != hostQueues.end() && removed < minimumSlotsNeeded; ++hostIt) {
-        BufferedQueue<FrontierItem> &items = hostIt->value.items;
-        while (!items.empty() && removed < minimumSlotsNeeded) {
-            items.eraseAt(items.size() - 1);
-            ++removed;
-            --queued;
-            if (pending > 0) {
-                --pending;
-            }
-        }
-    }
-
-    return removed;
-}
-
-bool Frontier::makeRoom(bool /*preserveIncomingWhenFull*/) {
-    if (maxQueuedItems == 0 || queued < maxQueuedItems) {
-        return true;
-    }
-
-    // Frontier pressure is handled approximately: drop reservoir tail chunks first,
-    // then fall back to trimming scheduled host queues if the reservoir is already small.
-    std::size_t minimumSlotsNeeded = queued - maxQueuedItems + 1;
-    trimReservoirTail(minimumSlotsNeeded);
-    if (queued < maxQueuedItems) {
-        return true;
-    }
-
-    trimScheduledQueues(minimumSlotsNeeded);
-    if (queued < maxQueuedItems) {
-        return true;
-    }
-
-    return false;
-}
-
 void Frontier::enqueueScheduledItem(const FrontierItem &item, std::int64_t nowMs) {
     string hostKey = extractHostKey(item.link);
     Tuple<string, HostQueue> *hostTuple = hostQueues.Find(hostKey, HostQueue());
@@ -224,6 +160,18 @@ void Frontier::enqueueScheduledItem(const FrontierItem &item, std::int64_t nowMs
 }
 
 void Frontier::promoteReservoir(std::int64_t nowMs) {
+    const std::size_t reservoirRefillChunkSize = maxQueuedItems * frontierReservoirRefillPercent / 100;
+    const std::size_t diskBackRefillSize = maxQueuedItems * frontierDiskBackRefillPercent / 100;
+
+    if (disk_back_reservoir.size() < diskBackRefillSize) {
+        loadDiskBackedChunkFromDisk();
+    }
+
+    if (reservoir.size() < reservoirRefillChunkSize) {
+        refillReservoirFromDiskBacked();
+    }
+
+
     if (!readyHosts.empty() || reservoir.empty()) {
         return;
     }
@@ -339,13 +287,191 @@ void Frontier::promoteReservoir(std::int64_t nowMs) {
     }
 }
 
-void Frontier::pushInternal(const FrontierItem &item, bool countTowardsPending,
-                            bool preserveIncomingWhenFull) {
-    if (item.link.empty()) {
+// New frontier backup logic
+void Frontier::doBackUp() {
+    if (disk_back_reservoir.size() < maxQueuedItems) {
         return;
     }
 
-    if (!makeRoom(preserveIncomingWhenFull)) {
+    std::size_t backupCount = disk_back_reservoir.size() * frontierDiskBackBackupPercent;
+
+    vector<FrontierItem> backup;
+    backup.reserve(backupCount);
+    for (std::size_t i = 0; i < backupCount; ++i) {
+        backup.pushBack(disk_back_reservoir[i]);
+    }
+
+    const std::size_t nextChunkIndex = diskBackedChunksOnDisk + 1;
+    
+    if (!writeDiskChunk(backup, nextChunkIndex)) {
+        return;
+    }
+
+    vector<FrontierItem> remainingItems;
+    remainingItems.reserve(disk_back_reservoir.size() - backupCount);
+    for (std::size_t i = backupCount; i < disk_back_reservoir.size(); ++i) {
+        remainingItems.pushBack(std::move(disk_back_reservoir[i]));
+    }
+
+    disk_back_reservoir = std::move(remainingItems);
+    diskBackedChunksOnDisk = nextChunkIndex;
+}
+
+void Frontier::refillReservoirFromDiskBacked() {
+    if (reservoir.size() < maxQueuedItems || disk_back_reservoir.empty()) {
+        return;
+    }
+    const std::size_t refillCount = maxQueuedItems * frontierReservoirRefillPercent;
+
+    if (refillCount > disk_back_reservoir.size()) {
+        refillCount = disk_back_reservoir.size();
+    }
+
+    vector<FrontierItem> remainingItems;
+    remainingItems.reserve(disk_back_reservoir.size() - refillCount);
+    for (std::size_t i = refillCount; i < disk_back_reservoir.size(); ++i) {
+        remainingItems.pushBack(std::move(disk_back_reservoir[i]));
+    }
+
+    for (std::size_t i = 0; i < refillCount; ++i) {
+        reservoir.pushBack(std::move(disk_back_reservoir[i]));
+    }
+
+    disk_back_reservoir = std::move(remainingItems);
+}
+
+bool Frontier::loadDiskBackedChunkFromDisk() {
+    if (diskBackedChunksOnDisk == 0) {
+        return false;
+    }
+
+    string chunkPath;
+    if (!findDiskChunkPath(diskBackedChunksOnDisk, chunkPath)) {
+        return false;
+    }
+
+    vector<FrontierItem> chunkItems;
+    if (!readDiskChunk(chunkPath, chunkItems)) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < chunkItems.size(); ++i) {
+        disk_back_reservoir.pushBack(std::move(chunkItems[i]));
+    }
+
+    queued += chunkItems.size();
+    pending += chunkItems.size();
+    std::remove(chunkPath.c_str());
+    --diskBackedChunksOnDisk;
+    return true;
+}
+
+// Used on restart, recover the number of disk back chunk we have on disk
+void Frontier::recoverDiskBackedChunkCount() {
+    DIR *dir = opendir(".");
+    if (dir == nullptr) {
+        return;
+    }
+
+    std::size_t maxChunkIndex = 0;
+    struct dirent *entry = nullptr;
+    while ((entry = readdir(dir)) != nullptr) {
+        std::size_t chunkIndex = 0;
+        std::size_t chunkItemCount = 0;
+        if (std::sscanf(entry->d_name, "frontier_disk_back_chunk_%zu_%zu.dat", &chunkIndex,
+                        &chunkItemCount) != 2 ||
+            chunkIndex == 0 || chunkItemCount == 0) {
+            continue;
+        }
+
+        if (chunkIndex > maxChunkIndex) {
+            maxChunkIndex = chunkIndex;
+        }
+    }
+    closedir(dir);
+
+    diskBackedChunksOnDisk = maxChunkIndex;
+}
+
+string Frontier::diskChunkPath(std::size_t chunkIndex, std::size_t chunkItemCount) const {
+    char suffixBuffer[64];
+    std::snprintf(suffixBuffer, sizeof(suffixBuffer), "_%zu_%zu.dat", chunkIndex, chunkItemCount);
+
+    string path = string("./");
+    path += frontierDiskBackChunkPrefix;
+    path += suffixBuffer;
+    return path;
+}
+
+bool Frontier::findDiskChunkPath(std::size_t chunkIndex, string &path) const {
+    DIR *dir = opendir(".");
+    if (dir == nullptr) {
+        return false;
+    }
+
+    bool found = false;
+    struct dirent *entry = nullptr;
+    while ((entry = readdir(dir)) != nullptr) {
+        std::size_t candidateChunkIndex = 0;
+        std::size_t candidateChunkItemCount = 0;
+        if (std::sscanf(entry->d_name, "frontier_disk_back_chunk_%zu_%zu.dat",
+                        &candidateChunkIndex, &candidateChunkItemCount) != 2) {
+            continue;
+        }
+
+        if (candidateChunkIndex == chunkIndex) {
+            path = string("./");
+            path += string(entry->d_name);
+            found = true;
+            break;
+        }
+    }
+
+    closedir(dir);
+    return found;
+}
+
+bool Frontier::writeDiskChunk(const vector<FrontierItem> &items, std::size_t chunkIndex) const {
+    FILE *f = std::fopen(diskChunkPath(chunkIndex, items.size()).c_str(), "wb");
+    if (f == nullptr) {
+        std::cerr << "Frontier: failed to open disk-back chunk for write\n";
+        return false;
+    }
+
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        string line = items[i].serializeToLine();
+        std::fprintf(f, "%s\n", line.c_str());
+    }
+
+    const bool writeOk = std::fflush(f) == 0;
+    std::fclose(f);
+    return writeOk;
+}
+
+bool Frontier::readDiskChunk(const string &path, vector<FrontierItem> &items) const {
+    FILE *f = std::fopen(path.c_str(), "rb");
+    if (f == nullptr) {
+        std::cerr << "Frontier: failed to open disk-back chunk for read\n";
+        return false;
+    }
+
+    char lineBuf[8192];
+    while (std::fgets(lineBuf, sizeof(lineBuf), f) != nullptr) {
+        const std::size_t len = std::strlen(lineBuf);
+        if (len > 0 && lineBuf[len - 1] == '\n') {
+            lineBuf[len - 1] = '\0';
+        }
+        if (lineBuf[0] != '\0') {
+            items.pushBack(FrontierItem::deserializeFromLine(string(lineBuf)));
+        }
+    }
+
+    std::fclose(f);
+    return true;
+}
+
+void Frontier::pushInternal(const FrontierItem &item, bool countTowardsPending) {
+    if (item.link.empty()) {
         return;
     }
 
@@ -354,13 +480,13 @@ void Frontier::pushInternal(const FrontierItem &item, bool countTowardsPending,
     }
     ++queued;
 
-    std::int64_t nowMs = nowMillis();
-    if (preserveIncomingWhenFull) {
-        enqueueScheduledItem(item, nowMs);
+    if (reservoir.size() < maxQueuedItems) {
+        reservoir.pushBack(item);
         return;
     }
 
-    reservoir.pushBack(item);
+    doBackUp();
+    disk_back_reservoir.pushBack(item);
 }
 
 vector<FrontierItem> Frontier::snapshot() const {
@@ -372,6 +498,9 @@ vector<FrontierItem> Frontier::snapshot() const {
     }
     for (std::size_t i = 0; i < reservoir.size(); ++i) {
         result.pushBack(reservoir[i]);
+    }
+    for (std::size_t i = 0; i < disk_back_reservoir.size(); ++i) {
+        result.pushBack(disk_back_reservoir[i]);
     }
     return result;
 }
@@ -434,7 +563,7 @@ void Frontier::pushDeferred(const vector<FrontierItem> &items) {
 
     for (const FrontierItem &item : items) {
         if (!item.link.empty()) {
-            pushInternal(item, false, true);
+            pushInternal(item, false);
         }
     }
 
@@ -459,11 +588,6 @@ void Frontier::snoozeCurrent(const FrontierItem &item, std::int64_t readyAtMs) {
     host.inFlight = false;
 
     if (!item.link.empty()) {
-        if (!makeRoom(true)) {
-            hostKey = string();
-            cv.notify_all();
-            return;
-        }
         host.items.pushFront(item);
         ++queued;
     }
@@ -573,30 +697,6 @@ void Frontier::shutdown() {
     lock_guard<mutex> guard(m);
     closed = true;
     cv.notify_all();
-}
-
-bool Frontier::contains(const string &url) const {
-    lock_guard<mutex> guard(m);
-    string hostKey = extractHostKey(url);
-    Tuple<string, HostQueue> *hostTuple = hostQueues.Find(hostKey);
-    if (hostTuple != nullptr) {
-        bool found = false;
-        hostTuple->value.items.forEach([&found, &url](const FrontierItem &item) {
-            if (!found && item.link == url) {
-                found = true;
-            }
-        });
-        if (found) {
-            return true;
-        }
-    }
-
-    for (std::size_t i = 0; i < reservoir.size(); ++i) {
-        if (reservoir[i].link == url) {
-            return true;
-        }
-    }
-    return false;
 }
 
 size_t Frontier::size() const {

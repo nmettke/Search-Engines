@@ -1,13 +1,45 @@
 #include "crawler/frontier.h"
 
+#include <dirent.h>
 #include <chrono>
+#include <cstdio>
 #include <future>
 #include <gtest/gtest.h>
+#include <set>
 #include <string>
 #include <thread>
 #include <time.h>
 
-TEST(FrontierTest, DifferentHostsCanProceedWhileFirstHostIsInFlight) {
+namespace {
+
+void clearFrontierDiskChunks() {
+    DIR *dir = opendir(".");
+    if (dir == nullptr) {
+        return;
+    }
+
+    struct dirent *entry = nullptr;
+    while ((entry = readdir(dir)) != nullptr) {
+        std::size_t chunkIndex = 0;
+        std::size_t chunkItemCount = 0;
+        if (std::sscanf(entry->d_name, "frontier_disk_back_chunk_%zu_%zu.dat", &chunkIndex,
+                        &chunkItemCount) == 2) {
+            std::remove(entry->d_name);
+        }
+    }
+
+    closedir(dir);
+}
+
+class FrontierTest : public ::testing::Test {
+  protected:
+    void SetUp() override { clearFrontierDiskChunks(); }
+    void TearDown() override { clearFrontierDiskChunks(); }
+};
+
+} // namespace
+
+TEST_F(FrontierTest, DifferentHostsCanProceedWhileFirstHostIsInFlight) {
     Frontier frontier(vector<FrontierItem>{
                          FrontierItem(string("https://a.example/page-1")),
                          FrontierItem(string("https://a.example/page-2")),
@@ -33,7 +65,7 @@ TEST(FrontierTest, DifferentHostsCanProceedWhileFirstHostIsInFlight) {
     frontier.taskDone();
 }
 
-TEST(FrontierTest, SnoozedHostRequeuesAndBecomesReadyLater) {
+TEST_F(FrontierTest, SnoozedHostRequeuesAndBecomesReadyLater) {
     Frontier frontier(vector<FrontierItem>{FrontierItem(string("https://a.example/page-1"))}, false);
 
     std::optional<FrontierItem> first = frontier.pop();
@@ -56,63 +88,63 @@ TEST(FrontierTest, SnoozedHostRequeuesAndBecomesReadyLater) {
     frontier.taskDone();
 }
 
-TEST(FrontierTest, FrontierFullTrimsReservoirTailAndAcceptsIncomingUrl) {
-    FrontierItem first = FrontierItem::withSeedDistance(string("https://a.example/root"), 0);
-    FrontierItem tail = FrontierItem::withSeedDistance(string("https://b.example/root"), 1);
-    Frontier frontier(vector<FrontierItem>{first, tail}, false, 2);
+TEST_F(FrontierTest, SnapshotOnlyCapturesInMemoryLayersAfterDiskSpill) {
+    Frontier frontier(vector<FrontierItem>{}, false, 2);
+    vector<FrontierItem> items{
+        FrontierItem::withSeedDistance(string("https://a.example/root"), 0),
+        FrontierItem::withSeedDistance(string("https://b.example/root"), 1),
+        FrontierItem::withSeedDistance(string("https://c.example/root"), 2),
+        FrontierItem::withSeedDistance(string("https://d.example/root"), 3),
+        FrontierItem::withSeedDistance(string("https://e.example/root"), 4),
+        FrontierItem::withSeedDistance(string("https://f.example/root"), 5),
+    };
 
-    FrontierItem incoming =
-        FrontierItem::withSeedDistance(string("https://c.example/deep/page"), 8);
-    frontier.push(incoming);
+    frontier.pushMany(items);
 
-    EXPECT_EQ(frontier.size(), 2u);
-    EXPECT_TRUE(frontier.contains(first.link));
-    EXPECT_TRUE(frontier.contains(incoming.link));
-    EXPECT_FALSE(frontier.contains(tail.link));
+    EXPECT_EQ(frontier.size(), items.size());
+
+    vector<FrontierItem> snapshot = frontier.snapshot();
+    EXPECT_EQ(snapshot.size(), 4u);
 }
 
-TEST(FrontierTest, FrontierFullUsesReservoirPositionRatherThanGlobalWorstScore) {
-    FrontierItem worse = FrontierItem::withSeedDistance(string("https://a.example/deep/page"), 6);
-    FrontierItem best = FrontierItem::withSeedDistance(string("https://b.example/root"), 0);
-    Frontier frontier(vector<FrontierItem>{worse, best}, false, 2);
+TEST_F(FrontierTest, FrontierRecoversSnapshotPlusPersistentDiskChunks) {
+    vector<FrontierItem> items{
+        FrontierItem::withSeedDistance(string("https://a.example/root"), 0),
+        FrontierItem::withSeedDistance(string("https://b.example/root"), 1),
+        FrontierItem::withSeedDistance(string("https://c.example/root"), 2),
+        FrontierItem::withSeedDistance(string("https://d.example/root"), 3),
+        FrontierItem::withSeedDistance(string("https://e.example/root"), 4),
+        FrontierItem::withSeedDistance(string("https://f.example/root"), 5),
+    };
 
-    FrontierItem incoming =
-        FrontierItem::withSeedDistance(string("https://c.example/root"), 2);
-    frontier.push(incoming);
+    vector<FrontierItem> snapshot;
+    {
+        Frontier frontier(vector<FrontierItem>{}, false, 2);
+        frontier.pushMany(items);
+        snapshot = frontier.snapshot();
+        EXPECT_EQ(frontier.size(), items.size());
+        EXPECT_EQ(snapshot.size(), 4u);
+    }
 
-    EXPECT_EQ(frontier.size(), 2u);
-    EXPECT_TRUE(frontier.contains(worse.link));
-    EXPECT_TRUE(frontier.contains(incoming.link));
-    EXPECT_FALSE(frontier.contains(best.link));
+    Frontier recovered(snapshot, false, 2);
+    EXPECT_EQ(recovered.size(), snapshot.size());
+
+    std::set<std::string> poppedLinks;
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        std::optional<FrontierItem> next = recovered.pop();
+        ASSERT_TRUE(next.has_value());
+        poppedLinks.insert(std::string(next->link.cstr()));
+        recovered.taskDone();
+    }
+
+    EXPECT_TRUE(recovered.empty());
+    EXPECT_EQ(poppedLinks.size(), items.size());
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        EXPECT_EQ(poppedLinks.count(std::string(items[i].link.cstr())), 1u);
+    }
 }
 
-TEST(FrontierTest, SnoozedItemMakesRoomWhenFrontierIsFull) {
-    FrontierItem first = FrontierItem::withSeedDistance(string("https://a.example/root"), 0);
-    FrontierItem queued = FrontierItem::withSeedDistance(string("https://b.example/queued"), 1);
-    Frontier frontier(vector<FrontierItem>{first}, false, 1);
-
-    std::optional<FrontierItem> popped = frontier.pop();
-    ASSERT_TRUE(popped.has_value());
-    frontier.push(queued);
-    ASSERT_TRUE(frontier.contains(queued.link));
-
-    timespec ts{};
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    std::int64_t readyAtMs =
-        static_cast<std::int64_t>(ts.tv_sec) * 1000 + static_cast<std::int64_t>(ts.tv_nsec / 1000000);
-    frontier.snoozeCurrent(*popped, readyAtMs);
-
-    EXPECT_EQ(frontier.size(), 1u);
-    EXPECT_TRUE(frontier.contains(popped->link));
-    EXPECT_FALSE(frontier.contains(queued.link));
-
-    std::optional<FrontierItem> resumed = frontier.pop();
-    ASSERT_TRUE(resumed.has_value());
-    EXPECT_EQ(std::string(resumed->link.cstr()), std::string(popped->link.cstr()));
-    frontier.taskDone();
-}
-
-TEST(FrontierTest, ReservoirItemsAppearInContainsAndSnapshotBeforePromotion) {
+TEST_F(FrontierTest, ReservoirItemsAppearInContainsAndSnapshotBeforePromotion) {
     FrontierItem first = FrontierItem::withSeedDistance(string("https://a.example/root"), 0);
     FrontierItem second = FrontierItem::withSeedDistance(string("https://b.example/root"), 1);
     Frontier frontier(vector<FrontierItem>{first, second}, false);
@@ -125,7 +157,7 @@ TEST(FrontierTest, ReservoirItemsAppearInContainsAndSnapshotBeforePromotion) {
     EXPECT_EQ(snapshot.size(), 2u);
 }
 
-TEST(FrontierTest, ReservoirSweepPromotesBestItemFromChunkFirst) {
+TEST_F(FrontierTest, ReservoirSweepPromotesBestItemFromChunkFirst) {
     FrontierItem best = FrontierItem::withSeedDistance(string("https://a.example/root"), 0);
     FrontierItem medium = FrontierItem::withSeedDistance(string("https://b.example/root"), 2);
     FrontierItem worse = FrontierItem::withSeedDistance(string("https://c.example/deep/page"), 6);
