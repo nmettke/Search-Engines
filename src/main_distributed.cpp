@@ -102,6 +102,14 @@ static void sanitizeText(string &text) {
     for (size_t i = 0; i < text.size(); ++i) {
         if (text[i] == '\t' || text[i] == '\n' || text[i] == '\r') {
             text[i] = ' ';
+            continue;
+        }
+        unsigned char c = (unsigned char)text[i];
+        bool is_ctrl = (c < 0x20) || (c == 0x7F); // C0 controls + DEL
+        bool is_quote = (c == '"' || c == '\'');
+        bool is_backslash = (c == '\\');
+        if (is_ctrl || is_quote || is_backslash) {
+            text[i] = ' ';
         }
     }
 }
@@ -433,6 +441,8 @@ void *CrawlerWorkerThread(void *) {
 }
 
 string buildMetaLine(const HtmlParser &doc) {
+    static constexpr size_t MAX_TOTAL_LEN = 300;
+
     string title = "";
     for (size_t i = 0; i < doc.titleWords.size(); ++i) {
         title += doc.titleWords[i];
@@ -444,7 +454,7 @@ string buildMetaLine(const HtmlParser &doc) {
 
     string snippet = "";
     for (size_t i = 0; i < doc.words.size(); ++i) {
-        if (snippet.size() > 150)
+        if (snippet.size() >= MAX_TOTAL_LEN)
             break;
         snippet += doc.words[i];
         snippet.pushBack(' ');
@@ -453,7 +463,94 @@ string buildMetaLine(const HtmlParser &doc) {
         snippet = "No content available.";
     sanitizeText(snippet);
 
+    // strip leading special /non-printable bytes from snippet
+    static constexpr size_t MAX_STRIP_SCAN = 10;
+    size_t lead = 0;
+    while (lead < snippet.size() && lead < MAX_STRIP_SCAN) {
+        unsigned char c = (unsigned char)snippet[lead];
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+            break;
+        }
+        if (c < 0x80) {
+            ++lead;
+        } else if ((c & 0xE0) == 0xC0) {
+            lead += 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            lead += 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            lead += 4;
+        } else {
+            ++lead;
+        }
+        if (lead > snippet.size()) {
+            lead = snippet.size();
+        }
+    }
+    if (lead > 0) {
+        snippet = snippet.substr(lead);
+    }
+    if (snippet.empty()) {
+        snippet = "No content available.";
+    }
+
+    // attempt to try to remove the beginning snippets. pretty whacky.
+    size_t tpos = 0;
+    size_t stripped_with_letter = 0;
+    while (tpos < snippet.size() && tpos < 32) {
+        size_t tok_start = tpos;
+        size_t tok_end = tok_start;
+        while (tok_end < snippet.size() && snippet[tok_end] != ' ') {
+            ++tok_end;
+        }
+        size_t tok_len = tok_end - tok_start;
+        if (tok_len < 3 || tok_len > 6)
+            break;
+
+        bool all_hex = true;
+        bool has_digit = false;
+        bool has_hex_letter = false;
+        for (size_t i = tok_start; i < tok_end; ++i) {
+            unsigned char c = (unsigned char)snippet[i];
+            if (c >= '0' && c <= '9') {
+                has_digit = true;
+            } else if ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+                has_hex_letter = true;
+            } else {
+                all_hex = false;
+                break;
+            }
+        }
+        if (!all_hex)
+            break;
+
+        bool looks_like_codepoint = has_digit && has_hex_letter;
+        bool trailing_digits = has_digit && !has_hex_letter && stripped_with_letter > 0;
+        if (!looks_like_codepoint && !trailing_digits)
+            break;
+
+        if (looks_like_codepoint)
+            ++stripped_with_letter;
+        tpos = tok_end;
+        if (tpos < snippet.size() && snippet[tpos] == ' ')
+            ++tpos;
+    }
+    if (tpos > 0) {
+        snippet = snippet.substr(tpos);
+    }
+    if (snippet.empty()) {
+        snippet = "No content available.";
+    }
+
+    // cap each at 300
+    if (title.size() > MAX_TOTAL_LEN) {
+        title = title.substr(0, MAX_TOTAL_LEN);
+    }
+    if (snippet.size() > MAX_TOTAL_LEN) {
+        snippet = snippet.substr(0, MAX_TOTAL_LEN);
+    }
+
     string meta_line = doc.sourceUrl;
+
     meta_line.pushBack('\t');
     meta_line += title;
     meta_line.pushBack('\t');
