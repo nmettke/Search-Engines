@@ -22,39 +22,6 @@ static uint64_t anchorKeyHash(string key) {
     return static_cast<uint64_t>(std::hash<string>{}(key));
 }
 
-static vector<string> tokenize(const string &text) {
-    vector<string> tokens;
-    size_t start = 0;
-    while (start < text.size()) {
-        while (start < text.size() && !isalnum(static_cast<unsigned char>(text[start])))
-            ++start;
-        if (start >= text.size())
-            break;
-        size_t end = start + 1;
-        while (end < text.size() && isalnum(static_cast<unsigned char>(text[end])))
-            ++end;
-        string tok = text.substr(start, end - start);
-        tokens.pushBack(tok);
-        start = end;
-    }
-    return tokens;
-}
-
-string strip_html_tags(const string &input) {
-    string result = "";
-    bool in_tag = false;
-    for (char c : input) {
-        if (c == '<')
-            in_tag = true;
-        else if (c == '>') {
-            in_tag = false;
-            result += ' ';
-        } else if (!in_tag)
-            result += c;
-    }
-    return result;
-}
-
 string to_string(size_t n) {
     char buffer[64];
     snprintf(buffer, sizeof(buffer), "%zu", n);
@@ -65,6 +32,7 @@ size_t partition_anchor_text(const string &index_dir, const string &anchor_text_
                              const string &partition_dir) {
     std::cout << "Partitioning anchor text files, storing in " << partition_dir << std::endl;
 
+    std::cout << "Loading URL to chunk mapping from body index...\n";
     HashTable<string, int> url_to_chunk(anchorKeyEqual, anchorKeyHash);
 
     DIR *dir;
@@ -99,12 +67,14 @@ size_t partition_anchor_text(const string &index_dir, const string &anchor_text_
         closedir(dir);
     }
 
+    std::cout << "URL to chunk mapping loaded. " << total_chunks << " chunks found.\n";
+    std::cout << "Partitioning anchor text files...\n";
+
     // Partition anchor text files
     FILE *partition_files[total_chunks];
     for (size_t i = 0; i < total_chunks; ++i) {
-        char part_path[256];
         string file_name = partition_dir + "partition_" + to_string(i) + ".txt";
-        partition_files[i] = fopen(part_path, "w");
+        partition_files[i] = fopen(file_name.c_str(), "w");
     }
 
     if ((dir = opendir(anchor_text_dir.c_str())) != nullptr) {
