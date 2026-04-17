@@ -85,7 +85,7 @@ size_t partition_anchor_text(const string &index_dir, const string &anchor_text_
     std::cout << "Partitioning anchor text files...\n";
 
     // Partition anchor text files
-    FILE *partition_files[total_chunks];
+    vector<FILE *> partition_files(total_chunks, nullptr);
     for (size_t i = 0; i < total_chunks; ++i) {
         string file_name = partition_dir + "partition_" + to_string(i) + ".txt";
         partition_files[i] = fopen(file_name.c_str(), "w");
@@ -128,7 +128,9 @@ size_t partition_anchor_text(const string &index_dir, const string &anchor_text_
                         string text = s.substr(tab3 + 1);
 
                         int chunk_id;
-                        if (url_to_chunk.Find(url, chunk_id)) {
+                        auto entry = url_to_chunk.Find(url);
+                        if (entry) {
+                            chunk_id = entry->value;
                             fprintf(partition_files[chunk_id], "%s\t%s\n", url.c_str(),
                                     text.c_str());
                         }
