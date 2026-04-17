@@ -8,9 +8,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "../index/src/lib/Common.h"
 #include "../index/src/lib/disk_chunk_reader.h"
 #include "../index/src/lib/query_engine.h"
-#include "./index/src/lib/Common.h"
 
 #include "../utils/hash/HashTable.h"
 #include "../utils/string.hpp"
@@ -54,9 +54,9 @@ string to_string(double score) {
     return string(buffer);
 }
 
-static bool anchorKeyEqual(string a, string b) { return a == b; }
+static bool urlEqual(string a, string b) { return a == b; }
 
-static uint64_t anchorKeyHash(string key) { return hashString(key.cstr()); }
+static uint64_t urlHash(string key) { return hashString(key.cstr()); }
 
 class TopKHeap {
   private:
@@ -226,38 +226,44 @@ int main(int argc, char **argv) {
     if (!dir_path.empty() && dir_path.back() == '/')
         dir_path.pop_back();
 
-    vector<DiskChunkReader *> readers;
+    vector<DiskChunkReader *> body_readers;
+    vector<DiskChunkReader *> anchor_readers;
     vector<QueryEngine *> engines;
     vector<vector<MetaRecord>> all_meta;
 
     DIR *dir;
     struct dirent *ent;
-    string index_dir = dir_path + "/parsed_anchor_index";
-    string meta_dir = dir_path + "/meta";
+    string body_index_dir = dir_path + "/body_index";
+    string anchor_index_dir = dir_path + "/parsed_anchor_index";
+    string meta_dir = dir_path + "/parsed_meta";
 
     {
-        HashTable<string, Location> index_lookup(anchorKeyEqual, anchorKeyHash);
+        HashTable<string, Location> index_lookup(urlEqual, urlHash);
 
-        if ((dir = opendir(index_dir.c_str())) != nullptr) {
+        if ((dir = opendir(body_index_dir.c_str())) != nullptr) {
             while ((ent = readdir(dir)) != nullptr) {
                 string file_name = ent->d_name;
 
                 if (file_name.length() >= 4 && file_name.substr(file_name.length() - 4) == ".idx") {
-                    string idx_path = index_dir + "/" + file_name;
+                    string body_index_path = body_index_dir + "/" + file_name;
+                    string anchor_index_path = anchor_index_dir + "/" + file_name;
 
-                    DiskChunkReader *reader = new DiskChunkReader();
-                    if (reader->open(idx_path)) {
-                        QueryEngine *engine = new QueryEngine(*reader);
-                        readers.pushBack(reader);
+                    DiskChunkReader *body_reader = new DiskChunkReader();
+                    DiskChunkReader *anchor_reader = new DiskChunkReader();
+                    if (body_reader->open(body_index_path) &&
+                        anchor_reader->open(anchor_index_path)) {
+                        QueryEngine *engine = new QueryEngine(*body_reader, *anchor_reader);
+                        body_readers.pushBack(body_reader);
+                        anchor_readers.pushBack(anchor_reader);
                         engines.pushBack(engine);
 
-                        auto header = reader->header();
-                        std::cout << "Loaded chunk: " << idx_path << " with "
+                        auto header = body_reader->header();
+                        std::cout << "Loaded chunk: " << body_index_path << " with "
                                   << header.num_documents << " documents\n";
 
                         for (size_t doc_id = 0; doc_id < header.num_documents; ++doc_id) {
-                            auto doc_info = reader->getDocument(doc_id);
-                            index_lookup.Find(doc_info->url, {readers.size() - 1, doc_id});
+                            auto doc_info = body_reader->getDocument(doc_id);
+                            index_lookup.Find(doc_info->url, {body_readers.size() - 1, doc_id});
                         }
                     }
                 }
@@ -269,8 +275,8 @@ int main(int argc, char **argv) {
         }
 
         // Initialize all_meta with empty records for each document in each chunk
-        for (size_t i = 0; i < readers.size(); i++) {
-            auto header = readers[i]->header();
+        for (size_t i = 0; i < body_readers.size(); i++) {
+            auto header = body_readers[i]->header();
             vector<MetaRecord> chunk_meta(header.num_documents);
             all_meta.pushBack(chunk_meta);
         }

@@ -4,6 +4,7 @@
 #include "isr_container.h"
 #include "isr_or.h"
 #include "isr_phrase.h"
+#include <memory>
 
 std::unique_ptr<ISR> QueryCompiler::compile(const ::vector<QueryToken> &tokens) {
     tokens_ = tokens;
@@ -11,6 +12,11 @@ std::unique_ptr<ISR> QueryCompiler::compile(const ::vector<QueryToken> &tokens) 
     if (tokens_.empty())
         return nullptr;
     return parseOr();
+}
+
+std::unique_ptr<ISR> QueryCompiler::compileAnchor(const ::vector<QueryToken> &tokens) {
+    is_anchor_ = true;
+    return compile(tokens);
 }
 
 const QueryToken &QueryCompiler::peek() const { return tokens_[current_]; }
@@ -104,7 +110,7 @@ std::unique_ptr<ISR> QueryCompiler::parsePrimary() {
 
     if (token.type == QueryTokenType::WORD) {
         consume();
-        return reader_.createISR(token.text);
+        return createISR(token.text);
     } else if (token.type == QueryTokenType::L_PAREN) {
         consume();
         auto node = parseOr();
@@ -118,7 +124,7 @@ std::unique_ptr<ISR> QueryCompiler::parsePrimary() {
 
         while (!isAtEnd() && peek().type != QueryTokenType::QUOTE) {
             if (peek().type == QueryTokenType::WORD) {
-                auto node = reader_.createISR(peek().text);
+                auto node = createISR(peek().text);
                 if (node)
                     phrase_terms.pushBack(std::move(node));
                 else
@@ -140,4 +146,24 @@ std::unique_ptr<ISR> QueryCompiler::parsePrimary() {
     // Invalid structual token, skip to prevent infinite loops
     consume();
     return nullptr;
+}
+
+std::unique_ptr<ISR> QueryCompiler::createISR(const string &term) {
+    if (is_anchor_) {
+        return reader_.createISR(term);
+    }
+
+    auto body_isr = reader_.createISR(term);
+    auto title_isr = reader_.createISR("$" + term);
+
+    if (body_isr && title_isr) {
+        ::vector<std::unique_ptr<ISR>> children;
+        children.pushBack(std::move(body_isr));
+        children.pushBack(std::move(title_isr));
+        return std::make_unique<ISROr>(std::move(children));
+    } else if (body_isr) {
+        return body_isr;
+    } else {
+        return title_isr;
+    }
 }

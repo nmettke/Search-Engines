@@ -632,13 +632,12 @@ void *IndexWorkerThread(void *) {
     if (docsProcessed > 0) {
         const size_t chunkId = nextIndexChunkId.fetch_add(1);
         char buffer[64] = {};
-        std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
-                      chunkId);
+        std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(), chunkId);
         const string path(buffer);
 
         char meta_buffer[64] = {};
-        std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta",
-                      metaDirectory.c_str(), chunkId);
+        std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta", metaDirectory.c_str(),
+                      chunkId);
         const string meta_path(meta_buffer);
 
         try {

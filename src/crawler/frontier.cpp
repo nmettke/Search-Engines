@@ -1,11 +1,11 @@
 #include "frontier.h"
 
-#include <dirent.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <time.h>
 
 namespace {
@@ -14,9 +14,9 @@ thread_local string frontierActiveHostKey;
 constexpr std::size_t frontierReservoirSweepChunkSize = 512;
 constexpr std::size_t frontierReservoirPromotionPercent = 25;
 
-constexpr std::size_t frontierDiskBackBackupPercent = 70; // when do we push to disk
+constexpr std::size_t frontierDiskBackBackupPercent = 70;  // when do we push to disk
 constexpr std::size_t frontierReservoirRefillPercent = 50; // when to we refill reservoir
-constexpr std::size_t frontierDiskBackRefillPercent = 30; // when do we refill disk back
+constexpr std::size_t frontierDiskBackRefillPercent = 30;  // when do we refill disk back
 constexpr const char *frontierDiskBackChunkDir = "data/disk_chunk_backup";
 constexpr const char *frontierDiskBackChunkPrefix = "frontier_disk_back_chunk";
 
@@ -163,8 +163,7 @@ void Frontier::enqueueScheduledItem(const FrontierItem &item, std::int64_t nowMs
 }
 
 void Frontier::promoteReservoir(std::int64_t nowMs) {
-    std::size_t reservoirRefillChunkSize =
-        maxQueuedItems * frontierReservoirRefillPercent / 100;
+    std::size_t reservoirRefillChunkSize = maxQueuedItems * frontierReservoirRefillPercent / 100;
 
     std::size_t diskBackRefillSize = maxQueuedItems * frontierDiskBackRefillPercent / 100;
     if (disk_back_reservoir.size() < diskBackRefillSize) {
@@ -174,7 +173,6 @@ void Frontier::promoteReservoir(std::int64_t nowMs) {
     if (reservoir.size() < reservoirRefillChunkSize) {
         refillReservoirFromDiskBacked();
     }
-
 
     if (!readyHosts.empty() || reservoir.empty()) {
         return;
@@ -310,7 +308,7 @@ void Frontier::doBackUp() {
     }
 
     const std::size_t nextChunkIndex = diskBackedChunksOnDisk + 1;
-    
+
     if (!writeDiskChunk(backup, nextChunkIndex)) {
         return;
     }
@@ -425,8 +423,8 @@ bool Frontier::findDiskChunkPath(std::size_t chunkIndex, string &path) const {
     while ((entry = readdir(dir)) != nullptr) {
         std::size_t candidateChunkIndex = 0;
         std::size_t candidateChunkItemCount = 0;
-        if (std::sscanf(entry->d_name, "frontier_disk_back_chunk_%zu_%zu.dat",
-                        &candidateChunkIndex, &candidateChunkItemCount) != 2) {
+        if (std::sscanf(entry->d_name, "frontier_disk_back_chunk_%zu_%zu.dat", &candidateChunkIndex,
+                        &candidateChunkItemCount) != 2) {
             continue;
         }
 
