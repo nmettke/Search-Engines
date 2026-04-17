@@ -23,7 +23,7 @@ struct MetaRecord {
 };
 
 struct GlobalMatch {
-    int chunk_id;
+    size_t chunk_id;
     uint32_t doc_id;
     double score;
 };
@@ -32,6 +32,15 @@ struct ThreadArgs {
     int client_socket;
     vector<QueryEngine *> *engines;
     vector<vector<MetaRecord>> *all_meta;
+};
+
+struct ChunkSearchArgs {
+    QueryEngine *engine;
+    string query;
+    size_t K;
+    size_t chunk_id;
+
+    vector<ScoredDocument> local_matches;
 };
 
 struct Location {
@@ -115,6 +124,14 @@ class TopKHeap {
     }
 };
 
+void *search_chunk_thread(void *arg) {
+    ChunkSearchArgs *args = (ChunkSearchArgs *)arg;
+
+    args->local_matches = args->engine->search(args->query, args->K);
+
+    return nullptr;
+}
+
 void *handle_master_connection(void *args) {
     ThreadArgs *t_args = (ThreadArgs *)args;
     int sock = t_args->client_socket;
@@ -144,18 +161,43 @@ void *handle_master_connection(void *args) {
             }
         }
 
+        size_t num_engines = engines->size();
+        pthread_t *threads = new pthread_t[num_engines];
+        ChunkSearchArgs *thread_args = new ChunkSearchArgs[num_engines];
+
+        for (size_t i = 0; i < num_engines; ++i) {
+            thread_args[i].engine = (*engines)[i];
+            thread_args[i].query = string(query.c_str());
+            thread_args[i].K = K;
+            thread_args[i].chunk_id = i;
+
+            pthread_create(&threads[i], nullptr, search_chunk_thread, &thread_args[i]);
+        }
+
+        for (size_t i = 0; i < num_engines; ++i) {
+            pthread_join(threads[i], nullptr);
+        }
+
         TopKHeap top_k_heap(K);
-        for (size_t i = 0; i < engines->size(); ++i) {
-            vector<ScoredDocument> chunk_matches = (*engines)[i]->search(query, K);
-            for (const auto &match : chunk_matches) {
-                top_k_heap.push({(int)i, match.doc_id, match.score});
+        for (size_t i = 0; i < num_engines; ++i) {
+            for (const auto &match : thread_args[i].local_matches) {
+                top_k_heap.push({thread_args[i].chunk_id, match.doc_id, match.score});
             }
         }
+
         vector<GlobalMatch> matches = top_k_heap.extractSorted();
+
+        delete[] threads;
+        delete[] thread_args;
 
         // Format the response: "url score\n"
         string response = "";
         for (const auto &match : matches) {
+            if (match.chunk_id >= t_args->all_meta->size() ||
+                match.doc_id >= (*t_args->all_meta)[match.chunk_id].size()) {
+                continue;
+            }
+
             MetaRecord &meta = (*t_args->all_meta)[match.chunk_id][match.doc_id];
 
             response += meta.url + "\t" + meta.title + "\t" + meta.snippet + "\t" +
