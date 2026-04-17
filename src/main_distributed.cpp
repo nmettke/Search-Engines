@@ -820,8 +820,8 @@ static bool sendBatchToPeerWithRetry(size_t peerIndex, int &socketFd,
     for (size_t attempt = 0; attempt <= sendBatchRetryCount; ++attempt) {
         if (ensureConnectedPeerSocket(peerIndex, socketFd) &&
             sendFrame(socketFd, peer_address[peerIndex], payload)) {
-            tsOut(std::cout) << "Sent batch frame to peer " << peerIndex << " with "
-                             << batch.size() << " links and " << payload.size() << " bytes\n";
+            // tsOut(std::cout) << "Sent batch frame to peer " << peerIndex << " with "
+            //                  << batch.size() << " links and " << payload.size() << " bytes\n";
             return true;
         }
 
@@ -1120,8 +1120,6 @@ void *ReceiveFromPeerThread(void *arg) {
                 tsOut(std::cout) << "Received batch frame from peer " << peerIndex << " with "
                                  << payload.size() << " bytes\n";
             }
-            tsOut(std::cout) << "Received batch frame from peer " << peerIndex << " with "
-                             << payload.size() << " bytes\n";
             processReceivedBatch(payload);
         }
 
