@@ -148,6 +148,7 @@ vector<ScoredDocument> QueryEngine::search(const string &query, size_t K) const 
 double QueryEngine::calculate_span_score(uint32_t doc_id, ISR *body_root, ISR *anchor_root,
                                          bool body_matched, bool anchor_matched,
                                          const DocumentRecord &doc) const {
+
     double static_score = static_scorer_.score(doc);
     double dynamic_score = 0.0;
 

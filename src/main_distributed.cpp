@@ -136,7 +136,7 @@ RobotsCache *robotsCache = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
 static std::atomic<time_t> lastCheckpointTime{0};
 static std::atomic<time_t> lastHeartbeatTime{0};
-static constexpr int checkpointIntervalSecs = 1600; // 1 hour 
+static constexpr int checkpointIntervalSecs = 1600; // 1 hour
 static constexpr int heartbeatIntervalSecs = 300;   // 5 minutes
 mutex crawlLogLock;
 bool debug = false;
@@ -320,7 +320,7 @@ void *CheckpointThread(void *) {
         time_t lastHeartbeat = lastHeartbeatTime.load();
         if ((now - lastHeartbeat) >= heartbeatIntervalSecs) {
             tsOut(std::cout) << "still alive; documents processed = " << urlsCrawled.load() << '\n';
-            tsOut(std::cout) << " frontier size = " << f -> size() << '\n';
+            tsOut(std::cout) << " frontier size = " << f->size() << '\n';
             std::cout.flush();
             lastHeartbeatTime = now;
         }
