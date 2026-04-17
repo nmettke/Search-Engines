@@ -130,6 +130,7 @@ static constexpr size_t maxIndexQueueItems = 102400;
 static constexpr size_t crawlerThreadsPerCore = 512;
 static constexpr size_t fallbackCrawlerThreadCount = 8;
 static constexpr size_t maxCrawlerThreadCount = 2400;
+static constexpr size_t maxPeerBatchLinks = 2000000; // drop if larger than this
 
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint = nullptr;
@@ -145,6 +146,7 @@ static constexpr int heartbeatIntervalSecs = 10;   // 5 minutes
 mutex crawlLogLock;
 bool debug = false;
 bool memDebug = false;
+std::atomic<size_t> droppedPeerBatchLinks{0};
 
 static std::ostream &tsOut(std::ostream &stream);
 
@@ -227,6 +229,7 @@ static void logMemDebugHeartbeat() {
                          << " urls, " << formatMiB(total)
                          << " MiB\n";
     }
+    tsOut(std::cout) << " dropped send-to-peer links = " << droppedPeerBatchLinks.load() << '\n';
 }
 // size_t anchorFlushIntervalSeconds = 30;
 
@@ -480,7 +483,11 @@ void *CrawlerWorkerThread(void *) {
                 routedLink.anchorText = link.anchorText;
 
                 batch_lock.lock();
-                batches[destinationMachine].pushBack(std::move(routedLink));
+                if (batches[destinationMachine].size() < maxPeerBatchLinks) {
+                    batches[destinationMachine].pushBack(std::move(routedLink));
+                } else {
+                    ++droppedPeerBatchLinks;
+                }
                 if (batches[destinationMachine].size() >= numLinkThreshold.load()) {
                     batch_cv.notify_all();
                 }
