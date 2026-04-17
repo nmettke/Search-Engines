@@ -387,29 +387,29 @@ void *CheckpointThread(void *) {
             lastHeartbeatTime = now;
         }
 
-        time_t last = lastCheckpointTime.load();
-        if ((now - last) < checkpointIntervalSecs) {
-            continue;
-        }
+        // time_t last = lastCheckpointTime.load();
+        // if ((now - last) < checkpointIntervalSecs) {
+        //     continue;
+        // }
 
-        const size_t crawled = urlsCrawled.load();
-        CheckpointSnapshot snapshot;
-        const int64_t snapshotStart = nowMillis();
-        if (!checkpoint->createSnapshot(*f, bloom, crawled, snapshot)) {
-            continue;
-        }
-        const int64_t snapshotEnd = nowMillis();
+        // const size_t crawled = urlsCrawled.load();
+        // CheckpointSnapshot snapshot;
+        // const int64_t snapshotStart = nowMillis();
+        // if (!checkpoint->createSnapshot(*f, bloom, crawled, snapshot)) {
+        //     continue;
+        // }
+        // const int64_t snapshotEnd = nowMillis();
 
-        tsOut(std::cout) << "Starting checkpoint at " << crawled << " URLs\n";
-        if (!checkpoint->writeSnapshot(snapshot)) {
-            tsOut(std::cerr) << "Checkpoint write failed at " << crawled << " URLs\n";
-            continue;
-        }
-        const int64_t writeEnd = nowMillis();
-        tsOut(std::cerr) << "Checkpoint snapshot took " << (snapshotEnd - snapshotStart)
-                         << " ms; write took " << (writeEnd - snapshotEnd) << " ms\n";
+        // tsOut(std::cout) << "Starting checkpoint at " << crawled << " URLs\n";
+        // if (!checkpoint->writeSnapshot(snapshot)) {
+        //     tsOut(std::cerr) << "Checkpoint write failed at " << crawled << " URLs\n";
+        //     continue;
+        // }
+        // const int64_t writeEnd = nowMillis();
+        // tsOut(std::cerr) << "Checkpoint snapshot took " << (snapshotEnd - snapshotStart)
+        //                  << " ms; write took " << (writeEnd - snapshotEnd) << " ms\n";
 
-        lastCheckpointTime = now;
+        // lastCheckpointTime = now;
     }
 
     return nullptr;
@@ -1343,7 +1343,7 @@ int main(int argc, char **argv) {
     urlFilter.loadBlacklist("src/crawler/blackList.txt");
 
     cpConfig.directory = "src/crawler";
-    checkpoint = new Checkpoint(cpConfig);
+    // checkpoint = new Checkpoint(cpConfig);
     q = new IndexQueue(maxIndexQueueItems);
     robotsCache = new RobotsCache();
     anchorIndex = new HashTable<string, WordPosting>(anchorKeyEqual, anchorKeyHash);
@@ -1420,7 +1420,8 @@ int main(int argc, char **argv) {
 
     size_t recoveredUrlCount = 0;
 
-    if (checkpoint->load(recoveredItems, bloom, recoveredUrlCount)) {
+    // if (checkpoint->load(recoveredItems, bloom, recoveredUrlCount)) {
+    if (false) {
         // When we start from checkpoint, we also check that all URL should be parsed by this
         // machine
         urlsCrawled = recoveredUrlCount;
@@ -1624,7 +1625,7 @@ int main(int argc, char **argv) {
 
     // pthread_join(anchorThread, nullptr);
 
-    checkpoint->save(*f, bloom, urlsCrawled.load());
+    // checkpoint->save(*f, bloom, urlsCrawled.load());
 
     // force flush Anchor even if Anchor was unchanged
     flushAnchorIndexToDisk(true);
@@ -1637,7 +1638,7 @@ int main(int argc, char **argv) {
     delete robotsCache;
     delete f;
     delete q;
-    delete checkpoint;
+    // delete checkpoint;
     delete[] peerSenderThreads;
     delete[] peerReceiverThreads;
     delete[] peerSenderStarted;
