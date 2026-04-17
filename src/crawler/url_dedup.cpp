@@ -303,6 +303,24 @@ string removeDotSegments(const string &path) {
     return normalized;
 }
 
+// Strips trailing '/' from the path portion of tail (path + optional '?query'), so e.g.
+// /foo/?q=1 -> /foo?q=1 and /?q=1 -> ?q=1 (empty path before query).
+string stripTrailingSlashFromPath(const string &tail) {
+    if (tail.empty()) {
+        return tail;
+    }
+
+    std::size_t qpos = tail.find('?');
+    string pathPart = (qpos == string::npos) ? tail : tail.substr(0, qpos);
+    string queryPart = (qpos == string::npos) ? "" : tail.substr(qpos);
+
+    while (!pathPart.empty() && pathPart[pathPart.size() - 1] == '/') {
+        pathPart.pop_back();
+    }
+
+    return pathPart + queryPart;
+}
+
 } // namespace
 
 string absolutizeUrl(const string &rawUrl, const string &sourceUrl, const string &baseUrl) {
@@ -407,7 +425,7 @@ string normalizeUrl(const string &rawUrl) {
     }
 
     host = toLower(host);
-    return scheme + "://" + host + tail;
+    return scheme + "://" + host + stripTrailingSlashFromPath(tail);
 }
 
 UrlBloomFilter::UrlBloomFilter(std::size_t expectedItems, double falsePositiveRate)
