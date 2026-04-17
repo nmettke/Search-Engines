@@ -223,7 +223,6 @@ static void logMemDebugHeartbeat() {
         for (const RoutedLink &link : batches[i]) {
             total += routedLinkBytes(link);
         }
-}
         tsOut(std::cout) << " send-to-peer batch[" << i << "] = " << batches[i].size()
                          << " urls, " << formatMiB(total)
                          << " MiB\n";
