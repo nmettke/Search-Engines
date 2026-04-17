@@ -127,7 +127,7 @@ const string anchorIndexDirectory("data/anchor_index");
 const string indexDirectory("data/body_index");
 const string metaDirectory("data/meta");
 const size_t FLUSHBODYTOKENSIZE = 15000000;
-static constexpr size_t maxIndexQueueItems = 102400;
+static constexpr size_t maxIndexQueueItems = 307200;
 static constexpr size_t crawlerThreadsPerCore = 512;
 static constexpr size_t fallbackCrawlerThreadCount = 8;
 static constexpr size_t maxCrawlerThreadCount = 2400;
@@ -1500,7 +1500,7 @@ int main(int argc, char **argv) {
     if (crawlerThreadCount > maxCrawlerThreadCount) {
         crawlerThreadCount = maxCrawlerThreadCount;
     }
-    size_t indexThreadCount = 4;
+    size_t indexThreadCount = 12;
     vector<pthread_t> crawlerThreads(crawlerThreadCount);
     vector<pthread_t> indexThreads(indexThreadCount);
     vector<IndexThreadArgs> indexThreadArgs(indexThreadCount);
