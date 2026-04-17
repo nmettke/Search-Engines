@@ -766,6 +766,7 @@ static bool ensureConnectedPeerSocket(size_t peerIndex, int &socketFd) {
     if (debug) {
         tsOut(std::cout) << "Connected outbound socket to peer " << peerIndex << '\n';
     }
+    tsOut(std::cout) << "Connected outbound socket to peer " << peerIndex << '\n';
 
     return true;
 }
@@ -1058,6 +1059,8 @@ void *AcceptPeerConnectionsThread(void *) {
             tsOut(std::cout) << "Accepted persistent connection from peer " << remotePeerIndex
                              << '\n';
         }
+        tsOut(std::cout) << "Accepted persistent connection from peer " << remotePeerIndex
+                             << '\n';
 
         PeerReceiverState &state = peerReceiverStates[remotePeerIndex];
         state.lock.lock();
@@ -1098,6 +1101,7 @@ void *ReceiveFromPeerThread(void *arg) {
         if (debug) {
             tsOut(std::cout) << "Receiver thread attached to peer " << peerIndex << '\n';
         }
+        tsOut(std::cout) << "Receiver thread attached to peer " << peerIndex << '\n';
 
         while (!shouldStop) {
             string payload;
@@ -1108,6 +1112,7 @@ void *ReceiveFromPeerThread(void *arg) {
             if (debug) {
                 tsOut(std::cout) << "Received batch frame from peer " << peerIndex << '\n';
             }
+            tsOut(std::cout) << "Received batch frame from peer " << peerIndex << '\n';
             processReceivedBatch(payload);
         }
 
