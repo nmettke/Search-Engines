@@ -136,8 +136,8 @@ RobotsCache *robotsCache = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
 static std::atomic<time_t> lastCheckpointTime{0};
 static std::atomic<time_t> lastHeartbeatTime{0};
-static constexpr int checkpointIntervalSecs = 1600; // 1 hour 
-static constexpr int heartbeatIntervalSecs = 30;   // 5 minutes
+static constexpr int checkpointIntervalSecs = 1600; // 1 hour
+static constexpr int heartbeatIntervalSecs = 30;    // 5 minutes
 mutex crawlLogLock;
 bool debug = false;
 
@@ -631,13 +631,12 @@ void *IndexWorkerThread(void *) {
     if (docsProcessed > 0) {
         const size_t chunkId = nextIndexChunkId.fetch_add(1);
         char buffer[64] = {};
-        std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
-                      chunkId);
+        std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(), chunkId);
         const string path(buffer);
 
         char meta_buffer[64] = {};
-        std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta",
-                      metaDirectory.c_str(), chunkId);
+        std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta", metaDirectory.c_str(),
+                      chunkId);
         const string meta_path(meta_buffer);
 
         try {

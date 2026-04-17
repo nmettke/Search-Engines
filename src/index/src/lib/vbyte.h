@@ -1,7 +1,7 @@
 // src/lib/vbyte.h
 #pragma once
 
-#include "utils/vector.hpp"
+#include "../../../utils/vector.hpp"
 #include <cstddef>
 #include <cstdint>
 

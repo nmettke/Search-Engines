@@ -1,7 +1,7 @@
 // Header file for building the seek table
 #pragma once
 
-#include "utils/vector.hpp"
+#include "../../../utils/vector.hpp"
 #include <array>
 #include <cstddef>
 #include <cstdint>

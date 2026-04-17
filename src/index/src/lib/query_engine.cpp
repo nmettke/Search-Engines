@@ -2,9 +2,10 @@
 #include "query_engine.h"
 #include "../../../utils/string.hpp"
 #include "../../../utils/vector.hpp"
+#include "isr.h"
 #include "query_compiler.h"
 #include "query_tokenizer.h"
-#include <iostream>
+#include <memory>
 
 class TopKHeap {
   private:
@@ -79,32 +80,69 @@ vector<ScoredDocument> QueryEngine::search(const string &query, size_t K) const 
     if (tokens.empty())
         return top_k.extractSorted();
 
-    QueryCompiler compiler(reader_);
-    auto root = compiler.compile(tokens);
-    if (!root)
+    QueryCompiler body_compiler(body_reader_);
+    QueryCompiler anchor_compiler(anchor_reader_);
+
+    auto body_root = body_compiler.compile(tokens);
+    auto anchor_root = anchor_compiler.compile(tokens);
+
+    if (!body_root && !anchor_root)
         return top_k.extractSorted();
 
-    auto doc_end_isr = reader_.createISR(docEndToken);
-    if (!doc_end_isr)
-        return top_k.extractSorted();
+    auto body_doc_end = body_root ? body_reader_.createISR(docEndToken) : nullptr;
+    auto anchor_doc_end = anchor_root ? anchor_reader_.createISR(docEndToken) : nullptr;
 
-    while (!root->done()) {
-        uint32_t match_loc = root->currentLocation();
+    bool body_active = body_root && body_doc_end && !body_root->done();
+    bool anchor_active = anchor_root && anchor_doc_end && !anchor_root->done();
 
-        uint32_t doc_end_loc = doc_end_isr->seek(match_loc);
-        if (doc_end_loc == ISRSentinel)
-            break;
-
-        uint32_t doc_id = doc_end_isr->currentIndex() - 1;
-        auto doc = reader_.getDocument(doc_id);
-
-        if (doc) {
-            double score = scorer_.score(*doc);
-            top_k.push({doc_id, score});
+    while (body_active || anchor_active) {
+        uint32_t body_doc_id = MAX_DOC_ID;
+        uint32_t body_doc_end_loc = ISRSentinel;
+        if (body_active) {
+            body_doc_end_loc = body_doc_end->seek(body_root->currentLocation());
+            if (body_doc_end_loc == ISRSentinel)
+                body_active = false;
+            else
+                body_doc_id = body_doc_end->currentIndex() - 1;
         }
 
-        root->seek(doc_end_loc + 1);
+        uint32_t anchor_doc_id = MAX_DOC_ID;
+        uint32_t anchor_doc_end_loc = ISRSentinel;
+        if (anchor_active) {
+            anchor_doc_end_loc = anchor_doc_end->seek(anchor_root->currentLocation());
+            if (anchor_doc_end_loc == ISRSentinel)
+                anchor_active = false;
+            else
+                anchor_doc_id = anchor_doc_end->currentIndex() - 1;
+        }
+
+        uint32_t current_doc_id = (body_doc_id < anchor_doc_id) ? body_doc_id : anchor_doc_id;
+
+        if (current_doc_id == MAX_DOC_ID)
+            break;
+
+        auto doc = body_reader_.getDocument(current_doc_id);
+
+        if (doc) {
+            double score = calculate_span_score(current_doc_id, body_root.get(), anchor_root.get(),
+                                                doc.value());
+            top_k.push({current_doc_id, score});
+        }
+
+        if (body_active && body_doc_id == current_doc_id) {
+            body_root->seek(body_doc_end_loc + 1);
+            body_active = !body_root->done();
+        }
+        if (anchor_active && anchor_doc_id == current_doc_id) {
+            anchor_root->seek(anchor_doc_end_loc + 1);
+            anchor_active = !anchor_root->done();
+        }
     }
 
     return top_k.extractSorted();
+}
+
+double QueryEngine::calculate_span_score(uint32_t doc_id, ISR *body_root, ISR *anchor_root,
+                                         const DocumentRecord &doc) const {
+    return scorer_.score(doc);
 }

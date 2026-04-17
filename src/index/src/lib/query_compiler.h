@@ -1,9 +1,9 @@
 // src/lib/query_compiler.h
 #pragma once
+#include "../../../utils/vector.hpp"
 #include "disk_chunk_reader.h"
 #include "isr.h"
 #include "query_tokenizer.h"
-#include "utils/vector.hpp"
 #include <memory>
 
 class QueryCompiler {

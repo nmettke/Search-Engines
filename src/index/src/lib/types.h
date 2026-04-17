@@ -1,8 +1,8 @@
 // src/lib/types.h
 #pragma once
 
-#include "utils/string.hpp"
-#include "utils/vector.hpp"
+#include "../../../utils/string.hpp"
+#include "../../../utils/vector.hpp"
 #include <cstdint>
 #include <limits>
 

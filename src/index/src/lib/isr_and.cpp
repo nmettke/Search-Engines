@@ -1,5 +1,4 @@
 #include "isr_and.h"
-#include <algorithm>
 
 ISRAnd::ISRAnd(::vector<std::unique_ptr<ISR>> terms, std::unique_ptr<ISRWord> doc_end_isr,
                const DiskChunkReader &reader)
