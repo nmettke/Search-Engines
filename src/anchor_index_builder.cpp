@@ -172,7 +172,8 @@ void build_anchor_index(size_t chunk_id, const string &index_dir, const string &
             if (tab != string::npos) {
                 string url = s.substr(0, tab);
                 string text = s.substr(tab + 1);
-                url_to_anchor.Find(url, text);
+                auto entry = url_to_anchor.Find(url, "");
+                entry->value += text + " ";
             }
         }
         fclose(pf);
