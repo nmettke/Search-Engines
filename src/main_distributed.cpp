@@ -142,7 +142,7 @@ unsigned int cores = std::thread::hardware_concurrency();
 static std::atomic<time_t> lastCheckpointTime{0};
 static std::atomic<time_t> lastHeartbeatTime{0};
 static constexpr int checkpointIntervalSecs = 1600; // 1 hour 
-static constexpr int heartbeatIntervalSecs = 10;   // 5 minutes
+static constexpr int heartbeatIntervalSecs = 30;   // 5 minutes
 mutex crawlLogLock;
 bool debug = false;
 bool memDebug = false;
