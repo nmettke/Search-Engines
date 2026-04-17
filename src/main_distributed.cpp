@@ -115,7 +115,7 @@ const string indexDirectory("data/body_index");
 const string metaDirectory("data/meta");
 const size_t FLUSHBODYTOKENSIZE = 500000;
 static constexpr size_t maxIndexQueueItems = 1024;
-static constexpr size_t crawlerThreadsPerCore = 150;
+static constexpr size_t crawlerThreadsPerCore = 512;
 static constexpr size_t fallbackCrawlerThreadCount = 8;
 static constexpr size_t maxCrawlerThreadCount = 2400;
 
