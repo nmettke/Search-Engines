@@ -35,8 +35,7 @@ std::size_t resolveFrontierMaxQueuedItems(std::size_t configuredMaxQueuedItems) 
         return configuredMaxQueuedItems;
     }
 
-    // std::size_t parsed = 2000000; // I have chosen to hard code this for simplicity
-    std::size_t parsed = 20000; // I have chosen to hard code this for simplicity
+    std::size_t parsed = 2000000; // I have chosen to hard code this for simplicity
     return parsed;
 }
 } // namespace
