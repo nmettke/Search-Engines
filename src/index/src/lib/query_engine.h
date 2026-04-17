@@ -20,7 +20,7 @@ class QueryEngine {
   public:
     explicit QueryEngine(const DiskChunkReader &body_reader, const DiskChunkReader &anchor_reader,
                          StaticRankConfig rank_config = {})
-        : body_reader_(body_reader), anchor_reader_(anchor_reader), scorer_(rank_config) {}
+        : body_reader_(body_reader), anchor_reader_(anchor_reader), static_scorer_(rank_config) {}
 
     vector<ScoredDocument> search(const string &query, size_t K = 500) const;
 
@@ -28,8 +28,9 @@ class QueryEngine {
     const DiskChunkReader &body_reader_;
     const DiskChunkReader &anchor_reader_;
 
-    StaticRankScorer scorer_;
+    StaticRankScorer static_scorer_;
 
     double calculate_span_score(uint32_t doc_id, ISR *body_root, ISR *anchor_root,
+                                bool body_matched, bool anchor_matched,
                                 const DocumentRecord &doc) const;
 };
