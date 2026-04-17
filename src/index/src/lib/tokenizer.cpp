@@ -58,20 +58,20 @@ TokenizedDocument Tokenizer::processDocument(const HtmlParser &doc) {
     uint32_t body_word_count = 0;
     DocumentFeatures features = extractDocumentFeatures(doc);
 
+    for (const ::string &raw_word : doc.titleWords) {
+        auto expanded = processToken(raw_word);
+        for (const auto &token : expanded) {
+            out.tokens.push_back(TokenOutput{"$" + token, next_location});
+        }
+        ++next_location;
+    }
+
     for (const ::string &raw_word : doc.words) {
         auto expanded = processToken(raw_word);
         for (const auto &token : expanded) {
             out.tokens.push_back(TokenOutput{token, next_location});
         }
         ++body_word_count;
-        ++next_location;
-    }
-
-    for (const ::string &raw_word : doc.titleWords) {
-        auto expanded = processToken(raw_word);
-        for (const auto &token : expanded) {
-            out.tokens.push_back(TokenOutput{"$" + token, next_location});
-        }
         ++next_location;
     }
 
