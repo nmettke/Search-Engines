@@ -1291,7 +1291,7 @@ int main(int argc, char **argv) {
     if (crawlerThreadCount > maxCrawlerThreadCount) {
         crawlerThreadCount = maxCrawlerThreadCount;
     }
-    size_t indexThreadCount = 1;
+    size_t indexThreadCount = 4;
     vector<pthread_t> crawlerThreads(crawlerThreadCount);
     vector<pthread_t> indexThreads(indexThreadCount);
     pthread_t acceptThread{};
