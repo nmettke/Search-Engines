@@ -153,36 +153,12 @@ double QueryEngine::calculate_span_score(uint32_t doc_id, ISR *body_root, ISR *a
     double dynamic_score = 0.0;
 
     if (body_matched && body_root) {
-        // TODO: Replace with your actual ISR methods for Frequency and Span
-        int term_freq = 1;     // Example: body_root->getMatchCountForCurrentDoc();
-        int shortest_span = 0; // Example: body_root->getShortestSpanForCurrentDoc();
-
-        // Base points for body/title match
-        double body_base_score = term_freq * 1.0;
-
-        // PROXIMITY BOOST: If words are close together, score skyrockets
-        // (e.g., if span is 2 words apart, boost is 50. If 100 words apart, boost is 1)
-        double proximity_boost = 0.0;
-        if (shortest_span > 0) {
-            proximity_boost = 100.0 / (double)shortest_span;
-        }
-
-        dynamic_score += (body_base_score + proximity_boost);
+        dynamic_score += 20.0;
     }
 
     if (anchor_matched && anchor_root) {
-        // Anchor text frequency is massively important.
-        // If 50 sites link with this word, TF is 50.
-        int anchor_freq = 1; // Example: anchor_root->getMatchCountForCurrentDoc();
-
-        // MULTIPLIER: Matches in anchor text are worth 15x more than body text!
-        dynamic_score += (anchor_freq * 15.0);
+        dynamic_score += 60.0;
     }
 
-    // ==========================================
-    // 2. STATIC AUTHORITY (In-Degree & Heuristics)
-    // ==========================================
-    double static_multiplier = 1.0; // TODO
-
-    return dynamic_score * static_multiplier + static_score;
+    return dynamic_score + static_score;
 }
