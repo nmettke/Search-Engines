@@ -790,6 +790,7 @@ static bool ensureConnectedPeerSocket(size_t peerIndex, int &socketFd) {
     }
 
     if (!sendFrame(socketFd, peer_address[peerIndex], buildHandshakePayload())) {
+        tsOut(std::cerr) << "Failed to send handshake to peer " << peerIndex << '\n';
         close(socketFd);
         socketFd = -1;
         return false;
@@ -821,9 +822,14 @@ static bool sendBatchToPeerWithRetry(size_t peerIndex, int &socketFd,
     for (size_t attempt = 0; attempt <= sendBatchRetryCount; ++attempt) {
         if (ensureConnectedPeerSocket(peerIndex, socketFd) &&
             sendFrame(socketFd, peer_address[peerIndex], payload)) {
-            tsOut(std::cout) << "Send batch to peer " << peerIndex << "\n";
+            tsOut(std::cout) << "Sent batch frame to peer " << peerIndex << " with "
+                             << batch.size() << " links and " << payload.size() << " bytes\n";
             return true;
         }
+
+        tsOut(std::cerr) << "Failed to send batch frame to peer " << peerIndex << " on attempt "
+                         << (attempt + 1) << "/" << (sendBatchRetryCount + 1) << " with "
+                         << batch.size() << " links and " << payload.size() << " bytes\n";
 
         if (socketFd >= 0) {
             close(socketFd);
@@ -1110,13 +1116,16 @@ void *ReceiveFromPeerThread(void *arg) {
         while (!shouldStop) {
             string payload;
             if (!recvFrame(socketFd, peerIndex, payload)) {
+                tsOut(std::cerr) << "Receiver lost frame stream from peer " << peerIndex << '\n';
                 break;
             }
 
             if (debug) {
-                tsOut(std::cout) << "Received batch frame from peer " << peerIndex << '\n';
+                tsOut(std::cout) << "Received batch frame from peer " << peerIndex << " with "
+                                 << payload.size() << " bytes\n";
             }
-            tsOut(std::cout) << "Received batch frame from peer " << peerIndex << '\n';
+            tsOut(std::cout) << "Received batch frame from peer " << peerIndex << " with "
+                             << payload.size() << " bytes\n";
             processReceivedBatch(payload);
         }
 
