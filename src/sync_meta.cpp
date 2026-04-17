@@ -186,6 +186,7 @@ int main(int argc, char **argv) {
 
             std::cout << "Processing meta file: " << file_name << std::endl;
             string full_path = meta_dir + file_name;
+            uint32_t missing_count = 0;
 
             FILE *fp = fopen(full_path.c_str(), "r");
             if (fp) {
@@ -210,7 +211,7 @@ int main(int argc, char **argv) {
                             location_ptr = index_lookup.Find(url_with_slash);
                         }
                         if (location_ptr == nullptr) {
-                            std::cerr << "Warning: URL in meta not found in index: " << url << "\n";
+                            ++missing_count;
                         }
                     }
 
@@ -247,6 +248,9 @@ int main(int argc, char **argv) {
                 if (!current_entry.empty()) {
                     process_entry(current_entry);
                 }
+
+                std::cout << "Finished processing " << file_name
+                          << ". Missing URLs: " << missing_count << "\n";
 
                 if (line_buf != nullptr) {
                     free(line_buf);

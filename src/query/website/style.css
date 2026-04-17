@@ -278,10 +278,22 @@ body {
 }
 
 @media (max-width: 640px) {
-    .header { padding: 12px 18px; gap: 14px; }
-    .header .brand { width: auto; }
+    .header {
+        flex-direction: column;
+        align-items: center;
+        padding: 12px 18px;
+        gap: 12px;
+    }
+    .header .brand {
+        position: static;
+        transform: none;
+        left: auto;
+        top: auto;
+        width: auto;
+        justify-content: center;
+    }
     .header .brand img { height: 40px; }
-    .header .search-bar { height: 44px; padding: 0 14px 0 18px; }
+    .header .search-bar { height: 44px; padding: 0 14px 0 18px; width: 100%; }
     .info, .results, .no-results { padding-left: 20px; padding-right: 20px; }
     .landing > .search-actions { width: min(480px, calc(100vw - 40px)); height: 220px; }
     .search-actions button { width: 110px; height: 44px; font-size: 17px; }

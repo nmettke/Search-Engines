@@ -116,67 +116,32 @@ static string normalize_url_key(const string &url) {
 
 // debug body text index
 int main() {
-    string body_file_path = "../../data/body_index/chunk_1.idx";
-    string meta_file_path = "../../data/parsed_meta/chunk_1.meta";
+    string body_file_path = "../../data/body_index/chunk_12.idx";
+    string anchor_file_path = "../../data/parsed_anchor_index/chunk_12.idx";
+
     DiskChunkReader body_reader;
     if (!body_reader.open(body_file_path)) {
         std::cerr << "Failed to open chunk\n";
         return 1;
     }
 
-    std::cout << "Chunk opened: " << body_file_path << "\n";
-    std::cout << "docs=" << body_reader.header().num_documents
-              << ", terms=" << body_reader.header().num_unique_terms
-              << ", total_locations=" << body_reader.header().total_locations << "\n";
-
-    vector<string> meta_data;
-    FILE *meta_fp = fopen(meta_file_path.c_str(), "r");
-    if (meta_fp) {
-        char *line_buf = nullptr;
-        size_t line_buf_cap = 0;
-        ssize_t read_len = 0;
-
-        while ((read_len = getline(&line_buf, &line_buf_cap, meta_fp)) != -1) {
-            (void)read_len;
-            string line(line_buf);
-            if (!line.empty() && line.back() == '\n')
-                line.pop_back();
-            meta_data.pushBack(line);
-        }
-
-        if (line_buf != nullptr) {
-            free(line_buf);
-        }
-        fclose(meta_fp);
-    } else {
-        std::cerr << "Failed to open meta file\n";
+    DiskChunkReader anchor_reader;
+    if (!anchor_reader.open(anchor_file_path)) {
+        std::cerr << "Failed to open anchor chunk\n";
         return 1;
     }
 
-    std::cout << "Meta data loaded: " << meta_file_path << "\n";
-
-    int mismatch_count = 0;
-    for (size_t i = 0; i < meta_data.size(); ++i) {
+    size_t body_doc_count = body_reader.header().num_documents;
+    for (size_t i = 0; i < body_doc_count; ++i) {
         auto body_doc_info = body_reader.getDocument(i);
+        auto anchor_doc_info = anchor_reader.getDocument(i);
 
-        string body_url = body_doc_info->url;
-        string meta_url = parse_url(meta_data[i]);
-
-        string body_url_key = normalize_url_key(body_url);
-        string meta_url_key = normalize_url_key(meta_url);
-
-        if (meta_url_key != body_url_key) {
-            mismatch_count++;
-            std::cerr << "URL mismatch at doc_id " << i << ": " << meta_url << " vs " << body_url
-                      << "\n";
-        }
-
-        if (mismatch_count >= 10) {
-            std::cerr << "Too many mismatches, aborting further checks.\n";
-            break;
+        if (body_doc_info->url != anchor_doc_info->url) {
+            std::cerr << "URL mismatch at doc_id " << i << ": " << body_doc_info->url << " vs "
+                      << anchor_doc_info->url << "\n";
         }
     }
 
-    std::cout << "Finished validating URLs between body index and meta data.\n";
+    std::cout << "Finished validating URLs between body index and anchor index.\n";
     return 0;
 }

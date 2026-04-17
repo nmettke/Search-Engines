@@ -21,6 +21,70 @@ static SSL_CTX *sslCtx = nullptr;
 // 10 MB easily covers normal HTML pages and robots.txt files.
 static constexpr size_t maxResponseBytes = 10ULL * 1024 * 1024;
 
+static bool asciiIsDigit(char c) { return c >= '0' && c <= '9'; }
+
+// Parses the numeric status from the first line of an HTTP response, e.g.
+// "HTTP/1.1 200 OK". Returns -1 if the line cannot be interpreted.
+static int parseHttpStatusCode(const string &rawResponse) {
+    size_t lineEnd = rawResponse.find("\r\n");
+    if (lineEnd == string::npos) {
+        lineEnd = rawResponse.find('\n');
+    }
+    if (lineEnd == string::npos || lineEnd == 0) {
+        return -1;
+    }
+
+    string statusLine = rawResponse.substr(0, lineEnd);
+    if (statusLine.size() < 12 || statusLine.find("HTTP/") != 0) {
+        return -1;
+    }
+
+    size_t i = statusLine.find(' ');
+    if (i == string::npos) {
+        return -1;
+    }
+    while (i < statusLine.size() && statusLine[i] == ' ') {
+        ++i;
+    }
+
+    int code = 0;
+    size_t digits = 0;
+    for (; i < statusLine.size(); ++i) {
+        const char ch = statusLine[i];
+        if (!asciiIsDigit(ch)) {
+            break;
+        }
+        code = code * 10 + (ch - '0');
+        ++digits;
+        if (digits > 3) {
+            return -1;
+        }
+    }
+    if (digits == 0) {
+        return -1;
+    }
+    return code;
+}
+
+static string decodeHttpResponseBodyIfSuccessful(const string &rawResponse) {
+    size_t headerEnd = rawResponse.find("\r\n\r\n");
+    size_t bodySkip = 4;
+    if (headerEnd == string::npos) {
+        headerEnd = rawResponse.find("\n\n");
+        bodySkip = 2;
+    }
+    if (headerEnd == string::npos) {
+        return "";
+    }
+
+    const int status = parseHttpStatusCode(rawResponse);
+    if (status < 200 || status > 299) {
+        return "";
+    }
+
+    return rawResponse.substr(headerEnd + bodySkip);
+}
+
 // Bound TCP connect() so an unreachable host doesn't pin a crawler thread
 // for the kernel default (~75s). SO_RCVTIMEO/SO_SNDTIMEO do not affect connect.
 static constexpr int connectTimeoutSecs = 10;
@@ -251,10 +315,5 @@ string readURL(string target_url) {
         return "";
     }
 
-    std::size_t headerEnd = rawResponse.find("\r\n\r\n");
-    if (headerEnd == string::npos) {
-        return rawResponse;
-    }
-
-    return rawResponse.substr(headerEnd + 4);
+    return decodeHttpResponseBodyIfSuccessful(rawResponse);
 }

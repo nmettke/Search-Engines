@@ -70,6 +70,9 @@ void *WorkerThread(void *arg) {
         if (shouldStop)
             break;
 
+        if (page.empty())
+            continue;
+
         HtmlParser parsed(page.cstr(), page.size());
         parsed.sourceUrl = item->link;
         parsed.seedDistance = static_cast<uint8_t>(item->getSeedDistance());

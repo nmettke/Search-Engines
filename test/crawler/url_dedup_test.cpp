@@ -6,6 +6,12 @@ TEST(UrlDedupNormalizeTest, NormalizesSchemeAndHostAndStripsFragment) {
     EXPECT_STREQ(normalized.cstr(), "https://example.com/path?q=1");
 }
 
+TEST(UrlDedupNormalizeTest, StripsTrailingSlashFromPath) {
+    EXPECT_STREQ(normalizeUrl("https://example.com/foo/").cstr(), "https://example.com/foo");
+    EXPECT_STREQ(normalizeUrl("https://example.com/foo/?q=1").cstr(), "https://example.com/foo?q=1");
+    EXPECT_STREQ(normalizeUrl("https://example.com/?q=1").cstr(), "https://example.com?q=1");
+}
+
 TEST(UrlDedupNormalizeTest, RejectsInvalidOrEmptyInput) {
     EXPECT_STREQ(normalizeUrl("ftp://example.com/path").cstr(), "");
     EXPECT_STREQ(normalizeUrl("example.com/path").cstr(), "");
@@ -29,6 +35,7 @@ TEST(UrlDedupShouldEnqueueTest, RejectsDuplicateAcrossEquivalentForms) {
     EXPECT_TRUE(shouldEnqueueUrl("https://example.com/path", bloom, canonical));
     EXPECT_FALSE(shouldEnqueueUrl("HTTPS://Example.COM/path", bloom, canonical));
     EXPECT_FALSE(shouldEnqueueUrl("https://example.com/path#section", bloom, canonical));
+    EXPECT_FALSE(shouldEnqueueUrl("https://example.com/path/", bloom, canonical));
 }
 
 TEST(UrlDedupShouldEnqueueTest, RejectsInvalidUrls) {
