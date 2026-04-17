@@ -9,7 +9,7 @@
 namespace {
 
 thread_local string frontierActiveHostKey;
-constexpr std::size_t frontierReservoirSweepChunkSize = 256;
+constexpr std::size_t frontierReservoirSweepChunkSize = 512;
 constexpr std::size_t frontierReservoirPromotionPercent = 25;
 
 constexpr std::size_t frontierDiskBackBackupPercent = 70; // when do we push to disk
@@ -35,7 +35,8 @@ std::size_t resolveFrontierMaxQueuedItems(std::size_t configuredMaxQueuedItems) 
         return configuredMaxQueuedItems;
     }
 
-    std::size_t parsed = 2000000; // I have chosen to hard code this for simplicity
+    // std::size_t parsed = 2000000; // I have chosen to hard code this for simplicity
+    std::size_t parsed = 20000; // I have chosen to hard code this for simplicity
     return parsed;
 }
 } // namespace

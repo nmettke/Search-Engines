@@ -17,6 +17,7 @@ mkdir data/anchor_index
 mkdir data/meta
 mkdir data/parsed_anchor_index/
 mkdir data/parsed_meta
+mkdir data/disk_chunk_backup
 
 mkdir build 
 cd build
