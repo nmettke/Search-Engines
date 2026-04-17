@@ -1,6 +1,8 @@
 #include "crawler/frontier.h"
 
 #include <dirent.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <chrono>
 #include <cstdio>
 #include <future>
@@ -12,9 +14,15 @@
 
 namespace {
 
-constexpr const char *frontierDiskBackChunkDir = ".";
+constexpr const char *frontierDiskBackChunkDir = "data/disk_chunk_backup";
+
+void ensureFrontierDiskBackChunkDirExists() {
+    mkdir("data", 0755);
+    mkdir(frontierDiskBackChunkDir, 0755);
+}
 
 void clearFrontierDiskChunks() {
+    ensureFrontierDiskBackChunkDirExists();
     DIR *dir = opendir(frontierDiskBackChunkDir);
     if (dir == nullptr) {
         return;
@@ -130,7 +138,7 @@ TEST_F(FrontierTest, FrontierRecoversSnapshotPlusPersistentDiskChunks) {
     }
 
     Frontier recovered(snapshot, false, 2);
-    EXPECT_EQ(recovered.size(), snapshot.size());
+    EXPECT_EQ(recovered.size(), items.size());
 
     std::set<std::string> poppedLinks;
     for (std::size_t i = 0; i < items.size(); ++i) {

@@ -1,6 +1,8 @@
 #include "frontier.h"
 
 #include <dirent.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -161,9 +163,10 @@ void Frontier::enqueueScheduledItem(const FrontierItem &item, std::int64_t nowMs
 }
 
 void Frontier::promoteReservoir(std::int64_t nowMs) {
-    const std::size_t reservoirRefillChunkSize = maxQueuedItems * frontierReservoirRefillPercent / 100;
-    const std::size_t diskBackRefillSize = maxQueuedItems * frontierDiskBackRefillPercent / 100;
+    std::size_t reservoirRefillChunkSize =
+        maxQueuedItems * frontierReservoirRefillPercent / 100;
 
+    std::size_t diskBackRefillSize = maxQueuedItems * frontierDiskBackRefillPercent / 100;
     if (disk_back_reservoir.size() < diskBackRefillSize) {
         loadDiskBackedChunkFromDisk();
     }
@@ -294,7 +297,11 @@ void Frontier::doBackUp() {
         return;
     }
 
-    std::size_t backupCount = disk_back_reservoir.size() * frontierDiskBackBackupPercent;
+    std::size_t backupCount = (disk_back_reservoir.size() * frontierDiskBackBackupPercent) / 100;
+
+    if (backupCount > disk_back_reservoir.size()) {
+        backupCount = disk_back_reservoir.size();
+    }
 
     vector<FrontierItem> backup;
     backup.reserve(backupCount);
@@ -319,10 +326,10 @@ void Frontier::doBackUp() {
 }
 
 void Frontier::refillReservoirFromDiskBacked() {
-    if (reservoir.size() < maxQueuedItems || disk_back_reservoir.empty()) {
+    if (reservoir.size() >= maxQueuedItems || disk_back_reservoir.empty()) {
         return;
     }
-    std::size_t refillCount = maxQueuedItems * frontierReservoirRefillPercent;
+    std::size_t refillCount = (maxQueuedItems * frontierReservoirRefillPercent) / 100;
 
     if (refillCount > disk_back_reservoir.size()) {
         refillCount = disk_back_reservoir.size();
@@ -360,8 +367,6 @@ bool Frontier::loadDiskBackedChunkFromDisk() {
         disk_back_reservoir.pushBack(std::move(chunkItems[i]));
     }
 
-    queued += chunkItems.size();
-    pending += chunkItems.size();
     std::remove(chunkPath.c_str());
     --diskBackedChunksOnDisk;
     return true;
@@ -375,6 +380,7 @@ void Frontier::recoverDiskBackedChunkCount() {
     }
 
     std::size_t maxChunkIndex = 0;
+    std::size_t recoveredQueuedItems = 0;
     struct dirent *entry = nullptr;
     while ((entry = readdir(dir)) != nullptr) {
         std::size_t chunkIndex = 0;
@@ -388,10 +394,13 @@ void Frontier::recoverDiskBackedChunkCount() {
         if (chunkIndex > maxChunkIndex) {
             maxChunkIndex = chunkIndex;
         }
+        recoveredQueuedItems += chunkItemCount;
     }
     closedir(dir);
 
     diskBackedChunksOnDisk = maxChunkIndex;
+    queued += recoveredQueuedItems;
+    pending += recoveredQueuedItems;
 }
 
 string Frontier::diskChunkPath(std::size_t chunkIndex, std::size_t chunkItemCount) const {
