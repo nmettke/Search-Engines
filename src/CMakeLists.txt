@@ -169,3 +169,27 @@ target_link_libraries(search_engine_distributed
 )
 
 target_compile_features(search_engine_distributed PUBLIC cxx_std_17)
+
+add_executable(anchor_index_builder
+    anchor_index_builder.cpp
+)
+
+target_link_libraries(anchor_index_builder
+    PRIVATE
+        index_lib
+        parser
+        utils
+)
+
+target_compile_features(anchor_index_builder PUBLIC cxx_std_17)
+
+add_executable(sync_meta
+    sync_meta.cpp
+)
+
+target_link_libraries(sync_meta
+    PRIVATE
+        index_lib
+)
+
+target_compile_features(sync_meta PUBLIC cxx_std_17)
