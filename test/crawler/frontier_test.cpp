@@ -12,8 +12,10 @@
 
 namespace {
 
+constexpr const char *frontierDiskBackChunkDir = ".";
+
 void clearFrontierDiskChunks() {
-    DIR *dir = opendir(".");
+    DIR *dir = opendir(frontierDiskBackChunkDir);
     if (dir == nullptr) {
         return;
     }
@@ -24,7 +26,8 @@ void clearFrontierDiskChunks() {
         std::size_t chunkItemCount = 0;
         if (std::sscanf(entry->d_name, "frontier_disk_back_chunk_%zu_%zu.dat", &chunkIndex,
                         &chunkItemCount) == 2) {
-            std::remove(entry->d_name);
+            std::string path = std::string(frontierDiskBackChunkDir) + "/" + entry->d_name;
+            std::remove(path.c_str());
         }
     }
 

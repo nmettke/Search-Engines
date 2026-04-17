@@ -15,6 +15,7 @@ constexpr std::size_t frontierReservoirPromotionPercent = 25;
 constexpr std::size_t frontierDiskBackBackupPercent = 70; // when do we push to disk
 constexpr std::size_t frontierReservoirRefillPercent = 50; // when to we refill reservoir
 constexpr std::size_t frontierDiskBackRefillPercent = 30; // when do we refill disk back
+constexpr const char *frontierDiskBackChunkDir = "data/disk_chunk_backup";
 constexpr const char *frontierDiskBackChunkPrefix = "frontier_disk_back_chunk";
 
 bool frontierHostKeyEqual(const string a, const string b) { return a == b; }
@@ -321,7 +322,7 @@ void Frontier::refillReservoirFromDiskBacked() {
     if (reservoir.size() < maxQueuedItems || disk_back_reservoir.empty()) {
         return;
     }
-    const std::size_t refillCount = maxQueuedItems * frontierReservoirRefillPercent;
+    std::size_t refillCount = maxQueuedItems * frontierReservoirRefillPercent;
 
     if (refillCount > disk_back_reservoir.size()) {
         refillCount = disk_back_reservoir.size();
@@ -368,7 +369,7 @@ bool Frontier::loadDiskBackedChunkFromDisk() {
 
 // Used on restart, recover the number of disk back chunk we have on disk
 void Frontier::recoverDiskBackedChunkCount() {
-    DIR *dir = opendir(".");
+    DIR *dir = opendir(frontierDiskBackChunkDir);
     if (dir == nullptr) {
         return;
     }
@@ -397,14 +398,15 @@ string Frontier::diskChunkPath(std::size_t chunkIndex, std::size_t chunkItemCoun
     char suffixBuffer[64];
     std::snprintf(suffixBuffer, sizeof(suffixBuffer), "_%zu_%zu.dat", chunkIndex, chunkItemCount);
 
-    string path = string("./");
+    string path = string(frontierDiskBackChunkDir);
+    path += "/";
     path += frontierDiskBackChunkPrefix;
     path += suffixBuffer;
     return path;
 }
 
 bool Frontier::findDiskChunkPath(std::size_t chunkIndex, string &path) const {
-    DIR *dir = opendir(".");
+    DIR *dir = opendir(frontierDiskBackChunkDir);
     if (dir == nullptr) {
         return false;
     }
@@ -420,7 +422,8 @@ bool Frontier::findDiskChunkPath(std::size_t chunkIndex, string &path) const {
         }
 
         if (candidateChunkIndex == chunkIndex) {
-            path = string("./");
+            path = string(frontierDiskBackChunkDir);
+            path += "/";
             path += string(entry->d_name);
             found = true;
             break;

@@ -199,7 +199,7 @@ class Frontier {
     bool findDiskChunkPath(std::size_t chunkIndex, string &path) const;
 
     bool writeDiskChunk(const vector<FrontierItem> &items, std::size_t chunkIndex) const;
-    bool readDiskChunk(std::size_t chunkIndex, vector<FrontierItem> &items) const;
+    bool readDiskChunk(const string &path, vector<FrontierItem> &items) const;
 
     // Requires: m is held.
     void enqueueScheduledItem(const FrontierItem &item, std::int64_t nowMs);
