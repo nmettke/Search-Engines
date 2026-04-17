@@ -54,6 +54,33 @@ string to_string(double score) {
     return string(buffer);
 }
 
+string skip_nonchar(const string &value) {
+    string escaped;
+    escaped.reserve(value.size() + 8);
+
+    for (char ch : value) {
+        switch (ch) {
+        case '\\':
+            escaped += "\\\\";
+            break;
+        case '\t':
+            escaped += "\\t";
+            break;
+        case '\n':
+            escaped += "\\n";
+            break;
+        case '\r':
+            escaped += "\\r";
+            break;
+        default:
+            escaped += ch;
+            break;
+        }
+    }
+
+    return escaped;
+}
+
 static bool urlEqual(string a, string b) { return a == b; }
 
 static uint64_t urlHash(string key) { return hashString(key.cstr()); }
@@ -200,8 +227,10 @@ void *handle_master_connection(void *args) {
 
             MetaRecord &meta = (*t_args->all_meta)[match.chunk_id][match.doc_id];
 
-            response += meta.url + "\t" + meta.title + "\t" + meta.snippet + "\t" +
-                        to_string(match.score) + "\n";
+            response += skip_nonchar(meta.url) + "\t" +
+                        skip_nonchar(meta.title) + "\t" +
+                        skip_nonchar(meta.snippet) + "\t" + to_string(match.score) +
+                        "\n";
         }
 
         response += "END_OF_RESULTS\n";

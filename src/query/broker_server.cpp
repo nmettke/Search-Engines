@@ -69,6 +69,41 @@ string json_escape(const string &s) {
     return out;
 }
 
+string readd_escape(const string &value) {
+    string unescaped;
+    unescaped.reserve(value.size());
+
+    for (size_t i = 0; i < value.size(); ++i) {
+        char ch = value[i];
+        if (ch == '\\' && i + 1 < value.size()) {
+            char next = value[i + 1];
+            switch (next) {
+            case '\\':
+                unescaped += '\\';
+                ++i;
+                continue;
+            case 't':
+                unescaped += '\t';
+                ++i;
+                continue;
+            case 'n':
+                unescaped += '\n';
+                ++i;
+                continue;
+            case 'r':
+                unescaped += '\r';
+                ++i;
+                continue;
+            default:
+                break;
+            }
+        }
+        unescaped += ch;
+    }
+
+    return unescaped;
+}
+
 void *fetch_from_worker(void *args) {
     WorkerArgs *wa = (WorkerArgs *)args;
 
@@ -116,9 +151,9 @@ void *fetch_from_worker(void *args) {
             size_t t3 = line.find('\t', t2 + 1);
 
             if (t1 != string::npos && t2 != string::npos && t3 != string::npos) {
-                string url = line.substr(0, t1);
-                string title = line.substr(t1 + 1, t2 - t1 - 1);
-                string snippet = line.substr(t2 + 1, t3 - t2 - 1);
+                string url = readd_escape(line.substr(0, t1));
+                string title = readd_escape(line.substr(t1 + 1, t2 - t1 - 1));
+                string snippet = readd_escape(line.substr(t2 + 1, t3 - t2 - 1));
                 double score = atof(line.substr(t3 + 1).c_str());
 
                 wa->local_results.pushBack({url, title, snippet, score});
