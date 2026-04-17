@@ -84,7 +84,7 @@ vector<ScoredDocument> QueryEngine::search(const string &query, size_t K) const 
     QueryCompiler anchor_compiler(anchor_reader_);
 
     auto body_root = body_compiler.compile(tokens);
-    auto anchor_root = anchor_compiler.compile(tokens);
+    auto anchor_root = anchor_compiler.compileAnchor(tokens);
 
     if (!body_root && !anchor_root)
         return top_k.extractSorted();
