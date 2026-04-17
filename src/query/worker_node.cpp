@@ -40,7 +40,7 @@ struct ChunkSearchArgs {
     size_t K;
     size_t chunk_id;
 
-    vector<ScoredDocument> local_matches; // TODO
+    vector<ScoredDocument> local_matches;
 };
 
 struct Location {
@@ -129,7 +129,6 @@ void *search_chunk_thread(void *arg) {
 
     args->local_matches = args->engine->search(args->query, args->K);
 
-    pthread_exit(nullptr);
     return nullptr;
 }
 
@@ -168,7 +167,7 @@ void *handle_master_connection(void *args) {
 
         for (size_t i = 0; i < num_engines; ++i) {
             thread_args[i].engine = (*engines)[i];
-            thread_args[i].query = query;
+            thread_args[i].query = string(query.c_str());
             thread_args[i].K = K;
             thread_args[i].chunk_id = i;
 
@@ -194,6 +193,11 @@ void *handle_master_connection(void *args) {
         // Format the response: "url score\n"
         string response = "";
         for (const auto &match : matches) {
+            if (match.chunk_id >= t_args->all_meta->size() ||
+                match.doc_id >= (*t_args->all_meta)[match.chunk_id].size()) {
+                continue;
+            }
+
             MetaRecord &meta = (*t_args->all_meta)[match.chunk_id][match.doc_id];
 
             response += meta.url + "\t" + meta.title + "\t" + meta.snippet + "\t" +
