@@ -45,12 +45,18 @@
             return d.innerHTML;
         }
 
-        // escaping &, <, >, ", ' with textarea
+        // decodes html with textarea (&amp;, &#x27;, &nbsp;, etc) 
         function decodeEntities(s) {
             if (s == null) return '';
             var t = document.createElement('textarea');
-            t.innerHTML = String(s);
-            return t.value;
+            var prev = String(s);
+            for (var i = 0; i < 5; i++) {
+                t.innerHTML = prev;
+                var next = t.value;
+                if (next === prev) break;
+                prev = next;
+            }
+            return prev;
         }
 
         function formatElapsed(ms) {
