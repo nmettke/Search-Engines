@@ -14,7 +14,7 @@
             <input type="text" id="query" name="q" autofocus autocomplete="off"
                 placeholder="Can we find all of our bugs before we have to present?" />
             <label class="k-label" for="k">k</label>
-            <input type="number" id="k" name="k" min="1" max="10000" value="1000" class="k-input" />
+            <input type="number" id="k" name="k" min="1" max="10000" value="100" class="k-input" />
             <button type="submit" aria-label="Search">&#x1F50D;</button>
         </form>
         <div class="search-actions" id="search-actions">
@@ -30,7 +30,7 @@
             <form id="results-search-form" class="search-bar">
                 <input type="text" id="results-query" name="q" autocomplete="off" />
                 <label class="k-label" for="results-k">k</label>
-                <input type="number" id="results-k" name="k" min="1" max="10000" value="1000" class="k-input" />
+                <input type="number" id="results-k" name="k" min="1" max="10000" value="100" class="k-input" />
                 <button type="submit" aria-label="Search">&#x1F50D;</button>
             </form>
         </div>
@@ -43,6 +43,14 @@
             var d = document.createElement('div');
             d.textContent = s;
             return d.innerHTML;
+        }
+
+        // escaping &, <, >, ", ' with textarea
+        function decodeEntities(s) {
+            if (s == null) return '';
+            var t = document.createElement('textarea');
+            t.innerHTML = String(s);
+            return t.value;
         }
 
         function formatElapsed(ms) {
@@ -63,7 +71,7 @@
 
         function normalizeK(raw) {
             var n = parseInt(raw, 10);
-            if (!isFinite(n) || n < 1) n = 1000;
+            if (!isFinite(n) || n < 1) n = 100;
             if (n > 10000) n = 10000;
             return n;
         }
@@ -72,26 +80,27 @@
             opts = opts || {};
             var landingK = document.getElementById('k');
             var resultsK = document.getElementById('results-k');
-            var k = normalizeK(opts.k != null ? opts.k :
-                (document.getElementById('results-page').style.display !== 'none'
+            var k = normalizeK(opts.k != null ? opts.k : (document.getElementById('results-page').style.display !== 'none'
                     ? resultsK.value : landingK.value));
             landingK.value = k;
             resultsK.value = k;
 
             document.getElementById('landing').style.display = 'none';
             document.getElementById('results-page').style.display = 'block';
+
             document.getElementById('results-query').value = query;
             document.getElementById('info').textContent = 'Searching\u2026';
             document.getElementById('results').innerHTML = '';
             document.title = query + ' \u2014 Cache Me If You Can';
 
             if (opts.pushHistory !== false) {
-                var url = '/search?q=' + encodeURIComponent(query) + '&k=' + k;
-                window.history.pushState({ q: query, k: k }, '', url);
+                var url = '/search?q=' + encodeURIComponent(query)  + '&k=' + k;
+                window.history.pushState({ q: query, k: k }, '', url); 
             }
 
+
             fetch('/api/search?q=' + encodeURIComponent(query) + '&k=' + k)
-                .then(function(res) { return res.json(); })
+                .then(function(res) {  return res.json();  })
                 .then(function(data) {
                     var n = data.results.length;
                     var elapsed = formatElapsed(data.elapsed_ms);
@@ -103,21 +112,26 @@
                         document.getElementById('results').innerHTML =
                             '<div class="no-results">No results found for <b>' +
                             escapeHtml(query) + '</b>.</div>';
+                            
                         return;
+                        
                     }
 
                     var html = '';
                     for (var i = 0; i < n; i++) {
                         var r = data.results[i];
-                        var displayUrl = r.url.length > 70
-                            ? r.url.substring(0, 70) + '\u2026' : r.url;
-                        var title = r.title || r.url;
+                        var url = decodeEntities(r.url);
+                        var title = decodeEntities(r.title || r.url);
+                        var snippet = decodeEntities(r.snippet);
+                        
+                        var displayUrl = url.length > 70
+                            ? url.substring(0, 70) + '\u2026' : url;
                         html += '<div class="result">'
-                           
-                            + '<div class="result-title"><a href="' + escapeHtml(r.url)
+
+                            + '<div class="result-title"><a href="' + escapeHtml(url)
                             + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(title) + '</a></div>'
                             + '<div class="result-url">' + escapeHtml(displayUrl) + '</div>'
-                            + '<div class="result-snippet">' + escapeHtml(r.snippet) + '</div>'
+                            + '<div class="result-snippet">' + escapeHtml(snippet) + '</div>'
                             + '<div class="result-score">Score: ' + r.score.toFixed(4) + '</div>'
                             + '</div>';
                     }
@@ -133,18 +147,18 @@
         (function() {
             var landing = document.getElementById('landing');
             var buttonArea = document.getElementById('search-actions');
-            var btn = document.getElementById('runaway-search-button');
+            var btn = document.getElementById('runaway-search-button'); 
 
             var offset = { x: 0, y: 0 };
             var velocity = { x: 0, y: 0 };
-            var mouse = { x: -9999, y: -9999 };
+            var mouse = { x: -9999, y: -9999 }; 
             var prevMouse = { x: -9999, y: -9999 };
             var mouseSpeed = 0;
 
             var escapeStart = 0;
             var ESCAPE_MS = 10000;
             var TRIGGER_RADIUS_MIN = 60;
-            var TRIGGER_RADIUS_MAX = 200;
+            var TRIGGER_RADIUS_MAX = 200; 
             var FRICTION = 0.84;
             var settled = false;
             var animating = false;
@@ -155,6 +169,7 @@
 
                 var a = buttonArea.getBoundingClientRect();
                 var b = btn.getBoundingClientRect();
+
 
                 return { 
                     x: (a.width - b.width) / 2, y:  (a.height - b.height) / 2 
@@ -169,13 +184,21 @@
 
             function settle() {
 
-                settled = true;
+                settled = true; 
                 landing.removeEventListener('pointermove', onPointerMove);
+
+
+
+
                 velocity.x = 0;
-                velocity.y = 0;
+                velocity.y = 0; 
 
                 btn.classList.remove('is-running');
             }
+
+        
+
+
 
             function tick() {
                 if (settled) return;
@@ -221,6 +244,7 @@
                 velocity.x *= FRICTION;
                 velocity.y *= FRICTION;
 
+
                 var b = bounds();
                 offset.x = clamp(offset.x + velocity.x, -b.x, b.x);
                 offset.y = clamp(offset.y + velocity.y, -b.y, b.y);
@@ -263,6 +287,7 @@
             var q = document.getElementById('query').value.trim();
             if (q) doSearch(q);
         });
+        
 
         document.getElementById('results-search-form').addEventListener('submit', function(e) {
             e.preventDefault();
@@ -270,7 +295,6 @@
             if (q) doSearch(q);
         });
 
-        // Sharable URLs: sync the page with ?q=...&k=... in the address bar.
         function paramsFromLocation() {
             var out = {};
             var search = window.location.search || '';
