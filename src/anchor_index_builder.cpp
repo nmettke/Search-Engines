@@ -22,6 +22,24 @@ static uint64_t anchorKeyHash(string key) {
     return static_cast<uint64_t>(std::hash<string>{}(key));
 }
 
+static vector<string> tokenize(const string &text) {
+    vector<string> tokens;
+    size_t start = 0;
+    while (start < text.size()) {
+        while (start < text.size() && !isalnum(static_cast<unsigned char>(text[start])))
+            ++start;
+        if (start >= text.size())
+            break;
+        size_t end = start + 1;
+        while (end < text.size() && isalnum(static_cast<unsigned char>(text[end])))
+            ++end;
+        string tok = text.substr(start, end - start);
+        tokens.pushBack(tok);
+        start = end;
+    }
+    return tokens;
+}
+
 string to_string(size_t n) {
     char buffer[64];
     snprintf(buffer, sizeof(buffer), "%zu", n);
