@@ -10,6 +10,8 @@ class InMemoryIndex {
   public:
     void addToken(const TokenOutput &token);
     void finishDocument(const DocEndOutput &doc_end);
+    std::size_t documentCount() const;
+    std::size_t approxMemoryBytes() const;
 
     const std::unordered_map<::string, PostingList> &postings() const { return _index; }
     const ::vector<DocumentRecord> &documents() const { return _documents; }

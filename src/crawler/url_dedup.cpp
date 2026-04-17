@@ -29,6 +29,11 @@ UrlBloomFilter::Snapshot UrlBloomFilter::snapshot() const {
     return snap;
 }
 
+std::size_t UrlBloomFilter::memoryUsageBytes() const {
+    lock_guard<mutex> guard(m_);
+    return sizeof(UrlBloomFilter) + bits.capacity() * sizeof(bool);
+}
+
 UrlBloomFilter UrlBloomFilter::deserializeFromStream(FILE *f) {
     std::size_t bc;
     std::uint32_t hc;

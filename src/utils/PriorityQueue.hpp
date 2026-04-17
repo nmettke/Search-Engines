@@ -21,6 +21,8 @@ template <typename T, typename Compare = std::less<T>> class PriorityQueue {
 
     [[nodiscard]] size_type size() const { return data_.size(); }
 
+    [[nodiscard]] size_type capacity() const { return data_.capacity(); }
+
     [[nodiscard]] const T &top() const {
         if (empty()) {
             throw std::out_of_range("PriorityQueue::top() called on empty queue");

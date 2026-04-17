@@ -40,6 +40,14 @@ std::size_t resolveFrontierMaxQueuedItems(std::size_t configuredMaxQueuedItems) 
     std::size_t parsed = 1000000; // I have chosen to hard code this for simplicity
     return parsed;
 }
+
+std::size_t stringBytes(const string &value) {
+    return value.capacity() + 1;
+}
+
+std::size_t frontierItemBytes(const FrontierItem &item) {
+    return sizeof(FrontierItem) + stringBytes(item.link);
+}
 } // namespace
 
 std::int64_t Frontier::nowMillis() {
@@ -715,6 +723,47 @@ size_t Frontier::size() const {
     lock_guard<mutex> guard(m);
     // return queued;
     return reservoir.size() + disk_back_reservoir.size();
+}
+
+std::size_t Frontier::approxMemoryBytes() const {
+    lock_guard<mutex> guard(m);
+
+    std::size_t total = sizeof(Frontier);
+
+    total += hostQueues.bucketCount() * sizeof(void *);
+    for (auto it = hostQueues.begin(); it != hostQueues.end(); ++it) {
+        total += sizeof(Bucket<string, HostQueue>);
+        total += stringBytes(it->key);
+
+        const HostQueue &host = it->value;
+        total += host.items.capacity() * sizeof(FrontierItem);
+        host.items.forEach([&total](const FrontierItem &item) { total += frontierItemBytes(item); });
+    }
+
+    total += readyHosts.capacity() * sizeof(string);
+    readyHosts.forEach([&total](const string &hostKey) { total += stringBytes(hostKey); });
+
+    total += sleepingHosts.capacity() * sizeof(SleepingHost);
+    PriorityQueue<SleepingHost, SleepingHostCompare> sleepingCopy = sleepingHosts;
+    while (!sleepingCopy.empty()) {
+        total += sizeof(SleepingHost) + stringBytes(sleepingCopy.top().hostKey);
+        sleepingCopy.pop();
+    }
+
+    total += reservoir.capacity() * sizeof(FrontierItem);
+    for (const FrontierItem &item : reservoir) {
+        total += frontierItemBytes(item);
+    }
+
+    total += disk_back_reservoir.capacity() * sizeof(FrontierItem);
+    for (const FrontierItem &item : disk_back_reservoir) {
+        total += frontierItemBytes(item);
+    }
+
+    total += stringBytes(diskBackFilePrefix);
+    total += stringBytes(frontierActiveHostKey);
+
+    return total;
 }
 
 bool Frontier::empty() const {

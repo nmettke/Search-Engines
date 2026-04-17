@@ -75,6 +75,10 @@ struct PeerThreadArgs {
     size_t peerIndex = 0;
 };
 
+struct IndexThreadArgs {
+    size_t threadIndex = 0;
+};
+
 PeerReceiverState *peerReceiverStates = nullptr;
 PeerThreadArgs *peerSenderThreadArgs = nullptr;
 PeerThreadArgs *peerReceiverThreadArgs = nullptr;
@@ -140,6 +144,7 @@ static constexpr int checkpointIntervalSecs = 1600; // 1 hour
 static constexpr int heartbeatIntervalSecs = 300;   // 5 minutes
 mutex crawlLogLock;
 bool debug = false;
+bool memDebug = false;
 
 static std::ostream &tsOut(std::ostream &stream);
 
@@ -169,6 +174,60 @@ static std::string timestampPrefix() {
 static std::ostream &tsOut(std::ostream &stream) {
     stream << timestampPrefix();
     return stream;
+}
+
+// Add the byte count sentinel
+static std::size_t stringBytes(const string &value) { return value.capacity() + 1; } 
+
+static std::size_t stringVectorBytes(const vector<string> &values) {
+    // Size of vector + size of each actual string
+    std::size_t total = values.capacity() * sizeof(string);
+    for (const string &value : values) {
+        total += stringBytes(value);
+    }
+    return total;
+}
+
+static std::size_t routedLinkBytes(const RoutedLink &link) {
+    return sizeof(RoutedLink) + stringBytes(link.url) + stringVectorBytes(link.anchorText);
+}
+
+static string formatMiB(std::size_t bytes) {
+    char buffer[64] = {};
+    std::snprintf(buffer, sizeof(buffer), "%.2f",
+                  static_cast<double>(bytes) / (1024.0 * 1024.0)); // Bytes to MB
+    return string(buffer);
+}
+
+static void logMemDebugHeartbeat() {
+    if (!memDebug) {
+        return;
+    }
+
+    tsOut(std::cout) << " frontier approx memory = " << formatMiB(f->approxMemoryBytes())
+                     << " MiB\n";
+    tsOut(std::cout) << " bloom filter approx memory = " << formatMiB(bloom.memoryUsageBytes())
+                     << " MiB\n";
+
+    IndexQueue::Stats queueStats = q->stats();
+    tsOut(std::cout) << " index queue size = " << queueStats.itemCount << " pages, "
+                     << formatMiB(queueStats.approxBytes) << " MiB\n";
+
+    lock_guard<mutex> guard(batch_lock);
+    for (size_t i = 0; i < batches.size(); ++i) {
+        if (i == machine_id.load()) {
+            continue;
+        }
+
+        std::size_t total = batches[i].capacity() * sizeof(RoutedLink);
+        for (const RoutedLink &link : batches[i]) {
+            total += routedLinkBytes(link);
+        }
+}
+        tsOut(std::cout) << " send-to-peer batch[" << i << "] = " << batches[i].size()
+                         << " urls, " << formatMiB(total)
+                         << " MiB\n";
+    }
 }
 // size_t anchorFlushIntervalSeconds = 30;
 
@@ -321,6 +380,7 @@ void *CheckpointThread(void *) {
         if ((now - lastHeartbeat) >= heartbeatIntervalSecs) {
             tsOut(std::cout) << "still alive; documents processed = " << urlsCrawled.load() << '\n';
             tsOut(std::cout) << " frontier size = " << f -> size() << '\n';
+            logMemDebugHeartbeat();
             std::cout.flush();
             lastHeartbeatTime = now;
         }
@@ -575,11 +635,13 @@ void flushMetaData(const vector<string> &chunk_metadata, const string &meta_path
     }
 }
 
-void *IndexWorkerThread(void *) {
+void *IndexWorkerThread(void *arg) {
+    const size_t threadIndex = static_cast<IndexThreadArgs *>(arg)->threadIndex;
     Tokenizer tokenizer;
     InMemoryIndex mem_index;
     size_t docsProcessed = 0;
     size_t tokensProcessed = 0;
+    time_t lastHeartbeat = time(nullptr);
 
     vector<string> chunk_metadata;
 
@@ -593,6 +655,18 @@ void *IndexWorkerThread(void *) {
         mem_index.finishDocument(tokenized.doc_end);
         ++docsProcessed;
         tokensProcessed += tokenized.tokens.size();
+
+        if (memDebug) {
+            time_t now = time(nullptr);
+            if ((now - lastHeartbeat) >= heartbeatIntervalSecs) {
+                tsOut(std::cout) << "index thread " << threadIndex
+                                 << " still alive; docs processed = " << docsProcessed
+                                 << ", current in-memory index = " << mem_index.documentCount()
+                                 << " docs, " << formatMiB(mem_index.approxMemoryBytes())
+                                 << " MiB\n";
+                lastHeartbeat = now;
+            }
+        }
 
         if (tokensProcessed >= FLUSHBODYTOKENSIZE) {
             const size_t chunkId = nextIndexChunkId.fetch_add(1);
@@ -974,12 +1048,13 @@ void *SendToPeerThread(void *arg) {
         batch_lock.unlock();
 
         if (!sendBatchToPeerWithRetry(peerIndex, socketFd, readyBatch)) {
-            batch_lock.lock();
-            for (const RoutedLink &link : readyBatch) {
-                batches[peerIndex].pushBack(link);
-            }
-            batch_lock.unlock();
-            batch_cv.notify_all();
+            // batch_lock.lock();
+            // for (const RoutedLink &link : readyBatch) {
+            //     batches[peerIndex].pushBack(link);
+            // }
+            // batch_lock.unlock();
+            // batch_cv.notify_all();
+            tsOut(std::cerr << "Send batch to peer " << peerIndex << " failed after retry; dropped");
         }
     }
 
@@ -1292,8 +1367,9 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (argc != 3 && argc != 4) {
-        tsOut(std::cerr) << "Usage: " << argv[0] << " <machine_id> <batch_threshold> [debug]\n";
+    if (argc < 3) {
+        tsOut(std::cerr) << "Usage: " << argv[0]
+                         << " <machine_id> <batch_threshold> [debug] [mem-debug]\n";
         return 1;
     }
 
@@ -1306,12 +1382,19 @@ int main(int argc, char **argv) {
 
     machine_id = parsedMachineId;
     numLinkThreshold = parsedBatchThreshold;
-    if (argc == 4) {
-        if (string(argv[3]) != "debug") {
-            tsOut(std::cerr) << "Optional third argument must be 'debug'\n";
-            return 1;
+    for (int i = 3; i < argc; ++i) {
+        const string arg(argv[i]);
+        if (arg == "debug") {
+            debug = true;
+            continue;
         }
-        debug = true;
+        if (arg == "mem-debug") {
+            memDebug = true;
+            continue;
+        }
+
+        tsOut(std::cerr) << "Optional arguments must be 'debug' or 'mem-debug'\n";
+        return 1;
     }
 
     // if (anchorFlushIntervalSeconds == 0) {
@@ -1409,6 +1492,7 @@ int main(int argc, char **argv) {
     size_t indexThreadCount = 4;
     vector<pthread_t> crawlerThreads(crawlerThreadCount);
     vector<pthread_t> indexThreads(indexThreadCount);
+    vector<IndexThreadArgs> indexThreadArgs(indexThreadCount);
     pthread_t acceptThread{};
     pthread_t checkpointThread{};
     pthread_t *peerSenderThreads = nullptr;
@@ -1426,7 +1510,8 @@ int main(int argc, char **argv) {
     }
 
     for (size_t i = 0; i < indexThreadCount; ++i) {
-        pthread_create(&indexThreads[i], nullptr, IndexWorkerThread, nullptr);
+        indexThreadArgs[i].threadIndex = i;
+        pthread_create(&indexThreads[i], nullptr, IndexWorkerThread, &indexThreadArgs[i]);
     }
 
     pthread_create(&checkpointThread, nullptr, CheckpointThread, nullptr);

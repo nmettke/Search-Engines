@@ -13,6 +13,11 @@
 
 class IndexQueue {
   public:
+    struct Stats {
+        std::size_t itemCount = 0;
+        std::size_t approxBytes = 0;
+    };
+
     explicit IndexQueue(std::size_t maxQueuedItems = 1024);
     IndexQueue(::vector<HtmlParser> items, std::size_t maxQueuedItems = 1024);
     ~IndexQueue() = default;
@@ -20,6 +25,7 @@ class IndexQueue {
     void push(HtmlParser &parsed);
 
     std::optional<HtmlParser> pop();
+    Stats stats() const;
     void shutdown();
 
   private:
@@ -28,5 +34,6 @@ class IndexQueue {
     ::condition_variable cv;
     bool closed;
     std::size_t pending;
+    std::size_t approxQueuedBytes;
     std::size_t maxQueuedItems;
 };

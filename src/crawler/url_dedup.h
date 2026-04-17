@@ -24,6 +24,7 @@ class UrlBloomFilter {
     bool serializeToStream(FILE *f) const;
     static UrlBloomFilter deserializeFromStream(FILE *f);
     Snapshot snapshot() const;
+    std::size_t memoryUsageBytes() const;
 
     bool probablyContains(const ::string &key) const;
     void insert(const ::string &key);

@@ -44,6 +44,7 @@ class Frontier {
     bool contains(const string &url) const;
 
     size_t size() const;
+    std::size_t approxMemoryBytes() const;
 
     bool empty() const;
 
@@ -59,6 +60,8 @@ class Frontier {
         bool empty() const { return frontIndex >= storage.size(); }
 
         std::size_t size() const { return empty() ? 0 : storage.size() - frontIndex; }
+
+        std::size_t capacity() const { return storage.capacity(); }
 
         T &front() { return storage[frontIndex]; }
 
