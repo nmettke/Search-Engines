@@ -46,7 +46,7 @@ std::atomic<bool> shouldStop{false};
 // Key constraint: there should always only be URL that belong to this machine on the frontier
 Frontier *f = nullptr;
 IndexQueue *q = nullptr;
-InMemoryIndex mem_index;
+std::atomic<size_t> nextIndexChunkId{0};
 
 std::atomic<size_t> numLinkThreshold{128};
 struct RoutedLink {
@@ -123,21 +123,21 @@ const string indexDirectory("data/body_index");
 const string metaDirectory("data/meta");
 const size_t FLUSHBODYTOKENSIZE = 25000000;
 static constexpr size_t maxIndexQueueItems = 1024;
-static constexpr size_t crawlerThreadsPerCore = 100;
+static constexpr size_t crawlerThreadsPerCore = 512;
 static constexpr size_t fallbackCrawlerThreadCount = 8;
 static constexpr size_t maxCrawlerThreadCount = 2400;
 
 CheckpointConfig cpConfig;
 Checkpoint *checkpoint = nullptr;
 std::atomic<size_t> urlsCrawled{0};
-UrlBloomFilter bloom(1000000, 0.0001);
+UrlBloomFilter bloom(150000000, 0.0001);
 UrlFilter urlFilter;
 RobotsCache *robotsCache = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
 static std::atomic<time_t> lastCheckpointTime{0};
 static std::atomic<time_t> lastHeartbeatTime{0};
-static constexpr int checkpointIntervalSecs = 1800; // 30 minutes
-static constexpr int heartbeatIntervalSecs = 300;   // 5 minutes
+static constexpr int checkpointIntervalSecs = 1600; // 1 hour 
+static constexpr int heartbeatIntervalSecs = 30;   // 5 minutes
 mutex crawlLogLock;
 bool debug = false;
 
@@ -576,8 +576,8 @@ void flushMetaData(const vector<string> &chunk_metadata, const string &meta_path
 
 void *IndexWorkerThread(void *) {
     Tokenizer tokenizer;
+    InMemoryIndex mem_index;
     size_t docsProcessed = 0;
-    size_t chunksWritten = 0;
     size_t tokensProcessed = 0;
 
     vector<string> chunk_metadata;
@@ -594,14 +594,15 @@ void *IndexWorkerThread(void *) {
         tokensProcessed += tokenized.tokens.size();
 
         if (tokensProcessed >= FLUSHBODYTOKENSIZE) {
+            const size_t chunkId = nextIndexChunkId.fetch_add(1);
             char buffer[64] = {};
             std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
-                          chunksWritten);
+                          chunkId);
             const string path(buffer);
 
             char meta_buffer[64] = {};
             std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta",
-                          metaDirectory.c_str(), chunksWritten);
+                          metaDirectory.c_str(), chunkId);
             const string meta_path(meta_buffer);
 
             try {
@@ -619,7 +620,6 @@ void *IndexWorkerThread(void *) {
             chunk_metadata = vector<string>();
             docsProcessed = 0;
             tokensProcessed = 0;
-            ++chunksWritten;
         }
 
         if (docsProcessed > 0 && docsProcessed % 10000 == 0) {
@@ -629,14 +629,15 @@ void *IndexWorkerThread(void *) {
 
     // Write final partial chunk
     if (docsProcessed > 0) {
+        const size_t chunkId = nextIndexChunkId.fetch_add(1);
         char buffer[64] = {};
         std::snprintf(buffer, sizeof(buffer), "%s/chunk_%zu.idx", indexDirectory.c_str(),
-                      chunksWritten);
+                      chunkId);
         const string path(buffer);
 
         char meta_buffer[64] = {};
-        std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta", metaDirectory.c_str(),
-                      chunksWritten);
+        std::snprintf(meta_buffer, sizeof(meta_buffer), "%s/chunk_%zu.meta",
+                      metaDirectory.c_str(), chunkId);
         const string meta_path(meta_buffer);
 
         try {
@@ -655,6 +656,41 @@ void *IndexWorkerThread(void *) {
 
 static constexpr size_t sendBatchRetryCount = 5;
 static constexpr int sendBatchRetryBaseDelayMs = 1000;
+static constexpr int handshakeTimeoutSecs = 5;
+
+static size_t findCharFrom(const string &value, char c, size_t start) {
+    for (size_t i = start; i < value.size(); ++i) {
+        if (value[i] == c) {
+            return i;
+        }
+    }
+    return string::npos;
+}
+
+static bool parseSizeField(const string &raw, size_t &value) {
+    if (raw.empty()) {
+        return false;
+    }
+
+    char *end = nullptr;
+    unsigned long parsed = std::strtoul(raw.c_str(), &end, 10);
+    if (end == raw.c_str() || (end != nullptr && *end != '\0')) {
+        return false;
+    }
+
+    value = static_cast<size_t>(parsed);
+    return true;
+}
+
+struct ParsedPeerAddress {
+    string host;
+    string port;
+};
+
+static ParsedPeerAddress parsePeerAddress(const string &peer) {
+    size_t colon = peer.find(':');
+    return ParsedPeerAddress{peer.substr(0, colon), peer.substr(colon + 1)};
+}
 
 static bool hasReadyBatchForPeer(size_t peerIndex) {
     return batches[peerIndex].size() >= numLinkThreshold.load() ||
@@ -773,21 +809,14 @@ static bool recvFrame(int socketFd, size_t peerIndex, string &payload) {
 }
 
 static int connectToPeer(const string &peer) {
-    size_t colon = peer.find(':');
-    if (colon == string::npos || colon == 0 || colon + 1 >= peer.size()) {
-        tsOut(std::cerr) << "Invalid peer address: " << peer << '\n';
-        return -1;
-    }
-
-    string host = peer.substr(0, colon);
-    string port = peer.substr(colon + 1);
+    ParsedPeerAddress parsedPeer = parsePeerAddress(peer);
 
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
     addrinfo *result = nullptr;
-    if (getaddrinfo(host.c_str(), port.c_str(), &hints, &result) != 0) {
+    if (getaddrinfo(parsedPeer.host.c_str(), parsedPeer.port.c_str(), &hints, &result) != 0) {
         tsOut(std::cerr) << "Failed to resolve peer " << peer << '\n';
         return -1;
     }
@@ -799,8 +828,8 @@ static int connectToPeer(const string &peer) {
             continue;
         }
 
-        int opt = 1;
-        setsockopt(socketFd, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(opt));
+        int keepAliveOpt = 1;
+        setsockopt(socketFd, SOL_SOCKET, SO_KEEPALIVE, &keepAliveOpt, sizeof(keepAliveOpt));
         if (connect(socketFd, rp->ai_addr, rp->ai_addrlen) == 0) {
             break;
         }
@@ -818,39 +847,35 @@ static int connectToPeer(const string &peer) {
     return socketFd;
 }
 
-static string peerHost(size_t peerIndex) {
-    const string &peer = peer_address[peerIndex];
-    size_t colon = peer.find(':');
-    if (colon == string::npos) {
-        return peer;
-    }
-    return peer.substr(0, colon);
+static string buildHandshakePayload() {
+    return string("machine_id\t") + std::to_string(machine_id.load()).c_str() + "\n";
 }
 
-static bool findPeerIndexForClientAddress(const sockaddr_storage &clientAddr,
-                                          socklen_t clientAddrLen, size_t &peerIndex) {
-    char host[NI_MAXHOST] = {};
-    int rc = getnameinfo(reinterpret_cast<const sockaddr *>(&clientAddr), clientAddrLen, host,
-                         sizeof(host), nullptr, 0, NI_NUMERICHOST);
-    if (rc != 0) {
-        tsOut(std::cerr) << "Failed to identify accepted peer: " << gai_strerror(rc) << '\n';
+static bool parseHandshakePeerIndex(const string &payload, size_t &peerIndex) {
+    static const string prefix("machine_id\t");
+    if (payload.size() <= prefix.size() || payload.substr(0, prefix.size()) != prefix) {
+        tsOut(std::cerr) << "Rejected peer connection with invalid handshake payload\n";
         return false;
     }
 
-    const string remoteHost(host);
-    for (size_t i = 0; i < peer_address.size(); ++i) {
-        if (i == machine_id.load()) {
-            continue;
-        }
-
-        if (peerHost(i) == remoteHost) {
-            peerIndex = i;
-            return true;
-        }
+    string rawPeerIndex = payload.substr(prefix.size());
+    if (!rawPeerIndex.empty() && rawPeerIndex.back() == '\n') {
+        rawPeerIndex.pop_back();
+    }
+    if (!rawPeerIndex.empty() && rawPeerIndex.back() == '\r') {
+        rawPeerIndex.pop_back();
     }
 
-    tsOut(std::cerr) << "Rejected connection from unknown host " << remoteHost << '\n';
-    return false;
+    if (!parseSizeField(rawPeerIndex, peerIndex)) {
+        tsOut(std::cerr) << "Rejected peer connection with malformed machine id in handshake\n";
+        return false;
+    }
+    if (peerIndex >= peer_address.size() || peerIndex == machine_id.load()) {
+        tsOut(std::cerr) << "Rejected peer connection with invalid machine id " << peerIndex
+                         << '\n';
+        return false;
+    }
+    return true;
 }
 
 static bool ensureConnectedPeerSocket(size_t peerIndex, int &socketFd) {
@@ -860,6 +885,13 @@ static bool ensureConnectedPeerSocket(size_t peerIndex, int &socketFd) {
 
     socketFd = connectToPeer(peer_address[peerIndex]);
     if (socketFd < 0) {
+        return false;
+    }
+
+    if (!sendFrame(socketFd, peer_address[peerIndex], buildHandshakePayload())) {
+        tsOut(std::cerr) << "Failed to send handshake to peer " << peerIndex << '\n';
+        close(socketFd);
+        socketFd = -1;
         return false;
     }
 
@@ -889,8 +921,14 @@ static bool sendBatchToPeerWithRetry(size_t peerIndex, int &socketFd,
     for (size_t attempt = 0; attempt <= sendBatchRetryCount; ++attempt) {
         if (ensureConnectedPeerSocket(peerIndex, socketFd) &&
             sendFrame(socketFd, peer_address[peerIndex], payload)) {
+            // tsOut(std::cout) << "Sent batch frame to peer " << peerIndex << " with "
+            //                  << batch.size() << " links and " << payload.size() << " bytes\n";
             return true;
         }
+
+        tsOut(std::cerr) << "Failed to send batch frame to peer " << peerIndex << " on attempt "
+                         << (attempt + 1) << "/" << (sendBatchRetryCount + 1) << " with "
+                         << batch.size() << " links and " << payload.size() << " bytes\n";
 
         if (socketFd >= 0) {
             close(socketFd);
@@ -950,30 +988,6 @@ void *SendToPeerThread(void *arg) {
     return nullptr;
 }
 
-static size_t findCharFrom(const string &value, char c, size_t start) {
-    for (size_t i = start; i < value.size(); ++i) {
-        if (value[i] == c) {
-            return i;
-        }
-    }
-    return string::npos;
-}
-
-static bool parseSizeField(const string &raw, size_t &value) {
-    if (raw.empty()) {
-        return false;
-    }
-
-    char *end = nullptr;
-    unsigned long parsed = std::strtoul(raw.c_str(), &end, 10);
-    if (end == raw.c_str() || (end != nullptr && *end != '\0')) {
-        return false;
-    }
-
-    value = static_cast<size_t>(parsed);
-    return true;
-}
-
 static int openListeningSocket() {
     if (peer_address.size() <= 1 || machine_id.load() >= peer_address.size()) {
         return -1;
@@ -984,20 +998,7 @@ static int openListeningSocket() {
         return -1;
     }
 
-    size_t colon = selfPeer.find(':');
-    if (colon == string::npos || colon + 1 >= selfPeer.size()) {
-        tsOut(std::cerr) << "Invalid listen address for machine " << machine_id.load() << ": "
-                         << selfPeer << '\n';
-        return -1;
-    }
-
-    string host = selfPeer.substr(0, colon);
-    string port = selfPeer.substr(colon + 1);
-    if (port.empty()) {
-        tsOut(std::cerr) << "Invalid listen address for machine " << machine_id.load() << ": "
-                         << selfPeer << '\n';
-        return -1;
-    }
+    ParsedPeerAddress parsedSelfPeer = parsePeerAddress(selfPeer);
 
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
@@ -1005,7 +1006,7 @@ static int openListeningSocket() {
     hints.ai_flags = AI_PASSIVE;
 
     addrinfo *result = nullptr;
-    if (getaddrinfo(host.empty() ? nullptr : host.c_str(), port.c_str(), &hints, &result) != 0) {
+    if (getaddrinfo(nullptr, parsedSelfPeer.port.c_str(), &hints, &result) != 0) {
         tsOut(std::cerr) << "Failed to resolve listen address " << selfPeer << '\n';
         return -1;
     }
@@ -1138,18 +1139,28 @@ void *AcceptPeerConnectionsThread(void *) {
             continue;
         }
 
-        int opt = 1;
-        setsockopt(clientFd, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(opt));
+        int keepAliveOpt = 1;
+        setsockopt(clientFd, SOL_SOCKET, SO_KEEPALIVE, &keepAliveOpt, sizeof(keepAliveOpt));
 
-        size_t remotePeerIndex = 0;
-        if (!findPeerIndexForClientAddress(clientAddr, clientAddrLen, remotePeerIndex)) {
+        timeval handshakeTimeout{};
+        handshakeTimeout.tv_sec = handshakeTimeoutSecs;
+        handshakeTimeout.tv_usec = 0;
+        setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &handshakeTimeout, sizeof(handshakeTimeout));
+
+        string handshakePayload;
+        if (!recvFrame(clientFd, peer_address.size(), handshakePayload)) {
+            tsOut(std::cerr) << "Rejected peer connection with missing handshake\n";
             close(clientFd);
             continue;
         }
 
-        if (remotePeerIndex >= peer_address.size() || remotePeerIndex == machine_id.load()) {
-            tsOut(std::cerr) << "Rejected connection with invalid peer id " << remotePeerIndex
-                             << '\n';
+        timeval noTimeout{};
+        noTimeout.tv_sec = 0;
+        noTimeout.tv_usec = 0;
+        setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &noTimeout, sizeof(noTimeout));
+
+        size_t remotePeerIndex = 0;
+        if (!parseHandshakePeerIndex(handshakePayload, remotePeerIndex)) {
             close(clientFd);
             continue;
         }
@@ -1202,11 +1213,13 @@ void *ReceiveFromPeerThread(void *arg) {
         while (!shouldStop) {
             string payload;
             if (!recvFrame(socketFd, peerIndex, payload)) {
+                tsOut(std::cerr) << "Receiver lost frame stream from peer " << peerIndex << '\n';
                 break;
             }
 
             if (debug) {
-                tsOut(std::cout) << "Received batch frame from peer " << peerIndex << '\n';
+                tsOut(std::cout) << "Received batch frame from peer " << peerIndex << " with "
+                                 << payload.size() << " bytes\n";
             }
             processReceivedBatch(payload);
         }
@@ -1241,6 +1254,7 @@ static bool parseSizeArg(const char *raw, size_t &value) {
 
 int main(int argc, char **argv) {
     initSSL();
+    signal(SIGPIPE, SIG_IGN);
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
@@ -1391,7 +1405,7 @@ int main(int argc, char **argv) {
     if (crawlerThreadCount > maxCrawlerThreadCount) {
         crawlerThreadCount = maxCrawlerThreadCount;
     }
-    size_t indexThreadCount = 1;
+    size_t indexThreadCount = 4;
     vector<pthread_t> crawlerThreads(crawlerThreadCount);
     vector<pthread_t> indexThreads(indexThreadCount);
     pthread_t acceptThread{};
