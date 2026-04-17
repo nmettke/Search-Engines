@@ -120,6 +120,7 @@ static void sanitizeText(string &text) {
 
 HashTable<string, WordPosting> *anchorIndex = nullptr;
 mutex anchor_lock;
+mutex anchor_flush_lock;
 bool anchorIndexEdited = false;
 size_t anchorFlushFileCount = 0;
 const string anchorIndexDirectory("data/anchor_index");
@@ -332,7 +333,8 @@ static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, size_t
     fclose(fp);
 
     if (rename(tmpPath.c_str(), indexPath.c_str()) != 0) {
-        tsOut(std::cerr) << "Failed to rename anchor index file to " << indexPath << '\n';
+        tsOut(std::cerr) << "Failed to rename anchor index file from " << tmpPath << " to "
+                         << indexPath << ": " << std::strerror(errno) << '\n';
         restoreWordSnapshot(targetIndex, editedFlag, snapshot);
         return false;
     }
@@ -341,6 +343,8 @@ static bool flushWordSnapshotToDisk(const vector<WordSnapshot> &snapshot, size_t
 }
 
 static void flushAnchorIndexToDisk(bool force) {
+    lock_guard<mutex> flushGuard(anchor_flush_lock);
+
     vector<WordSnapshot> anchorSnapshot;
     anchor_lock.lock();
     if (!force && !anchorIndexEdited) {
