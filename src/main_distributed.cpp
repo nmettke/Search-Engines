@@ -121,8 +121,8 @@ size_t anchorFlushFileCount = 0;
 const string anchorIndexDirectory("data/anchor_index");
 const string indexDirectory("data/body_index");
 const string metaDirectory("data/meta");
-const size_t FLUSHBODYTOKENSIZE = 25000000;
-static constexpr size_t maxIndexQueueItems = 1024;
+const size_t FLUSHBODYTOKENSIZE = 15000000;
+static constexpr size_t maxIndexQueueItems = 102400;
 static constexpr size_t crawlerThreadsPerCore = 512;
 static constexpr size_t fallbackCrawlerThreadCount = 8;
 static constexpr size_t maxCrawlerThreadCount = 2400;
@@ -136,8 +136,8 @@ RobotsCache *robotsCache = nullptr;
 unsigned int cores = std::thread::hardware_concurrency();
 static std::atomic<time_t> lastCheckpointTime{0};
 static std::atomic<time_t> lastHeartbeatTime{0};
-static constexpr int checkpointIntervalSecs = 1600; // 1 hour
-static constexpr int heartbeatIntervalSecs = 30;    // 5 minutes
+static constexpr int checkpointIntervalSecs = 1600; // 1 hour 
+static constexpr int heartbeatIntervalSecs = 300;   // 5 minutes
 mutex crawlLogLock;
 bool debug = false;
 
@@ -320,6 +320,7 @@ void *CheckpointThread(void *) {
         time_t lastHeartbeat = lastHeartbeatTime.load();
         if ((now - lastHeartbeat) >= heartbeatIntervalSecs) {
             tsOut(std::cout) << "still alive; documents processed = " << urlsCrawled.load() << '\n';
+            tsOut(std::cout) << " frontier size = " << f -> size() << '\n';
             std::cout.flush();
             lastHeartbeatTime = now;
         }
