@@ -59,17 +59,13 @@ size_t partition_anchor_text(const string &index_dir, const string &anchor_text_
     if ((dir = opendir(index_dir.c_str())) != nullptr) {
         while ((ent = readdir(dir)) != nullptr) {
             string file_name = ent->d_name;
-            if (file_name.length() >= 4 && file_name.substr(file_name.length() - 4) == ".idx") {
+            if (file_name.length() >= 10 && file_name.substr(file_name.length() - 4) == ".idx") {
                 total_chunks++;
 
+                std::cout << "Processing chunk file: " << file_name << "...\n";
+
                 // get chunk id from file name, assuming format "chunk_{id}.idx"
-                size_t underscore = file_name.find('_');
-                size_t dot = file_name.find(".idx");
-                if (underscore == string::npos || dot == string::npos || underscore >= dot) {
-                    std::cerr << "Invalid chunk file name: " << file_name << std::endl;
-                    continue;
-                }
-                string chunk_id_str = file_name.substr(underscore + 1, dot - underscore - 1);
+                string chunk_id_str = file_name.substr(6, file_name.length() - 10);
                 int chunk_id = atoi(chunk_id_str.c_str());
 
                 DiskChunkReader reader;
@@ -99,7 +95,10 @@ size_t partition_anchor_text(const string &index_dir, const string &anchor_text_
         while ((ent = readdir(dir)) != nullptr) {
             string file_name = ent->d_name;
             if (file_name.find(".idx") != string::npos) {
-                FILE *blob_file = fopen((anchor_text_dir + file_name).c_str(), "r");
+                std::cout << "Partitioning anchor text file: " << file_name << "...\n";
+                string blob_path = anchor_text_dir + file_name;
+
+                FILE *blob_file = fopen(blob_path.c_str(), "r");
                 if (!blob_file)
                     continue;
 
