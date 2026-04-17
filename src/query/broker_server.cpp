@@ -28,8 +28,7 @@ string to_string(size_t n) {
     return string(buffer);
 }
 
-// Escapes a string for inclusion inside a JSON string literal. The caller is
-// responsible for wrapping the return value in surrounding `"` quotes.
+// escapes a sttring
 string json_escape(const string &s) {
     string out;
     out.reserve(s.size() + 8);
@@ -333,11 +332,8 @@ void *handle_frontend(void *args) {
     // Launch concurrent pthreads to query the Workers
     // TODO: load these from a config file
     ::vector<WorkerArgs> workers = {
-        {"10.128.0.21", 8081, query, k, {}}, {"10.128.0.22", 8081, query, k, {}},
-        {"10.128.0.23", 8081, query, k, {}}, {"10.128.0.25", 8081, query, k, {}},
-        {"10.128.0.26", 8081, query, k, {}}, {"10.128.0.27", 8081, query, k, {}},
-        {"10.128.0.28", 8081, query, k, {}}, {"10.128.0.29", 8081, query, k, {}}};
-
+        {"127.0.0.1", 8081, query, k, {}},
+    };
     ::vector<pthread_t> threads(workers.size());
     for (size_t i = 0; i < workers.size(); ++i) {
         pthread_create(&threads[i], nullptr, fetch_from_worker, &workers[i]);
@@ -347,7 +343,7 @@ void *handle_frontend(void *args) {
         pthread_join(threads[i], nullptr);
     }
 
-    // Merge results and get global top k
+    // merge results and get global top k
     GlobalTopKHeap top_k(k);
     for (const auto &w : workers) {
         for (const auto &res : w.local_results) {
