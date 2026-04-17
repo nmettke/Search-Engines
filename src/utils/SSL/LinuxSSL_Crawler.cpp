@@ -1,4 +1,3 @@
-#include <cctype>
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
@@ -21,6 +20,8 @@ static SSL_CTX *sslCtx = nullptr;
 // misbehaving server from OOMing the crawler by streaming unbounded data.
 // 10 MB easily covers normal HTML pages and robots.txt files.
 static constexpr size_t maxResponseBytes = 10ULL * 1024 * 1024;
+
+static bool asciiIsDigit(char c) { return c >= '0' && c <= '9'; }
 
 // Parses the numeric status from the first line of an HTTP response, e.g.
 // "HTTP/1.1 200 OK". Returns -1 if the line cannot be interpreted.
@@ -49,8 +50,8 @@ static int parseHttpStatusCode(const string &rawResponse) {
     int code = 0;
     size_t digits = 0;
     for (; i < statusLine.size(); ++i) {
-        unsigned char ch = static_cast<unsigned char>(statusLine[i]);
-        if (!std::isdigit(ch)) {
+        const char ch = statusLine[i];
+        if (!asciiIsDigit(ch)) {
             break;
         }
         code = code * 10 + (ch - '0');
@@ -66,8 +67,8 @@ static int parseHttpStatusCode(const string &rawResponse) {
 }
 
 static string decodeHttpResponseBodyIfSuccessful(const string &rawResponse) {
-    std::size_t headerEnd = rawResponse.find("\r\n\r\n");
-    std::size_t bodySkip = 4;
+    size_t headerEnd = rawResponse.find("\r\n\r\n");
+    size_t bodySkip = 4;
     if (headerEnd == string::npos) {
         headerEnd = rawResponse.find("\n\n");
         bodySkip = 2;
