@@ -743,8 +743,6 @@ static int connectToPeer(const string &peer) {
         tsOut(std::cerr) << "Failed to connect to peer " << peer << '\n';
     }
 
-    tsOut(std::cerr) << "Connected to peer " << peer << '\n';
-
     return socketFd;
 }
 
@@ -907,9 +905,7 @@ static int openListeningSocket() {
     hints.ai_flags = AI_PASSIVE;
 
     addrinfo *result = nullptr;
-    const char *hostPtr =
-        parsedSelfPeer.host.empty() ? nullptr : parsedSelfPeer.host.c_str();
-    if (getaddrinfo(hostPtr, parsedSelfPeer.port.c_str(), &hints, &result) != 0) {
+    if (getaddrinfo(nullptr, parsedSelfPeer.port.c_str(), &hints, &result) != 0) {
         tsOut(std::cerr) << "Failed to resolve listen address " << selfPeer << '\n';
         return -1;
     }
