@@ -162,33 +162,16 @@ void *handle_master_connection(void *args) {
         }
 
         size_t num_engines = engines->size();
-        pthread_t *threads = new pthread_t[num_engines];
-        ChunkSearchArgs *thread_args = new ChunkSearchArgs[num_engines];
-
-        for (size_t i = 0; i < num_engines; ++i) {
-            thread_args[i].engine = (*engines)[i];
-            thread_args[i].query = string(query.c_str());
-            thread_args[i].K = K;
-            thread_args[i].chunk_id = i;
-
-            pthread_create(&threads[i], nullptr, search_chunk_thread, &thread_args[i]);
-        }
-
-        for (size_t i = 0; i < num_engines; ++i) {
-            pthread_join(threads[i], nullptr);
-        }
 
         TopKHeap top_k_heap(K);
         for (size_t i = 0; i < num_engines; ++i) {
-            for (const auto &match : thread_args[i].local_matches) {
-                top_k_heap.push({thread_args[i].chunk_id, match.doc_id, match.score});
+            vector<ScoredDocument> local_matches = (*engines)[i]->search(query, K);
+            for (const auto &match : local_matches) {
+                top_k_heap.push({i, match.doc_id, match.score});
             }
         }
 
         vector<GlobalMatch> matches = top_k_heap.extractSorted();
-
-        delete[] threads;
-        delete[] thread_args;
 
         // Format the response: "url score\n"
         string response = "";
