@@ -26,10 +26,15 @@ class GlobalTopKHeap {
     ::vector<GlobalResult> heap_;
     size_t k_;
 
+    static bool heapLess(const GlobalResult &a, const GlobalResult &b) {
+        if (a.score != b.score) return a.score < b.score;
+        return a.url > b.url;
+    }
+
     void heapifyUp(int index) {
         while (index > 0) {
             int parent = (index - 1) / 2;
-            if (heap_[index].score < heap_[parent].score) {
+            if (heapLess(heap_[index], heap_[parent])) {
                 GlobalResult temp = heap_[index];
                 heap_[index] = heap_[parent];
                 heap_[parent] = temp;
@@ -46,9 +51,9 @@ class GlobalTopKHeap {
             int left = 2 * index + 1;
             int right = 2 * index + 2;
             int smallest = index;
-            if (left < size && heap_[left].score < heap_[smallest].score)
+            if (left < size && heapLess(heap_[left], heap_[smallest]))
                 smallest = left;
-            if (right < size && heap_[right].score < heap_[smallest].score)
+            if (right < size && heapLess(heap_[right], heap_[smallest]))
                 smallest = right;
             if (smallest != index) {
                 GlobalResult temp = heap_[index];
@@ -68,7 +73,7 @@ class GlobalTopKHeap {
         if (heap_.size() < k_) {
             heap_.pushBack(item);
             heapifyUp(heap_.size() - 1);
-        } else if (item.score > heap_[0].score) {
+        } else if (heapLess(heap_[0], item)) {
             heap_[0] = item;
             heapifyDown(0);
         }
