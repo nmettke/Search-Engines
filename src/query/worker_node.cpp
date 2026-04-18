@@ -63,10 +63,16 @@ class TopKHeap {
     vector<GlobalMatch> heap_;
     size_t k_;
 
+    static bool heapLess(const GlobalMatch &a, const GlobalMatch &b) {
+        if (a.score != b.score) return a.score < b.score;
+        if (a.chunk_id != b.chunk_id) return a.chunk_id > b.chunk_id;
+        return a.doc_id > b.doc_id;
+    }
+
     void heapifyUp(int index) {
         while (index > 0) {
             int parent = (index - 1) / 2;
-            if (heap_[index].score < heap_[parent].score) {
+            if (heapLess(heap_[index], heap_[parent])) {
                 std::swap(heap_[index], heap_[parent]);
                 index = parent;
             } else {
@@ -82,9 +88,9 @@ class TopKHeap {
             int right = 2 * index + 2;
             int smallest = index;
 
-            if (left < size && heap_[left].score < heap_[smallest].score)
+            if (left < size && heapLess(heap_[left], heap_[smallest]))
                 smallest = left;
-            if (right < size && heap_[right].score < heap_[smallest].score)
+            if (right < size && heapLess(heap_[right], heap_[smallest]))
                 smallest = right;
 
             if (smallest != index) {
@@ -103,7 +109,7 @@ class TopKHeap {
         if (heap_.size() < k_) {
             heap_.push_back(item);
             heapifyUp(heap_.size() - 1);
-        } else if (item.score > heap_[0].score) {
+        } else if (heapLess(heap_[0], item)) {
             heap_[0] = item;
             heapifyDown(0);
         }
