@@ -80,10 +80,10 @@ void *fetch_from_worker(void *args) {
     serv_addr.sin_port = htons(wa->port);
     inet_pton(AF_INET, wa->ip.c_str(), &serv_addr.sin_addr);
 
-    // Set a 500ms timeout
+    // 2s recv cap. 500ms was tripping under burst load and dropping workers.
     struct timeval timeout;
-    timeout.tv_sec = 0;
-    timeout.tv_usec = 500000;
+    timeout.tv_sec = 2;
+    timeout.tv_usec = 0;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) >= 0) {
