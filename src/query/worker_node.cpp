@@ -359,15 +359,7 @@ int main(int argc, char **argv) {
 
         if (client_sock >= 0) {
             ThreadArgs *args = new ThreadArgs{client_sock, &engines, &all_meta};
-
-            pthread_t thread_id;
-            if (pthread_create(&thread_id, nullptr, handle_master_connection, args) == 0) {
-                pthread_detach(thread_id);
-            } else {
-                std::cerr << "Error: Failed to create thread.\n";
-                close(client_sock);
-                delete args;
-            }
+            handle_master_connection(args);
         }
     }
 
